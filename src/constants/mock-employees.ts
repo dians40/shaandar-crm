@@ -1,0 +1,44 @@
+import type { EmployeeListItem } from "@/types/employee-list";
+
+/** Legacy mock data — app now uses Supabase. Kept for reference/tests only. */
+export const MOCK_EMPLOYEES: EmployeeListItem[] = [
+  {
+    id: "emp-001",
+    name: "Rahul Sharma",
+    employeeType: "Regular",
+    mobileNumber: "9876543210",
+    vehicleNumber: "MH-12-AB-1234",
+    machineAssignment: "Machine A",
+    fixSalaryAmount: 25000,
+    variableSalaryEnabled: false,
+    dailyRate: null,
+    workedDays: null,
+    effectiveSalary: 25000,
+  },
+  {
+    id: "emp-002",
+    name: "Priya Verma",
+    employeeType: "Contractor",
+    mobileNumber: "9123456780",
+    vehicleNumber: "GJ-01-CD-5678",
+    machineAssignment: "Machine B",
+    fixSalaryAmount: null,
+    variableSalaryEnabled: true,
+    dailyRate: 800,
+    workedDays: 22,
+    effectiveSalary: 17600,
+  },
+  {
+    id: "emp-003",
+    name: "Amit Kumar",
+    employeeType: "Temporary",
+    mobileNumber: "9988776655",
+    vehicleNumber: "—",
+    machineAssignment: "—",
+    fixSalaryAmount: 18000,
+    variableSalaryEnabled: false,
+    dailyRate: null,
+    workedDays: null,
+    effectiveSalary: 18000,
+  },
+];

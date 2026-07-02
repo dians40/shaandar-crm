@@ -14,8 +14,5 @@ export async function requireAuth() {
 }
 
 export function supabaseNotConfiguredResponse() {
-  return new Response(JSON.stringify({ data: [], error: null }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' }
-  });
+  return NextResponse.json({ data: [], error: null }, { status: 200 });
 }

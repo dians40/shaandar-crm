@@ -22,7 +22,7 @@ export default function MasterPanelView() {
   if (view === "add") {
     return (
       <div className="space-y-5">
-        <SupabaseSetupBanner />
+        
         <EmployeeForm mode="add" onBack={() => setView("list")} onSuccess={handleSuccess} />
       </div>
     );

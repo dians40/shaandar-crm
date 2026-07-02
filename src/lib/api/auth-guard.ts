@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { AUTH_COOKIE } from "@/lib/auth";
-
+import { NextResponse } from "next/server";
 export async function requireAuth() {
   const cookieStore = await cookies();
   const isAuthenticated = cookieStore.get(AUTH_COOKIE)?.value === "true";
@@ -13,7 +13,7 @@ export async function requireAuth() {
   return null;
 }
 
-function supabaseNotConfiguredResponse() {
+export function supabaseNotConfiguredResponse() {
   return new Response(JSON.stringify({ data: [], error: null }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' }

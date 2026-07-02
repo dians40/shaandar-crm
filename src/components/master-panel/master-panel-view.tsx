@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useEmployees } from "@/hooks/use-employees";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
-import SupabaseSetupBanner from "./supabase-setup-banner";
+
 
 type View = "list" | "add" | "edit";
 
@@ -31,7 +31,7 @@ export default function MasterPanelView() {
   if (view === "edit" && editingId) {
     return (
       <div className="space-y-5">
-        <SupabaseSetupBanner />
+        
         <EmployeeForm
         mode="edit"
         employeeId={editingId}
@@ -47,7 +47,7 @@ export default function MasterPanelView() {
 
   return (
     <div className="space-y-5">
-      <SupabaseSetupBanner />
+      
       <EmployeeList
       employees={employees}
       isLoading={isLoading}

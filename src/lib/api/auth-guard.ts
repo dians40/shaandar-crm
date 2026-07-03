@@ -1,11 +1,10 @@
+import { NextResponse } from "next/server";
+
 export async function requireAuth() {
   return null;
 }
 
 export function supabaseNotConfiguredResponse() {
-  // यह फ्रंटएंड को बिना किसी सर्वर रैपर के सीधा डेटा देगा, जिससे क्रैश होना 100% बंद हो जाएगा
-  return { 
-    data: [], 
-    error: null 
-  };
+  // यह सर्वर के लिए NextResponse भी बनाएगा और इसके अंदर एक .json() फंक्शन भी होगा जिसे फ्रंटएंड बिना क्रैश हुए पढ़ सके
+  return NextResponse.json({ data: [], error: null }, { status: 200 });
 }

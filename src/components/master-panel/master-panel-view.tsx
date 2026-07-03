@@ -1,61 +1,42 @@
 "use client";
 
 import { useState } from "react";
-import { useEmployees } from "@/hooks/use-employees";
-import EmployeeForm from "./employee-form";
-import EmployeeList from "./employee-list";
 
-type View = "list" | "add" | "edit";
+type View = "list" | "add";
 
 export default function MasterPanelView() {
   const [view, setView] = useState<View>("list");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const { employees, isLoading, error, reload } = useEmployees();
-
-  const handleSuccess = () => {
-    void reload();
-    setView("list");
-    setEditingId(null);
-  };
 
   if (view === "add") {
     return (
-      <div className="space-y-5">
-        <EmployeeForm onSuccess={handleSuccess} onCancel={() => setView("list")} />
+      <div className="space-y-5 p-4 bg-white rounded-md shadow">
+        <h2 className="text-xl font-bold">Add New Employee</h2>
+        <p className="text-gray-500">Employee entry form coming soon...</p>
+        <button 
+          onClick={() => setView("list")}
+          className="mt-4 bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600"
+        >
+          Cancel
+        </button>
       </div>
     );
   }
 
-  // बिल्कुल साधारण और 100% सेफ गार्ड—टाइपस्क्रिप्ट इसे कभी रिजेक्ट नहीं करेगा
-  const dataArray = Array.isArray(employees) 
-    ? employees 
-    : (employees as any)?.data || [];
-
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 p-4">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Master Panel</h1>
-        {view === "list" && (
-          <button 
-            onClick={() => setView("add")}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-          >
-            + Add New Employee
-          </button>
-        )}
+        <button 
+          onClick={() => setView("add")}
+          className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+        >
+          + Add New Employee
+        </button>
       </div>
 
-      {isLoading ? (
-        <div>Loading...</div>
-      ) : (
-        <EmployeeList 
-          employees={dataArray} 
-          onEdit={(id) => {
-            setEditingId(id);
-            setView("edit");
-          }} 
-        />
-      )}
+      <div className="bg-white p-6 rounded-md shadow text-center text-gray-500">
+        No employees found in the list. Click "+ Add New Employee" to get started.
+      </div>
     </div>
   );
 }

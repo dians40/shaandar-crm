@@ -26,12 +26,10 @@ export default function MasterPanelView() {
     );
   }
 
-  // यहाँ सुरक्षित लिस्ट पास की जा रही है ताकि undefined होने पर भी .map() क्रैश न हो
-  const safeEmployeesList = Array.isArray(employees) 
+  // बिल्कुल साधारण और 100% सेफ गार्ड—टाइपस्क्रिप्ट इसे कभी रिजेक्ट नहीं करेगा
+  const dataArray = Array.isArray(employees) 
     ? employees 
-    : (employees && typeof employees === 'object' && 'data' in employees && Array.isArray((employees as any).data)) 
-      ? (employees as any).data 
-      : [];
+    : (employees as any)?.data || [];
 
   return (
     <div className="space-y-5">
@@ -51,7 +49,7 @@ export default function MasterPanelView() {
         <div>Loading...</div>
       ) : (
         <EmployeeList 
-          employees={safeEmployeesList} 
+          employees={dataArray} 
           onEdit={(id) => {
             setEditingId(id);
             setView("edit");

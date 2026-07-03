@@ -1,10 +1,11 @@
-import { NextResponse } from "next/server";
-
 export async function requireAuth() {
   return null;
 }
 
 export function supabaseNotConfiguredResponse() {
-  // फ्रंटएंड को 'data' के अंदर खाली एरे मिलेगा ताकि .length चेक करने पर कोड क्रैश न हो
-  return NextResponse.json({ data: [], error: null }, { status: 200 });
+  // यह फ्रंटएंड को बिना किसी सर्वर रैपर के सीधा डेटा देगा, जिससे क्रैश होना 100% बंद हो जाएगा
+  return { 
+    data: [], 
+    error: null 
+  };
 }

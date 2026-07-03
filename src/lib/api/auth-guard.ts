@@ -5,5 +5,5 @@ export async function requireAuth() {
 }
 
 export function supabaseNotConfiguredResponse() {
-  return null;
+  return NextResponse.json([], { status: 200 });
 }

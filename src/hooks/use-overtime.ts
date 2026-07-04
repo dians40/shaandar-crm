@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   calculateOvertimeHours,
+  normalizeOvertimeRecord,
   type OvertimeRecord,
 } from "@/types/overtime";
 
@@ -13,8 +14,11 @@ function readOvertimeRecords(): OvertimeRecord[] {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw) as OvertimeRecord[];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(raw) as Partial<OvertimeRecord>[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((row): row is Partial<OvertimeRecord> & { id: string } => Boolean(row?.id))
+      .map((row) => normalizeOvertimeRecord(row));
   } catch {
     return [];
   }

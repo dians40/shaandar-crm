@@ -3,7 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Clock, Pencil, Plus } from "lucide-react";
 import { SelectInput, TextInput, TextareaInput } from "@/components/forms/form-fields";
+import {
+  OVERTIME_LOCATION_PRESETS,
+  OVERTIME_MACHINE_PRESETS,
+  OVERTIME_SUPERVISOR_PRESETS,
+} from "@/constants/overtime-options";
 import { useEmployees } from "@/hooks/use-employees";
+import { useGodowns } from "@/hooks/use-godowns";
 import { useOvertimeRecords } from "@/hooks/use-overtime";
 import {
   calculateOvertimeHours,
@@ -12,14 +18,19 @@ import {
   type OvertimeShiftType,
 } from "@/types/overtime";
 
+const MACHINE_CUSTOM_VALUE = "__custom_machine__";
+
 type ViewMode = "list" | "add" | "edit";
 
 export default function OvertimeTrackerPanel() {
   const { employees, isLoading: employeesLoading } = useEmployees();
+  const { godowns, isReady: godownsReady } = useGodowns();
   const { records, isReady, addRecord, updateRecord } = useOvertimeRecords();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_OVERTIME_FORM);
+  const [machineSelect, setMachineSelect] = useState("");
+  const [customMachine, setCustomMachine] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const totalHours = useMemo(
@@ -36,8 +47,77 @@ export default function OvertimeTrackerPanel() {
     [employees]
   );
 
+  const machineOptions = useMemo(() => {
+    const fromEmployees = employees
+      .map((employee) => employee.machineAssignment?.trim())
+      .filter((value): value is string => Boolean(value && value !== "—"));
+    const unique = Array.from(new Set(fromEmployees));
+    return [
+      ...OVERTIME_MACHINE_PRESETS.map((label) => ({ value: label, label })),
+      ...unique.map((label) => ({ value: label, label })),
+      { value: MACHINE_CUSTOM_VALUE, label: "Other / type manually" },
+    ];
+  }, [employees]);
+
+  const managerOptions = useMemo(() => {
+    const fromEmployees = employees.map((employee) => employee.name);
+    const fromGodowns = godowns
+      .map((godown) => godown.managerName?.trim())
+      .filter((value): value is string => Boolean(value));
+    const unique = Array.from(
+      new Set([...OVERTIME_SUPERVISOR_PRESETS, ...fromEmployees, ...fromGodowns])
+    );
+    return unique.map((label) => ({ value: label, label }));
+  }, [employees, godowns]);
+
+  const supervisorOptions = useMemo(() => {
+    const fromEmployees = employees.map((employee) => employee.name);
+    const fromGodowns = godowns
+      .map((godown) => godown.managerName?.trim())
+      .filter((value): value is string => Boolean(value));
+    const unique = Array.from(
+      new Set([...OVERTIME_SUPERVISOR_PRESETS, ...fromEmployees, ...fromGodowns])
+    );
+    return unique.map((label) => ({ value: label, label }));
+  }, [employees, godowns]);
+
+  const workLocationOptions = useMemo(() => {
+    const godownLocations = godowns.map(
+      (godown) => `Godown: ${godown.name}${godown.code ? ` (${godown.code})` : ""}`
+    );
+    const substitutionOptions = employees.map(
+      (employee) => `Substituting for: ${employee.name}`
+    );
+    const unique = Array.from(
+      new Set([
+        ...OVERTIME_LOCATION_PRESETS,
+        ...godownLocations,
+        ...substitutionOptions,
+      ])
+    );
+    return unique.map((label) => ({ value: label, label }));
+  }, [employees, godowns]);
+
+  const syncMachineFields = (assignedMachine: string) => {
+    const knownValues = machineOptions.map((option) => option.value);
+    if (!assignedMachine) {
+      setMachineSelect("");
+      setCustomMachine("");
+      return;
+    }
+    if (knownValues.includes(assignedMachine)) {
+      setMachineSelect(assignedMachine);
+      setCustomMachine("");
+      return;
+    }
+    setMachineSelect(MACHINE_CUSTOM_VALUE);
+    setCustomMachine(assignedMachine);
+  };
+
   const resetForm = () => {
     setForm(EMPTY_OVERTIME_FORM);
+    setMachineSelect("");
+    setCustomMachine("");
     setEditingId(null);
     setError(null);
   };
@@ -58,8 +138,12 @@ export default function OvertimeTrackerPanel() {
       amountToPay: record.amountToPay,
       assignedMachine: record.assignedMachine,
       workLocation: record.workLocation,
+      assignedManager: record.assignedManager,
+      workLocationAssignment: record.workLocationAssignment,
       approvedBy: record.approvedBy,
+      narration: record.narration,
     });
+    syncMachineFields(record.assignedMachine);
     setView("edit");
   };
 
@@ -72,14 +156,40 @@ export default function OvertimeTrackerPanel() {
     }));
   };
 
+  const handleMachineSelectChange = (value: string) => {
+    setMachineSelect(value);
+    if (value === MACHINE_CUSTOM_VALUE) {
+      setForm((prev) => ({ ...prev, assignedMachine: customMachine }));
+      return;
+    }
+    setCustomMachine("");
+    setForm((prev) => ({ ...prev, assignedMachine: value }));
+  };
+
   const handleSave = () => {
-    if (!form.employeeId || !form.fromTime || !form.toTime || !form.approvedBy.trim()) {
-      setError("Employee, time range, and Approved By are required.");
+    const resolvedMachine =
+      machineSelect === MACHINE_CUSTOM_VALUE
+        ? customMachine.trim()
+        : form.assignedMachine.trim();
+
+    if (
+      !form.employeeId ||
+      !form.fromTime ||
+      !form.toTime ||
+      !form.approvedBy.trim() ||
+      !form.workLocationAssignment.trim() ||
+      !form.assignedManager.trim()
+    ) {
+      setError(
+        "Employee, time range, work location assignment, assigned manager, and Approved By are required."
+      );
       return;
     }
 
     const payload = {
       ...form,
+      assignedMachine: resolvedMachine,
+      workLocation: form.workLocationAssignment,
       amountToPay: Number(form.amountToPay) || 0,
     };
 
@@ -99,7 +209,7 @@ export default function OvertimeTrackerPanel() {
     }
   }, [totalHours, view, form.amountToPay]);
 
-  if (!isReady) {
+  if (!isReady || !godownsReady) {
     return (
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading overtime records...
@@ -115,7 +225,7 @@ export default function OvertimeTrackerPanel() {
             {view === "add" ? "Add Overtime" : "Edit Overtime"}
           </h2>
           <p className="text-sm text-corporate-muted">
-            Capture shift, duration, machine, location, and approval details.
+            Capture shift, duration, machine, manager assignment, and approval details.
           </p>
         </div>
 
@@ -181,27 +291,66 @@ export default function OvertimeTrackerPanel() {
               setForm((prev) => ({ ...prev, amountToPay: Number(e.target.value) }))
             }
           />
-          <TextInput
+          <SelectInput
             label="Assigned Machine"
-            value={form.assignedMachine}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, assignedMachine: e.target.value }))
-            }
+            value={machineSelect}
+            placeholder="Select machine"
+            onChange={(e) => handleMachineSelectChange(e.target.value)}
+            options={machineOptions}
           />
-          <TextInput
+          {machineSelect === MACHINE_CUSTOM_VALUE && (
+            <TextInput
+              label="Machine name (manual entry)"
+              value={customMachine}
+              onChange={(e) => {
+                const value = e.target.value;
+                setCustomMachine(value);
+                setForm((prev) => ({ ...prev, assignedMachine: value }));
+              }}
+            />
+          )}
+          <SelectInput
+            label="Work Location & Assignment"
+            required
+            value={form.workLocationAssignment}
+            placeholder="Select work location or substitution"
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                workLocationAssignment: e.target.value,
+              }))
+            }
+            options={workLocationOptions}
+            hint="Assign godown, floor duty, or who the labor is substituting for"
+          />
+          <SelectInput
+            label="Assigned Manager / Supervisor"
+            required
+            value={form.assignedManager}
+            placeholder="Select manager or supervisor"
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, assignedManager: e.target.value }))
+            }
+            options={managerOptions}
+            hint="Who oversees this overtime assignment"
+          />
+          <SelectInput
             label="Approved By"
             required
             value={form.approvedBy}
+            placeholder="Select authorizing supervisor"
             onChange={(e) => setForm((prev) => ({ ...prev, approvedBy: e.target.value }))}
+            options={supervisorOptions}
           />
           <div className="sm:col-span-2">
             <TextareaInput
-              label="Work Location"
-              hint='Where did they work if no machine was assigned? e.g., working in place of someone else'
-              value={form.workLocation}
+              label="Narration"
+              hint="Optional remarks, edge cases, or unexpected events during this overtime"
+              value={form.narration}
               onChange={(e) =>
-                setForm((prev) => ({ ...prev, workLocation: e.target.value }))
+                setForm((prev) => ({ ...prev, narration: e.target.value }))
               }
+              rows={4}
             />
           </div>
         </div>
@@ -235,7 +384,7 @@ export default function OvertimeTrackerPanel() {
         <div>
           <h2 className="text-lg font-semibold text-corporate-text">Overtime List</h2>
           <p className="text-sm text-corporate-muted">
-            Track authorized extra hours and payout amounts.
+            Track authorized extra hours, manager assignments, and payout amounts.
           </p>
         </div>
         <button
@@ -248,7 +397,7 @@ export default function OvertimeTrackerPanel() {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
+      <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
         <table className="min-w-full divide-y divide-corporate-border">
           <thead className="bg-corporate-bg">
             <tr>
@@ -260,6 +409,9 @@ export default function OvertimeTrackerPanel() {
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
                 Duration
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
+                Location / Manager
               </th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
                 Amount
@@ -275,7 +427,7 @@ export default function OvertimeTrackerPanel() {
           <tbody className="divide-y divide-corporate-border">
             {records.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-corporate-muted">
                   <Clock className="mx-auto mb-2 h-6 w-6 opacity-60" />
                   No overtime records yet.
                 </td>
@@ -287,6 +439,19 @@ export default function OvertimeTrackerPanel() {
                   <td className="px-4 py-3 text-sm">{row.shiftType}</td>
                   <td className="px-4 py-3 text-sm">
                     {row.fromTime} – {row.toTime} ({row.totalHours}h)
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    <p>{row.workLocationAssignment || row.workLocation || "—"}</p>
+                    {row.assignedManager && (
+                      <p className="text-xs text-corporate-muted">
+                        Manager: {row.assignedManager}
+                      </p>
+                    )}
+                    {row.narration && (
+                      <p className="mt-1 text-xs italic text-corporate-muted">
+                        {row.narration}
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm">₹{row.amountToPay.toLocaleString("en-IN")}</td>
                   <td className="px-4 py-3 text-sm">{row.approvedBy}</td>

@@ -10,8 +10,12 @@ export type OvertimeRecord = {
   totalHours: number;
   amountToPay: number;
   assignedMachine: string;
+  /** Legacy free-text — kept for backward compatibility */
   workLocation: string;
+  assignedManager: string;
+  workLocationAssignment: string;
   approvedBy: string;
+  narration: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -28,7 +32,10 @@ export const EMPTY_OVERTIME_FORM: Omit<
   amountToPay: 0,
   assignedMachine: "",
   workLocation: "",
+  assignedManager: "",
+  workLocationAssignment: "",
   approvedBy: "",
+  narration: "",
 };
 
 export function calculateOvertimeHours(fromTime: string, toTime: string): number {
@@ -44,4 +51,28 @@ export function calculateOvertimeHours(fromTime: string, toTime: string): number
   if (diff < 0) diff += 24 * 60;
 
   return Math.round((diff / 60) * 100) / 100;
+}
+
+export function normalizeOvertimeRecord(
+  row: Partial<OvertimeRecord> & Pick<OvertimeRecord, "id">
+): OvertimeRecord {
+  return {
+    id: row.id,
+    employeeId: row.employeeId ?? "",
+    employeeName: row.employeeName ?? "",
+    shiftType: row.shiftType ?? "Half Shift",
+    fromTime: row.fromTime ?? "",
+    toTime: row.toTime ?? "",
+    totalHours: row.totalHours ?? calculateOvertimeHours(row.fromTime ?? "", row.toTime ?? ""),
+    amountToPay: row.amountToPay ?? 0,
+    assignedMachine: row.assignedMachine ?? "",
+    workLocation: row.workLocation ?? "",
+    assignedManager: row.assignedManager ?? "",
+    workLocationAssignment:
+      row.workLocationAssignment ?? row.workLocation ?? "",
+    approvedBy: row.approvedBy ?? "",
+    narration: row.narration ?? "",
+    createdAt: row.createdAt ?? new Date().toISOString(),
+    updatedAt: row.updatedAt ?? new Date().toISOString(),
+  };
 }

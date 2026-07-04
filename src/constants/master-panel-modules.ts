@@ -250,3 +250,56 @@ export function getMasterPanelModule(
 
 export const DEFAULT_MASTER_PANEL_MODULE_ID: MasterPanelModuleId =
   "employee-management";
+
+export type MasterPanelModuleGroup = {
+  label: string;
+  moduleIds: MasterPanelModuleId[];
+};
+
+/** Executive manager dropdown groups — avoids dumping 20 modules at once. */
+export const MASTER_PANEL_MODULE_GROUPS: MasterPanelModuleGroup[] = [
+  {
+    label: "Workforce & HR",
+    moduleIds: [
+      "employee-management",
+      "godowns-locations",
+      "overtime-tracker",
+      "attendance-system",
+    ],
+  },
+  {
+    label: "Sales & Dispatch",
+    moduleIds: [
+      "sales-dispatch",
+      "sales-return",
+      "orders-management",
+      "loading-dispatch",
+    ],
+  },
+  {
+    label: "Purchase & Returns",
+    moduleIds: ["purchase-logs", "purchase-return"],
+  },
+  {
+    label: "Inventory & Items",
+    moduleIds: [
+      "inventory-transfer",
+      "items-products",
+      "item-groups",
+      "unit-conversion",
+      "bom",
+    ],
+  },
+  {
+    label: "Production & Parts",
+    moduleIds: [
+      "manufacturing-production",
+      "parts-order-followup",
+      "parts-order-verification",
+    ],
+  },
+  {
+    label: "Finance & Accounting",
+    moduleIds: ["journal-entry", "expenses-receipts"],
+  },
+];

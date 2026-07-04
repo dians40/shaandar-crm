@@ -10,12 +10,11 @@ import {
 import {
   DEFAULT_MASTER_PANEL_MODULE_ID,
   getMasterPanelModule,
-  MASTER_PANEL_MODULES,
   type MasterPanelModuleId,
 } from "@/constants/master-panel-modules";
-import { cn } from "@/lib/utils";
 import EmployeeManagementPanel from "./employee-management-panel";
 import GodownManagementPanel from "./godown-management-panel";
+import MasterPanelManagerNav from "./master-panel-manager-nav";
 import ModulePlaceholder from "./module-placeholder";
 import OvertimeTrackerPanel from "./overtime-tracker-panel";
 
@@ -66,48 +65,6 @@ class MasterPanelErrorBoundary extends Component<
   }
 }
 
-function MasterPanelSidebar({
-  activeModuleId,
-  onSelect,
-}: {
-  activeModuleId: MasterPanelModuleId;
-  onSelect: (id: MasterPanelModuleId) => void;
-}) {
-  return (
-    <nav
-      className="rounded-xl border border-corporate-border bg-corporate-surface p-2 shadow-card"
-      aria-label="Master Panel modules"
-    >
-      <ul className="space-y-1">
-        {MASTER_PANEL_MODULES.map((module) => {
-          const Icon = module.icon;
-          const isActive = module.id === activeModuleId;
-
-          return (
-            <li key={module.id}>
-              <button
-                type="button"
-                onClick={() => onSelect(module.id)}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-corporate-brand text-white"
-                    : "text-corporate-text hover:bg-corporate-bg"
-                )}
-                aria-current={isActive ? "page" : undefined}
-                title={module.title}
-              >
-                <Icon className="h-4 w-4 shrink-0" aria-hidden />
-                <span>{module.navLabel}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
-  );
-}
-
 function MasterPanelContent() {
   const [activeModuleId, setActiveModuleId] = useState<MasterPanelModuleId>(
     DEFAULT_MASTER_PANEL_MODULE_ID
@@ -147,20 +104,17 @@ function MasterPanelContent() {
   };
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[220px_1fr]">
-      <MasterPanelSidebar
+    <div className="space-y-4">
+      <MasterPanelManagerNav
         activeModuleId={activeModule.id}
         onSelect={handleModuleSelect}
       />
       <section
-        className="min-w-0 space-y-4"
+        className="min-w-0"
         aria-label={`${activeModule.title} workspace`}
       >
-        <div className="rounded-xl border border-corporate-border bg-corporate-surface px-4 py-3 shadow-card sm:px-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-corporate-brand">
-            Module {activeModule.serial}
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-corporate-text">
+        <div className="mb-4 border-b border-corporate-border pb-3">
+          <h2 className="text-base font-semibold text-corporate-text">
             {activeModule.title}
           </h2>
           <p className="text-sm text-corporate-muted">{activeModule.subtitle}</p>

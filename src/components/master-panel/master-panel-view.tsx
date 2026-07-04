@@ -9,6 +9,11 @@ type View = "list" | "add";
 export default function MasterPanelView() {
   const [view, setView] = useState<View>("list");
 
+  // फॉर्म सबमिट होने के बाद वापस लिस्ट पर जाने के लिए फंक्शन
+  const handleSuccess = () => {
+    setView("list");
+  };
+
   return (
     <div className="space-y-5 p-4">
       <div className="flex justify-between items-center">
@@ -25,7 +30,9 @@ export default function MasterPanelView() {
 
       {view === "add" ? (
         <div className="bg-white p-6 rounded-md shadow">
-          <EmployeeForm />
+          {/* यहाँ हम फॉर्म को उसका जरूरी सामान (Props) दे रहे हैं */}
+          <EmployeeForm onSuccess={handleSuccess} onClose={() => setView("list")} />
+          
           <button 
             onClick={() => setView("list")}
             className="mt-4 bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600"

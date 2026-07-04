@@ -39,8 +39,8 @@ export default function MasterPanelView() {
           </button>
         </div>
       ) : (
-        /* यहाँ हम एरे को explicit type 'any[]' दे रहे हैं ताकि एरर न आए और onAdd हटा दिया है */
-        <EmployeeList employees={[] as any[]} />
+        /* 'any' हटाने के लिए हमने इसके टाइप को बिना नियमों का उल्लंघन किए सुरक्षित रूप से बाईपास कर दिया है */
+        <EmployeeList employees={[] as Parameters<typeof EmployeeList>[0]["employees"]} />
       )}
     </div>
   );

@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { Construction } from "lucide-react";
 import type { MasterPanelModule } from "@/constants/master-panel-modules";
+import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
+import ModuleListSearchBar from "./module-list-search-bar";
 
 type Props = {
   module: MasterPanelModule;
@@ -11,8 +13,10 @@ type Props = {
 
 export default function AdministrationPlaceholderPanel({ module }: Props) {
   const [view, setView] = useState<"list" | "add">("list");
+  const [searchQuery, setSearchQuery] = useState("");
   const Icon = module?.icon ?? Construction;
   const moduleName = module?.navLabel ?? "Module";
+  const hasSearchQuery = searchQuery.trim().length > 0;
 
   return (
     <>
@@ -24,27 +28,36 @@ export default function AdministrationPlaceholderPanel({ module }: Props) {
       />
 
       {view === "list" ? (
-        <div className="overflow-hidden rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
-          <table className="min-w-full divide-y divide-corporate-border">
-            <thead className="bg-corporate-bg">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Name
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Status
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td colSpan={2} className="px-4 py-12 text-center text-sm text-corporate-muted">
-                  <Icon className="mx-auto mb-2 h-6 w-6 opacity-60" aria-hidden />
-                  No {moduleName.toLowerCase()} records yet. Use Add {moduleName} when ready.
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div className="space-y-4">
+          <ModuleListSearchBar
+            moduleName={moduleName}
+            value={searchQuery}
+            onChange={setSearchQuery}
+          />
+          <div className="overflow-hidden rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
+            <table className="min-w-full divide-y divide-corporate-border">
+              <thead className="bg-corporate-bg">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
+                    Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colSpan={2} className="px-4 py-12 text-center text-sm text-corporate-muted">
+                    <Icon className="mx-auto mb-2 h-6 w-6 opacity-60" aria-hidden />
+                    {hasSearchQuery
+                      ? LIST_SEARCH_EMPTY_MESSAGE
+                      : `No ${moduleName.toLowerCase()} records yet. Use Add ${moduleName} when ready.`}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
         <div className="rounded-xl border border-dashed border-corporate-border bg-corporate-surface p-8 text-center shadow-card">

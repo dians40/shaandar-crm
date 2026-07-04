@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pencil, Trash2, Warehouse } from "lucide-react";
 import { SelectInput, TextInput, TextareaInput } from "@/components/forms/form-fields";
 import { useGodowns } from "@/hooks/use-godowns";
+import { LIST_SEARCH_EMPTY_MESSAGE, matchesListSearch } from "@/lib/list-search-filter";
 import { EMPTY_GODOWN_FORM, type GodownRecord } from "@/types/godown";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
+import ModuleListSearchBar from "./module-list-search-bar";
 
 type ViewMode = "list" | "add" | "edit";
 
@@ -15,6 +17,21 @@ export default function GodownManagementPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_GODOWN_FORM);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredGodowns = useMemo(
+    () =>
+      godowns.filter((row) =>
+        matchesListSearch(searchQuery, [
+          row.name,
+          row.id,
+          row.code,
+          row.city,
+          row.managerName,
+        ])
+      ),
+    [godowns, searchQuery]
+  );
 
   const resetForm = () => {
     setForm(EMPTY_GODOWN_FORM);
@@ -208,6 +225,12 @@ export default function GodownManagementPanel() {
           </p>
         </div>
 
+        <ModuleListSearchBar
+          moduleName="Godown"
+          value={searchQuery}
+          onChange={setSearchQuery}
+        />
+
         <div className="overflow-hidden rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
           <table className="min-w-full divide-y divide-corporate-border">
             <thead className="bg-corporate-bg">
@@ -237,8 +260,14 @@ export default function GodownManagementPanel() {
                     No godowns yet. Use Add Godown to create one.
                   </td>
                 </tr>
+              ) : filteredGodowns.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                    {LIST_SEARCH_EMPTY_MESSAGE}
+                  </td>
+                </tr>
               ) : (
-                godowns.map((row) => (
+                filteredGodowns.map((row) => (
                   <tr key={row.id}>
                     <td className="px-4 py-3 text-sm font-medium">{row.name}</td>
                     <td className="px-4 py-3 text-sm">{row.code}</td>

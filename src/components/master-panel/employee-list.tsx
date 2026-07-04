@@ -8,14 +8,15 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Search,
   Trash2,
   Users,
 } from "lucide-react";
 import { deleteEmployee, patchEmployeeSalary } from "@/lib/employees-api";
+import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import { formatSalaryDisplay } from "@/lib/map-employee-to-db";
 import type { EmployeeListItem } from "@/types/employee-list";
 import { SupabaseConnectedBadge } from "./supabase-setup-banner";
+import ModuleListSearchBar from "./module-list-search-bar";
 
 type Props = {
   employees: EmployeeListItem[];
@@ -147,17 +148,11 @@ export default function EmployeeList({
       </div>
 
       <div className="space-y-4 rounded-xl border border-corporate-border bg-corporate-surface p-4 shadow-card">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-corporate-muted" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by first or last name..."
-            className="input-field w-full pl-10"
-            aria-label="Search employees by first or last name"
-          />
-        </div>
+        <ModuleListSearchBar
+          moduleName="Employee"
+          value={searchQuery}
+          onChange={setSearchQuery}
+        />
 
       {(error || actionError) && (
         <div
@@ -223,7 +218,7 @@ export default function EmployeeList({
                     <Users className="mx-auto h-8 w-8 text-corporate-muted/60" />
                     <p className="mt-3 text-sm font-medium text-corporate-text">
                       {searchQuery.trim()
-                        ? "No employees match your search"
+                        ? LIST_SEARCH_EMPTY_MESSAGE
                         : "No employees found"}
                     </p>
                   </td>

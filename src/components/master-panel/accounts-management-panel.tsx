@@ -10,7 +10,9 @@ import {
 } from "@/components/forms/form-fields";
 import { useAccountGroups } from "@/hooks/use-account-groups";
 import { useAccounts } from "@/hooks/use-accounts";
+import { LIST_SEARCH_EMPTY_MESSAGE, matchesListSearch } from "@/lib/list-search-filter";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
+import ModuleListSearchBar from "./module-list-search-bar";
 import {
   EMPTY_ACCOUNT_FORM,
   validateAccountForm,
@@ -28,10 +30,26 @@ export default function AccountsManagementPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_ACCOUNT_FORM);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const groupOptions = useMemo(
     () => (groupNames ?? []).map((name) => ({ value: name, label: name })),
     [groupNames]
+  );
+
+  const filteredAccounts = useMemo(
+    () =>
+      accounts.filter((row) =>
+        matchesListSearch(searchQuery, [
+          row.name,
+          row.id,
+          row.groupName,
+          row.gstNumber,
+          row.panNumber,
+          row.mobileNumber,
+        ])
+      ),
+    [accounts, searchQuery]
   );
 
   const resetForm = () => {
@@ -344,6 +362,12 @@ export default function AccountsManagementPanel() {
           </p>
         </div>
 
+        <ModuleListSearchBar
+          moduleName="Account"
+          value={searchQuery}
+          onChange={setSearchQuery}
+        />
+
       <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
         <table className="min-w-full divide-y divide-corporate-border">
           <thead className="bg-corporate-bg">
@@ -376,8 +400,14 @@ export default function AccountsManagementPanel() {
                   No accounts yet. Click Add to create one.
                 </td>
               </tr>
+            ) : filteredAccounts.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  {LIST_SEARCH_EMPTY_MESSAGE}
+                </td>
+              </tr>
             ) : (
-              accounts.map((row) => (
+              filteredAccounts.map((row) => (
                 <tr key={row.id}>
                   <td className="px-4 py-3 text-sm font-medium">{row.name}</td>
                   <td className="px-4 py-3 text-sm">{row.groupName}</td>

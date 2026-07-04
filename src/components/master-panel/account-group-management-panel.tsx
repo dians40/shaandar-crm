@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import { FolderTree, Pencil, Trash2 } from "lucide-react";
 import { SelectInput, TextInput } from "@/components/forms/form-fields";
 import { useAccountGroups } from "@/hooks/use-account-groups";
+import { LIST_SEARCH_EMPTY_MESSAGE, matchesListSearch } from "@/lib/list-search-filter";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
+import ModuleListSearchBar from "./module-list-search-bar";
 import {
   CATEGORY_FOR_NATURE,
   EMPTY_ACCOUNT_GROUP_FORM,
@@ -23,6 +25,7 @@ export default function AccountGroupManagementPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_ACCOUNT_GROUP_FORM);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const parentDropdownOptions = useMemo(
     () =>
@@ -36,6 +39,20 @@ export default function AccountGroupManagementPanel() {
   const natureOptions = useMemo(
     () => NATURE_OPTIONS.map((nature) => ({ value: nature, label: nature })),
     []
+  );
+
+  const filteredGroups = useMemo(
+    () =>
+      groups.filter((row) =>
+        matchesListSearch(searchQuery, [
+          row.name,
+          row.id,
+          row.parentGroup,
+          row.nature,
+          row.category,
+        ])
+      ),
+    [groups, searchQuery]
   );
 
   const resetForm = () => {
@@ -235,6 +252,12 @@ export default function AccountGroupManagementPanel() {
           </p>
         )}
 
+        <ModuleListSearchBar
+          moduleName="Account Group"
+          value={searchQuery}
+          onChange={setSearchQuery}
+        />
+
         <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
           <table className="min-w-full divide-y divide-corporate-border">
             <thead className="bg-corporate-bg">
@@ -264,8 +287,14 @@ export default function AccountGroupManagementPanel() {
                     No account groups yet.
                   </td>
                 </tr>
+              ) : filteredGroups.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                    {LIST_SEARCH_EMPTY_MESSAGE}
+                  </td>
+                </tr>
               ) : (
-                groups.map((row) => (
+                filteredGroups.map((row) => (
                   <tr key={row.id}>
                     <td className="px-4 py-3 text-sm font-medium">
                       {row.name}

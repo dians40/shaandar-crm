@@ -7,8 +7,10 @@ import { useUnitConversions } from "@/hooks/use-unit-conversions";
 import { useUnits } from "@/hooks/use-units";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesListSearch } from "@/lib/list-search-filter";
 import {
+  computeTotalBaseUnits,
   EMPTY_UNIT_CONVERSION_FORM,
-  formatConversionFormula,
+  formatChainShort,
+  formatChainSummary,
   validateUnitConversionForm,
   type UnitConversionRecord,
 } from "@/types/unit-conversion";
@@ -16,6 +18,8 @@ import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListSearchBar from "./module-list-search-bar";
 
 type ViewMode = "list" | "add" | "edit";
+
+const TERTIARY_NONE = "__none__";
 
 export default function UnitConversionManagementPanel() {
   const { units, unitOptions, isReady: unitsReady } = useUnits();
@@ -27,30 +31,61 @@ export default function UnitConversionManagementPanel() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
+  const tertiarySelectOptions = useMemo(
+    () => [
+      { value: TERTIARY_NONE, label: "None (3-level chain)" },
+      ...unitOptions,
+    ],
+    [unitOptions]
+  );
+
+  const hasTertiaryTier = Boolean(form.tertiaryUnitId?.trim());
+
+  const previewTotal = useMemo(
+    () =>
+      computeTotalBaseUnits(
+        form.firstMultiplier,
+        form.secondMultiplier,
+        form.thirdMultiplier,
+        hasTertiaryTier
+      ),
+    [form.firstMultiplier, form.secondMultiplier, form.thirdMultiplier, hasTertiaryTier]
+  );
+
+  const chainSummary = useMemo(() => {
+    if (!form.baseUnitName || !form.intermediateUnitName || !form.finalUnitName) {
+      return "Select units and multipliers to preview the chain calculation.";
+    }
+
+    return formatChainSummary({
+      baseUnitName: form.baseUnitName,
+      firstMultiplier: form.firstMultiplier,
+      intermediateUnitName: form.intermediateUnitName,
+      secondMultiplier: form.secondMultiplier,
+      tertiaryUnitId: form.tertiaryUnitId,
+      tertiaryUnitName: form.tertiaryUnitName,
+      thirdMultiplier: form.thirdMultiplier,
+      finalUnitName: form.finalUnitName,
+      totalBaseUnits: previewTotal,
+    });
+  }, [form, previewTotal]);
+
   const filteredConversions = useMemo(
     () =>
       conversions.filter((row) =>
         matchesListSearch(searchQuery, [
-          row.mainUnitName,
-          row.subUnitName,
+          row.baseUnitName,
+          row.intermediateUnitName,
+          row.tertiaryUnitName,
+          row.finalUnitName,
           row.id,
-          String(row.conversionFactor),
-          formatConversionFormula(row.mainUnitName, row.conversionFactor, row.subUnitName),
+          String(row.totalBaseUnits),
+          formatChainShort(row),
+          formatChainSummary(row),
         ])
       ),
     [conversions, searchQuery]
   );
-
-  const formulaPreview = useMemo(() => {
-    if (!form.mainUnitName || !form.subUnitName || !form.conversionFactor) {
-      return "Select units and enter a factor to preview the formula.";
-    }
-    return formatConversionFormula(
-      form.mainUnitName,
-      form.conversionFactor,
-      form.subUnitName
-    );
-  }, [form.mainUnitName, form.subUnitName, form.conversionFactor]);
 
   const resetForm = () => {
     setForm(EMPTY_UNIT_CONVERSION_FORM);
@@ -66,31 +101,58 @@ export default function UnitConversionManagementPanel() {
   const openEdit = (record: UnitConversionRecord) => {
     setEditingId(record.id);
     setForm({
-      mainUnitId: record.mainUnitId,
-      mainUnitName: record.mainUnitName,
-      conversionFactor: record.conversionFactor,
-      subUnitId: record.subUnitId,
-      subUnitName: record.subUnitName,
+      baseUnitId: record.baseUnitId,
+      baseUnitName: record.baseUnitName,
+      firstMultiplier: record.firstMultiplier,
+      intermediateUnitId: record.intermediateUnitId,
+      intermediateUnitName: record.intermediateUnitName,
+      secondMultiplier: record.secondMultiplier,
+      tertiaryUnitId: record.tertiaryUnitId,
+      tertiaryUnitName: record.tertiaryUnitName,
+      thirdMultiplier: record.thirdMultiplier,
+      finalUnitId: record.finalUnitId,
+      finalUnitName: record.finalUnitName,
     });
     setView("edit");
   };
 
-  const handleMainUnitChange = (unitId: string) => {
+  const setUnitField = (
+    field: "base" | "intermediate" | "tertiary" | "final",
+    unitId: string
+  ) => {
     const unit = units.find((row) => row.id === unitId);
-    setForm((prev) => ({
-      ...prev,
-      mainUnitId: unitId,
-      mainUnitName: unit?.name ?? "",
-    }));
-  };
+    const name = unit?.name ?? "";
 
-  const handleSubUnitChange = (unitId: string) => {
-    const unit = units.find((row) => row.id === unitId);
-    setForm((prev) => ({
-      ...prev,
-      subUnitId: unitId,
-      subUnitName: unit?.name ?? "",
-    }));
+    if (field === "base") {
+      setForm((prev) => ({ ...prev, baseUnitId: unitId, baseUnitName: name }));
+      return;
+    }
+    if (field === "intermediate") {
+      setForm((prev) => ({
+        ...prev,
+        intermediateUnitId: unitId,
+        intermediateUnitName: name,
+      }));
+      return;
+    }
+    if (field === "tertiary") {
+      if (!unitId || unitId === TERTIARY_NONE) {
+        setForm((prev) => ({
+          ...prev,
+          tertiaryUnitId: "",
+          tertiaryUnitName: "",
+          thirdMultiplier: 1,
+        }));
+        return;
+      }
+      setForm((prev) => ({
+        ...prev,
+        tertiaryUnitId: unitId,
+        tertiaryUnitName: name,
+      }));
+      return;
+    }
+    setForm((prev) => ({ ...prev, finalUnitId: unitId, finalUnitName: name }));
   };
 
   const handleSave = () => {
@@ -100,9 +162,20 @@ export default function UnitConversionManagementPanel() {
       return;
     }
 
+    const hasTier = Boolean(form.tertiaryUnitId?.trim());
     const payload = {
       ...form,
-      conversionFactor: Number(form.conversionFactor) || 0,
+      firstMultiplier: Number(form.firstMultiplier) || 0,
+      secondMultiplier: Number(form.secondMultiplier) || 0,
+      thirdMultiplier: hasTier ? Number(form.thirdMultiplier) || 0 : 1,
+      tertiaryUnitId: hasTier ? form.tertiaryUnitId : "",
+      tertiaryUnitName: hasTier ? form.tertiaryUnitName : "",
+      totalBaseUnits: computeTotalBaseUnits(
+        form.firstMultiplier,
+        form.secondMultiplier,
+        form.thirdMultiplier,
+        hasTier
+      ),
     };
 
     if (view === "edit" && editingId) {
@@ -116,11 +189,7 @@ export default function UnitConversionManagementPanel() {
   };
 
   const handleRemove = (record: UnitConversionRecord) => {
-    if (
-      !window.confirm(
-        `Remove conversion "${formatConversionFormula(record.mainUnitName, record.conversionFactor, record.subUnitName)}"?`
-      )
-    ) {
+    if (!window.confirm(`Remove chain conversion "${formatChainShort(record)}"?`)) {
       return;
     }
     removeConversion(record.id);
@@ -158,7 +227,7 @@ export default function UnitConversionManagementPanel() {
               {view === "add" ? "Add Conversion" : "Edit / Modify Conversion"}
             </h2>
             <p className="text-sm text-corporate-muted">
-              Map unit relationships for stock and accounting calculations.
+              Multi-level chain format for complex inventory unit hierarchies.
             </p>
           </div>
 
@@ -170,46 +239,90 @@ export default function UnitConversionManagementPanel() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectInput
-              label="Main Unit (From)"
+              label="Base Unit / Main Unit"
               required
-              value={form.mainUnitId}
-              placeholder="Select main unit"
+              value={form.baseUnitId}
+              placeholder="Select base unit"
               options={unitOptions}
-              onChange={(e) => handleMainUnitChange(e.target.value)}
-              hint="e.g. Peti, Box, Carton"
+              onChange={(e) => setUnitField("base", e.target.value)}
+              hint="e.g. Carton, Peti, Box"
             />
             <TextInput
-              label="Conversion Factor / Multiplier"
+              label="First Multiplier"
               required
               type="number"
               min="0.0001"
               step="any"
-              value={String(form.conversionFactor)}
+              value={String(form.firstMultiplier)}
               onChange={(e) =>
                 setForm((prev) => ({
                   ...prev,
-                  conversionFactor: Number(e.target.value) || 0,
+                  firstMultiplier: Number(e.target.value) || 0,
                 }))
               }
-              hint="How many sub-units equal 1 main unit"
+              hint="How many intermediate units in 1 base unit"
             />
             <SelectInput
-              label="Sub-Unit (To)"
+              label="Intermediate Unit (Sub-Unit)"
               required
-              value={form.subUnitId}
-              placeholder="Select sub-unit"
+              value={form.intermediateUnitId}
+              placeholder="Select intermediate unit"
               options={unitOptions}
-              onChange={(e) => handleSubUnitChange(e.target.value)}
-              hint="e.g. Pieces, KG, Liter"
+              onChange={(e) => setUnitField("intermediate", e.target.value)}
+              hint="e.g. Packet, Dozen"
+            />
+            <TextInput
+              label="Second Multiplier"
+              required
+              type="number"
+              min="0.0001"
+              step="any"
+              value={String(form.secondMultiplier)}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  secondMultiplier: Number(e.target.value) || 0,
+                }))
+              }
+              hint="Units per intermediate (or per tertiary if 4-level)"
+            />
+            <SelectInput
+              label="Third Level Unit (Optional — 4-step chain)"
+              value={form.tertiaryUnitId || TERTIARY_NONE}
+              options={tertiarySelectOptions}
+              onChange={(e) => setUnitField("tertiary", e.target.value)}
+              hint="Enable for Pallet → Carton → Packet → Pieces style chains"
+            />
+            {hasTertiaryTier && (
+              <TextInput
+                label="Third Multiplier"
+                required
+                type="number"
+                min="0.0001"
+                step="any"
+                value={String(form.thirdMultiplier)}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    thirdMultiplier: Number(e.target.value) || 0,
+                  }))
+                }
+              />
+            )}
+            <SelectInput
+              label="Final Lowest Unit (Base Pieces)"
+              required
+              value={form.finalUnitId}
+              placeholder="Select final unit"
+              options={unitOptions}
+              onChange={(e) => setUnitField("final", e.target.value)}
+              hint="e.g. Pieces, Gram, Numbers"
             />
             <div className="sm:col-span-2 rounded-lg border border-corporate-brand/30 bg-corporate-brand-light/30 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-corporate-brand">
-                Formula Preview
+                Chain Calculation Guide
               </p>
-              <p className="mt-1 text-base font-semibold text-corporate-text">{formulaPreview}</p>
-              <p className="mt-1 text-xs text-corporate-muted">
-                Example: 1 Peti = 24 Pieces — use this for flawless stock quantity math.
-              </p>
+              <p className="mt-2 text-sm leading-relaxed text-corporate-text">{chainSummary}</p>
             </div>
           </div>
 
@@ -244,7 +357,7 @@ export default function UnitConversionManagementPanel() {
         <div>
           <h2 className="text-lg font-semibold text-corporate-text">Conversion List</h2>
           <p className="text-sm text-corporate-muted">
-            Unit mapping engine for inventory and accounting quantity calculations.
+            Multi-level unit chains for inventory and accounting calculations.
           </p>
         </div>
 
@@ -259,16 +372,13 @@ export default function UnitConversionManagementPanel() {
             <thead className="bg-corporate-bg">
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Formula
+                  Chain Summary
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Main Unit
+                  Short Formula
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Sub-Unit
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Factor
+                  Total Base Units
                 </th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-corporate-muted">
                   Actions
@@ -278,30 +388,27 @@ export default function UnitConversionManagementPanel() {
             <tbody className="divide-y divide-corporate-border">
               {conversions.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  <td colSpan={4} className="px-4 py-10 text-center text-sm text-corporate-muted">
                     <Calculator className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                    No conversions yet. Use Add Conversion to map units.
+                    No conversions yet. Use Add Conversion to map unit chains.
                   </td>
                 </tr>
               ) : filteredConversions.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  <td colSpan={4} className="px-4 py-10 text-center text-sm text-corporate-muted">
                     {LIST_SEARCH_EMPTY_MESSAGE}
                   </td>
                 </tr>
               ) : (
                 filteredConversions.map((row) => (
                   <tr key={row.id}>
-                    <td className="px-4 py-3 text-sm font-medium">
-                      {formatConversionFormula(
-                        row.mainUnitName,
-                        row.conversionFactor,
-                        row.subUnitName
-                      )}
+                    <td className="max-w-md px-4 py-3 text-sm">{formatChainSummary(row)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm font-medium">
+                      {formatChainShort(row)}
                     </td>
-                    <td className="px-4 py-3 text-sm">{row.mainUnitName}</td>
-                    <td className="px-4 py-3 text-sm">{row.subUnitName}</td>
-                    <td className="px-4 py-3 text-sm">{row.conversionFactor}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm">
+                      {row.totalBaseUnits.toLocaleString("en-IN")} {row.finalUnitName}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <div className="inline-flex gap-2">
                         <button

@@ -217,7 +217,7 @@ export default function ItemsManagementPanel() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <TextInput
-              label="Item Name (उत्पाद का नाम)"
+              label="Item Name"
               required
               value={form.itemName}
               onChange={(e) => setForm((prev) => ({ ...prev, itemName: e.target.value }))}

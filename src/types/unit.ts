@@ -23,7 +23,7 @@ export function normalizeUnitRecord(
   return {
     id: row.id,
     name: row.name ?? "",
-    nameHindi: row.nameHindi ?? "",
+    nameHindi: "",
     shortCode: row.shortCode ?? "",
     isSystemSeed: Boolean(row.isSystemSeed),
     createdAt: row.createdAt ?? new Date().toISOString(),

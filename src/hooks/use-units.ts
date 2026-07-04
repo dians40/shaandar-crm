@@ -11,11 +11,11 @@ function mergeWithSeeds(records: UnitRecord[]): UnitRecord[] {
   const byName = new Map<string, UnitRecord>();
 
   for (const seed of seeds) {
-    byName.set(seed.name.toLowerCase(), seed);
+    byName.set(seed.name.toLowerCase(), { ...seed, nameHindi: "" });
   }
 
   for (const row of records) {
-    byName.set(row.name.toLowerCase(), row);
+    byName.set(row.name.toLowerCase(), { ...row, nameHindi: "" });
   }
 
   return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -65,7 +65,7 @@ export function useUnits() {
     () =>
       units.map((unit) => ({
         value: unit.id,
-        label: unit.nameHindi ? `${unit.name} (${unit.nameHindi})` : unit.name,
+        label: unit.name,
         name: unit.name,
       })),
     [units]

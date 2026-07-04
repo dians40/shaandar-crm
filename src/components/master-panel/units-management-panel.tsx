@@ -27,12 +27,7 @@ export default function UnitsManagementPanel() {
   const filteredUnits = useMemo(
     () =>
       units.filter((row) =>
-        matchesListSearch(searchQuery, [
-          row.name,
-          row.nameHindi,
-          row.shortCode,
-          row.id,
-        ])
+        matchesListSearch(searchQuery, [row.name, row.shortCode, row.id])
       ),
     [units, searchQuery]
   );
@@ -52,7 +47,7 @@ export default function UnitsManagementPanel() {
     setEditingId(record.id);
     setForm({
       name: record.name,
-      nameHindi: record.nameHindi,
+      nameHindi: "",
       shortCode: record.shortCode,
     });
     setView("edit");
@@ -74,7 +69,7 @@ export default function UnitsManagementPanel() {
 
     const payload = {
       name: form.name.trim(),
-      nameHindi: form.nameHindi.trim(),
+      nameHindi: "",
       shortCode: form.shortCode.trim(),
     };
 
@@ -145,16 +140,11 @@ export default function UnitsManagementPanel() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <TextInput
-              label="Unit Name (English)"
+              label="Unit Name"
               required
               value={form.name}
               disabled={Boolean(editingRecord?.isSystemSeed)}
               onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-            />
-            <TextInput
-              label="Unit Name (Hindi)"
-              value={form.nameHindi}
-              onChange={(e) => setForm((prev) => ({ ...prev, nameHindi: e.target.value }))}
             />
             <TextInput
               label="Short Code"

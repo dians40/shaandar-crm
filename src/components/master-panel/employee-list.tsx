@@ -99,11 +99,7 @@ export default function EmployeeList({
             <SupabaseConnectedBadge />
           </div>
         </div>
-        <button type="button" className="btn-primary w-full px-5 sm:w-auto" onClick={onAddNew}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          Add New Employee
-        </button>
-      </div>
+              </div>
 
       {(error || actionError) && (
         <div

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useUnitConversions } from "@/hooks/use-unit-conversions";
 import { useUnits } from "@/hooks/use-units";
 import { matchesUniversalNameSearch } from "@/lib/list-search-filter";
@@ -23,16 +24,40 @@ import UniversalRecordProfile from "./universal-record-profile";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
 
+function hydrateFormNames(
+  form: UnitConversionFormState,
+  unitNameById: Record<string, string>
+): UnitConversionFormState {
+  return {
+    ...form,
+    baseUnitName: form.baseUnitId
+      ? unitNameById[form.baseUnitId] ?? form.baseUnitName
+      : form.baseUnitName,
+    intermediateUnitName: form.intermediateUnitId
+      ? unitNameById[form.intermediateUnitId] ?? form.intermediateUnitName
+      : form.intermediateUnitName,
+    finalUnitName: form.finalUnitId
+      ? unitNameById[form.finalUnitId] ?? form.finalUnitName
+      : form.finalUnitName,
+  };
+}
+
 export default function UnitConversionManagementPanel() {
   const { units, unitOptions, isReady: unitsReady } = useUnits();
   const { conversions, isReady, addConversion, updateConversion, removeConversion } =
     useUnitConversions();
+  const { checkUsedInTransactions } = useMasterDeletionGuard();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<UnitConversionFormState>(EMPTY_UNIT_CONVERSION_FORM);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewingId, setViewingId] = useState<string | null>(null);
+
+  const unitNameById = useMemo(
+    () => Object.fromEntries(units.map((unit) => [unit.id, unit.name])),
+    [units]
+  );
 
   const viewingRecord = useMemo(
     () => conversions.find((row) => row.id === viewingId) ?? null,
@@ -47,11 +72,17 @@ export default function UnitConversionManagementPanel() {
           row.finalUnitName,
           row.id,
           row.totalBaseUnits != null ? String(row.totalBaseUnits) : "",
-          formatChainShort(row),
-          formatChainSummary(row),
+          formatChainShort(row, unitNameById),
+          formatChainSummary(row, unitNameById),
         ])
       ),
-    [conversions, searchQuery]
+    [conversions, searchQuery, unitNameById]
+  );
+
+  const canRemove = useCallback(
+    (record: UnitConversionRecord) =>
+      !checkUsedInTransactions("unit-conversion", record.id, record.baseUnitName),
+    [checkUsedInTransactions]
   );
 
   const resetForm = () => {
@@ -77,13 +108,14 @@ export default function UnitConversionManagementPanel() {
   };
 
   const handleSave = () => {
-    const validationError = validateUnitConversionForm(form);
+    const hydratedForm = hydrateFormNames(form, unitNameById);
+    const validationError = validateUnitConversionForm(hydratedForm);
     if (validationError) {
       setError(validationError);
       return;
     }
 
-    const payload = buildConversionPayload(form);
+    const payload = buildConversionPayload(hydratedForm);
 
     if (view === "edit" && editingId) {
       updateConversion(editingId, payload);
@@ -96,7 +128,8 @@ export default function UnitConversionManagementPanel() {
   };
 
   const handleRemove = (record: UnitConversionRecord) => {
-    if (!window.confirm(`Remove conversion "${formatChainShort(record)}"?`)) {
+    if (!canRemove(record)) return;
+    if (!window.confirm(`Remove conversion "${formatChainShort(record, unitNameById)}"?`)) {
       return;
     }
     removeConversion(record.id);
@@ -138,9 +171,18 @@ export default function UnitConversionManagementPanel() {
             { label: "Intermediate Unit", value: viewingRecord.intermediateUnitName },
             { label: "Multiplier 2", value: viewingRecord.secondMultiplier },
             { label: "Final Unit", value: viewingRecord.finalUnitName },
-            { label: "Chain Summary", value: formatChainSummary(viewingRecord) },
-            { label: "Short Formula", value: formatChainShort(viewingRecord) },
-            { label: "Total", value: formatTotalBaseUnits(viewingRecord) },
+            {
+              label: "Chain Summary",
+              value: formatChainSummary(viewingRecord, unitNameById),
+            },
+            {
+              label: "Short Formula",
+              value: formatChainShort(viewingRecord, unitNameById),
+            },
+            {
+              label: "Total",
+              value: formatTotalBaseUnits(viewingRecord, unitNameById),
+            },
           ]}
           onBack={() => {
             setViewingId(null);
@@ -160,6 +202,7 @@ export default function UnitConversionManagementPanel() {
           form={form}
           unitOptions={unitOptions}
           units={units}
+          unitNameById={unitNameById}
           error={error}
           isEdit={view === "edit"}
           onChange={setForm}
@@ -193,6 +236,8 @@ export default function UnitConversionManagementPanel() {
         <UnitConversionList
           conversions={conversions}
           filteredConversions={filteredConversions}
+          unitNameById={unitNameById}
+          canRemove={canRemove}
           onView={openView}
           onEdit={openEdit}
           onRemove={handleRemove}

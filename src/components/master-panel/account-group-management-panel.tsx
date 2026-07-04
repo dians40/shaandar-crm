@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FolderTree, Trash2 } from "lucide-react";
+import { FolderTree } from "lucide-react";
 import { SelectInput, TextInput } from "@/components/forms/form-fields";
+import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useAccountGroups } from "@/hooks/use-account-groups";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
 import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
+import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListSearchBar from "./module-list-search-bar";
@@ -24,6 +26,7 @@ type ViewMode = "list" | "add" | "edit" | "detail";
 export default function AccountGroupManagementPanel() {
   const { groups, parentOptions, isReady, addGroup, updateGroup, removeGroup } =
     useAccountGroups();
+  const { checkUsedInTransactions } = useMasterDeletionGuard();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_ACCOUNT_GROUP_FORM);
@@ -131,6 +134,10 @@ export default function AccountGroupManagementPanel() {
   const handleRemove = (record: AccountGroupRecord) => {
     if (record.isSystemSeed) {
       setError("System balance-sheet heads cannot be removed.");
+      return;
+    }
+    if (checkUsedInTransactions("account-group", record.id, record.name)) {
+      setError("This account group cannot be removed because it is used by accounts.");
       return;
     }
     if (!window.confirm(`Remove account group "${record.name}"?`)) return;
@@ -357,14 +364,16 @@ export default function AccountGroupManagementPanel() {
                         editLabel="Edit"
                         extra={
                           !row.isSystemSeed ? (
-                            <button
-                              type="button"
-                              onClick={() => handleRemove(row)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              Remove
-                            </button>
+                            <MasterRemoveOrProtected
+                              canRemove={
+                                !checkUsedInTransactions(
+                                  "account-group",
+                                  row.id,
+                                  row.name
+                                )
+                              }
+                              onRemove={() => handleRemove(row)}
+                            />
                           ) : undefined
                         }
                       />

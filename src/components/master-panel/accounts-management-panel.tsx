@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Landmark, Trash2 } from "lucide-react";
+import { Landmark } from "lucide-react";
 import {
   SelectInput,
   TextInput,
@@ -9,9 +9,11 @@ import {
   ToggleInput,
 } from "@/components/forms/form-fields";
 import { useAccountGroups } from "@/hooks/use-account-groups";
+import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useAccounts } from "@/hooks/use-accounts";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
 import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
+import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListSearchBar from "./module-list-search-bar";
@@ -28,6 +30,7 @@ type ViewMode = "list" | "add" | "edit" | "detail";
 
 export default function AccountsManagementPanel() {
   const { accounts, isReady, addAccount, updateAccount, removeAccount } = useAccounts();
+  const { checkUsedInTransactions } = useMasterDeletionGuard();
   const { groupNames, isReady: groupsReady } = useAccountGroups();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -128,6 +131,10 @@ export default function AccountsManagementPanel() {
   };
 
   const handleRemove = (record: AccountRecord) => {
+    if (checkUsedInTransactions("account", record.id, record.name)) {
+      setError("This account cannot be removed because it is used in transactions.");
+      return;
+    }
     if (!window.confirm(`Remove account "${record.name}"?`)) return;
     removeAccount(record.id);
   };
@@ -483,14 +490,12 @@ export default function AccountsManagementPanel() {
                       }
                       onEdit={() => openEdit(row)}
                       extra={
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(row)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Remove
-                        </button>
+                        <MasterRemoveOrProtected
+                          canRemove={
+                            !checkUsedInTransactions("account", row.id, row.name)
+                          }
+                          onRemove={() => handleRemove(row)}
+                        />
                       }
                     />
                   </td>

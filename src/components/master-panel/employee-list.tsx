@@ -10,6 +10,7 @@ import {
   Users,
 } from "lucide-react";
 import { deleteEmployee, patchEmployeeSalary } from "@/lib/employees-api";
+import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
 import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import { formatSalaryDisplay } from "@/lib/map-employee-to-db";
@@ -47,6 +48,7 @@ export default function EmployeeList({
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const { checkUsedInTransactions } = useMasterDeletionGuard();
 
   const filteredEmployees = useMemo(
     () =>
@@ -91,9 +93,12 @@ export default function EmployeeList({
   };
 
   const handleDelete = async (employee: EmployeeListItem) => {
-    if (employee.hasAttendanceRecords) {
+    if (
+      employee.hasAttendanceRecords ||
+      checkUsedInTransactions("employee", employee.id, employee.name)
+    ) {
       setActionError(
-        "This employee cannot be deleted because attendance records exist."
+        "This employee cannot be deleted because attendance or transaction records exist."
       );
       return;
     }
@@ -301,7 +306,12 @@ export default function EmployeeList({
                           onEdit={() => onEdit(employee.id)}
                           editLabel="Edit"
                           extra={
-                            !employee.hasAttendanceRecords ? (
+                            !employee.hasAttendanceRecords &&
+                            !checkUsedInTransactions(
+                              "employee",
+                              employee.id,
+                              employee.name
+                            ) ? (
                               <button
                                 type="button"
                                 disabled={deletingId === employee.id}
@@ -314,7 +324,7 @@ export default function EmployeeList({
                             ) : (
                               <span
                                 className="inline-flex items-center rounded-lg border border-corporate-border px-2.5 py-1.5 text-xs text-corporate-muted"
-                                title="Cannot delete — attendance records exist"
+                                title="Cannot delete — attendance or transaction records exist"
                               >
                                 Protected
                               </span>

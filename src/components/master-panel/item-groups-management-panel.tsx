@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FolderTree, Trash2 } from "lucide-react";
+import { FolderTree } from "lucide-react";
 import { SelectInput, TextInput } from "@/components/forms/form-fields";
+import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useItemGroups } from "@/hooks/use-item-groups";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
 import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
@@ -12,6 +13,7 @@ import {
   validateItemGroupForm,
   type ItemGroupRecord,
 } from "@/types/item-group";
+import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListSearchBar from "./module-list-search-bar";
@@ -22,6 +24,7 @@ type ViewMode = "list" | "add" | "edit" | "detail";
 export default function ItemGroupsManagementPanel() {
   const { groups, parentOptions, isReady, addGroup, updateGroup, removeGroup } =
     useItemGroups();
+  const { checkUsedInTransactions } = useMasterDeletionGuard();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_ITEM_GROUP_FORM);
@@ -100,6 +103,10 @@ export default function ItemGroupsManagementPanel() {
   };
 
   const handleRemove = (record: ItemGroupRecord) => {
+    if (checkUsedInTransactions("item-group", record.id, record.name)) {
+      setError("This item group cannot be removed because it is used by items.");
+      return;
+    }
     if (!window.confirm(`Remove item group "${record.name}"?`)) return;
     removeGroup(record.id);
   };
@@ -274,14 +281,12 @@ export default function ItemGroupsManagementPanel() {
                         }
                         onEdit={() => openEdit(row)}
                         extra={
-                          <button
-                            type="button"
-                            onClick={() => handleRemove(row)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Remove
-                          </button>
+                          <MasterRemoveOrProtected
+                            canRemove={
+                              !checkUsedInTransactions("item-group", row.id, row.name)
+                            }
+                            onRemove={() => handleRemove(row)}
+                          />
                         }
                       />
                     </td>

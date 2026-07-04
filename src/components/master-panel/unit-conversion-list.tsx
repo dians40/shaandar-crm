@@ -1,6 +1,6 @@
 "use client";
 
-import { Calculator, Trash2 } from "lucide-react";
+import { Calculator } from "lucide-react";
 import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import {
@@ -10,10 +10,13 @@ import {
   type UnitConversionRecord,
 } from "@/types/unit-conversion";
 import ModuleListActionGroup from "./module-list-action-group";
+import MasterRemoveOrProtected from "./master-remove-or-protected";
 
 type UnitConversionListProps = {
   conversions: UnitConversionRecord[];
   filteredConversions: UnitConversionRecord[];
+  unitNameById: Record<string, string>;
+  canRemove: (record: UnitConversionRecord) => boolean;
   onView: (record: UnitConversionRecord) => void;
   onEdit: (record: UnitConversionRecord) => void;
   onRemove: (record: UnitConversionRecord) => void;
@@ -22,6 +25,8 @@ type UnitConversionListProps = {
 export default function UnitConversionList({
   conversions,
   filteredConversions,
+  unitNameById,
+  canRemove,
   onView,
   onEdit,
   onRemove,
@@ -68,12 +73,14 @@ export default function UnitConversionList({
                 <td className="whitespace-nowrap px-4 py-3 text-sm font-medium">
                   {row.baseUnitName}
                 </td>
-                <td className="max-w-md px-4 py-3 text-sm">{formatChainSummary(row)}</td>
+                <td className="max-w-md px-4 py-3 text-sm">
+                  {formatChainSummary(row, unitNameById)}
+                </td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm font-medium">
-                  {formatChainShort(row)}
+                  {formatChainShort(row, unitNameById)}
                 </td>
                 <td className="whitespace-nowrap px-4 py-3 text-sm">
-                  {formatTotalBaseUnits(row)}
+                  {formatTotalBaseUnits(row, unitNameById)}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <ModuleListActionGroup
@@ -88,14 +95,10 @@ export default function UnitConversionList({
                     }
                     onEdit={() => onEdit(row)}
                     extra={
-                      <button
-                        type="button"
-                        onClick={() => onRemove(row)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Remove
-                      </button>
+                      <MasterRemoveOrProtected
+                        canRemove={canRemove(row)}
+                        onRemove={() => onRemove(row)}
+                      />
                     }
                   />
                 </td>

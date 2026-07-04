@@ -15,6 +15,7 @@ type UnitConversionFormProps = {
   form: UnitConversionFormState;
   unitOptions: UnitOption[];
   units: UnitRecord[];
+  unitNameById?: Record<string, string>;
   error: string | null;
   isEdit: boolean;
   onChange: (next: UnitConversionFormState) => void;
@@ -39,6 +40,7 @@ export default function UnitConversionForm({
   form,
   unitOptions,
   units,
+  unitNameById = {},
   error,
   isEdit,
   onChange,
@@ -60,21 +62,24 @@ export default function UnitConversionForm({
       return "Select a main unit to begin. All other fields are optional.";
     }
 
-    return formatChainSummary({
-      id: "",
-      baseUnitId: form.baseUnitId,
-      baseUnitName: form.baseUnitName,
-      firstMultiplier: form.firstMultiplier,
-      intermediateUnitId: form.intermediateUnitId,
-      intermediateUnitName: form.intermediateUnitName,
-      secondMultiplier: form.secondMultiplier,
-      finalUnitId: form.finalUnitId,
-      finalUnitName: form.finalUnitName,
-      totalBaseUnits: previewTotal,
-      createdAt: "",
-      updatedAt: "",
-    });
-  }, [form, previewTotal]);
+    return formatChainSummary(
+      {
+        id: "",
+        baseUnitId: form.baseUnitId,
+        baseUnitName: form.baseUnitName,
+        firstMultiplier: form.firstMultiplier,
+        intermediateUnitId: form.intermediateUnitId,
+        intermediateUnitName: form.intermediateUnitName,
+        secondMultiplier: form.secondMultiplier,
+        finalUnitId: form.finalUnitId,
+        finalUnitName: form.finalUnitName,
+        totalBaseUnits: previewTotal,
+        createdAt: "",
+        updatedAt: "",
+      },
+      unitNameById
+    );
+  }, [form, previewTotal, unitNameById]);
 
   const setUnitField = (
     field: "base" | "intermediate" | "final",

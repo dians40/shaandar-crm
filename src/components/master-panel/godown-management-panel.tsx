@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Trash2, Warehouse } from "lucide-react";
+import { Warehouse } from "lucide-react";
 import { SelectInput, TextInput, TextareaInput } from "@/components/forms/form-fields";
+import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useGodowns } from "@/hooks/use-godowns";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
 import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import { EMPTY_GODOWN_FORM, type GodownRecord } from "@/types/godown";
+import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListSearchBar from "./module-list-search-bar";
@@ -16,6 +18,7 @@ type ViewMode = "list" | "add" | "edit" | "detail";
 
 export default function GodownManagementPanel() {
   const { godowns, isReady, addGodown, updateGodown, removeGodown } = useGodowns();
+  const { checkUsedInTransactions } = useMasterDeletionGuard();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_GODOWN_FORM);
@@ -90,6 +93,10 @@ export default function GodownManagementPanel() {
   };
 
   const handleRemove = (record: GodownRecord) => {
+    if (checkUsedInTransactions("godown", record.id, record.name)) {
+      setError("This godown cannot be removed because it is used in transactions.");
+      return;
+    }
     if (!window.confirm(`Remove godown "${record.name}"?`)) return;
     removeGodown(record.id);
   };
@@ -329,14 +336,13 @@ export default function GodownManagementPanel() {
                         onEdit={() => openEdit(row)}
                         editLabel="Edit Godown"
                         extra={
-                          <button
-                            type="button"
-                            onClick={() => handleRemove(row)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Remove Godown
-                          </button>
+                          <MasterRemoveOrProtected
+                            canRemove={
+                              !checkUsedInTransactions("godown", row.id, row.name)
+                            }
+                            onRemove={() => handleRemove(row)}
+                            label="Remove Godown"
+                          />
                         }
                       />
                     </td>

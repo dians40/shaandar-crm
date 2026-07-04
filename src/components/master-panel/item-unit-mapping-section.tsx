@@ -4,47 +4,54 @@ import { useMemo } from "react";
 import { Calculator } from "lucide-react";
 import { SelectInput } from "@/components/forms/form-fields";
 import {
-  buildConversionSelectOptions,
+  buildAlternateFormulaOptions,
   filterConversionsForItem,
   resolveItemConversionPreview,
+  resolveItemConversionFactor,
 } from "@/lib/item-unit-conversion";
+import type { ItemRecord } from "@/types/item";
 import type { UnitConversionRecord } from "@/types/unit-conversion";
 
 type UnitOption = { value: string; label: string };
 
 type ItemUnitMappingSectionProps = {
   primaryUnitId: string;
-  alternateUnitId: string;
   unitConversionId: string;
+  conversionFactors: Pick<
+    ItemRecord,
+    | "conversionFirstMultiplier"
+    | "conversionSecondMultiplier"
+    | "conversionThirdMultiplier"
+    | "conversionTotalBaseUnits"
+  >;
   unitDropdownOptions: UnitOption[];
-  alternateUnitOptions: UnitOption[];
   conversions: UnitConversionRecord[];
   unitNameById: Record<string, string>;
   onPrimaryUnitChange: (unitId: string) => void;
-  onAlternateUnitChange: (unitId: string) => void;
-  onConversionChange: (conversionId: string) => void;
+  onAlternateFormulaChange: (conversionId: string) => void;
 };
 
 export default function ItemUnitMappingSection({
   primaryUnitId,
-  alternateUnitId,
   unitConversionId,
+  conversionFactors,
   unitDropdownOptions,
-  alternateUnitOptions,
   conversions,
   unitNameById,
   onPrimaryUnitChange,
-  onAlternateUnitChange,
-  onConversionChange,
+  onAlternateFormulaChange,
 }: ItemUnitMappingSectionProps) {
   const matchingConversions = useMemo(
-    () => filterConversionsForItem(conversions, primaryUnitId, alternateUnitId),
-    [conversions, primaryUnitId, alternateUnitId]
+    () => filterConversionsForItem(conversions, primaryUnitId),
+    [conversions, primaryUnitId]
   );
 
-  const conversionOptions = useMemo(
-    () => buildConversionSelectOptions(matchingConversions, unitNameById),
-    [matchingConversions, unitNameById]
+  const alternateFormulaOptions = useMemo(
+    () => [
+      { value: "", label: "None (optional)" },
+      ...buildAlternateFormulaOptions(conversions, primaryUnitId, unitNameById),
+    ],
+    [conversions, primaryUnitId, unitNameById]
   );
 
   const selectedConversion = useMemo(
@@ -57,18 +64,24 @@ export default function ItemUnitMappingSection({
     [selectedConversion, unitNameById]
   );
 
-  const conversionPlaceholder = !primaryUnitId
+  const activeFactor = useMemo(
+    () => resolveItemConversionFactor(conversionFactors),
+    [conversionFactors]
+  );
+
+  const alternatePlaceholder = !primaryUnitId
     ? "Select primary unit first"
     : matchingConversions.length === 0
-      ? "No matching formulas for selected units"
-      : "Select unit conversion formula";
+      ? "No conversion formulas match this primary unit"
+      : "Select packaging formula";
 
   return (
     <div className="space-y-4 rounded-xl border border-corporate-border/80 bg-corporate-bg/40 p-4 sm:p-5">
       <div>
         <h3 className="text-sm font-semibold text-corporate-text">Unit & Conversion Mapping</h3>
         <p className="mt-0.5 text-xs text-corporate-muted">
-          Link selling units to bulk packaging and the exact conversion formula for stock math.
+          Link selling units to bulk packaging formulas from Unit Conversion Master for accurate
+          stock math.
         </p>
       </div>
 
@@ -84,22 +97,14 @@ export default function ItemUnitMappingSection({
         />
         <SelectInput
           label="Alternate / Bulk Packaging Unit (Optional)"
-          value={alternateUnitId}
-          options={alternateUnitOptions}
-          onChange={(event) => onAlternateUnitChange(event.target.value)}
-          hint="Select the larger bulk package layer if you buy/store this item in groups (e.g., Carton, Box, Peti)."
+          value={unitConversionId}
+          options={alternateFormulaOptions}
+          onChange={(event) => onAlternateFormulaChange(event.target.value)}
+          disabled={!primaryUnitId}
+          placeholder={alternatePlaceholder}
+          hint="Pick a saved conversion formula (e.g., Carton × 120 Packets × 70 Pieces). Multipliers bind automatically for inventory calculation."
         />
       </div>
-
-      <SelectInput
-        label="Link Unit Conversion Formula"
-        value={unitConversionId}
-        placeholder={conversionPlaceholder}
-        options={conversionOptions}
-        onChange={(event) => onConversionChange(event.target.value)}
-        disabled={!primaryUnitId || matchingConversions.length === 0}
-        hint="Select the exact mathematical rule to let the ERP auto-calculate your multi-level stocks (e.g., 1 Carton × 120 Packets × 70 Pieces)."
-      />
 
       <div className="rounded-lg border border-corporate-brand/30 bg-corporate-brand-light/30 px-4 py-3">
         <div className="flex items-start gap-2">
@@ -121,14 +126,20 @@ export default function ItemUnitMappingSection({
                     Total per chain: {preview.total}
                   </p>
                 )}
+                {activeFactor != null && activeFactor > 0 && (
+                  <p className="mt-1 text-xs text-corporate-muted">
+                    Stock factor bound: ×{activeFactor.toLocaleString("en-IN")} primary units per
+                    bulk unit
+                  </p>
+                )}
               </>
             ) : (
               <p className="mt-2 text-sm leading-relaxed text-corporate-muted">
                 {!primaryUnitId
                   ? "Choose a primary unit to see available conversion formulas."
                   : matchingConversions.length === 0
-                    ? "No conversion formula in Unit Conversion Master matches these units yet. Add one under Unit Conversion, then return here."
-                    : "Select a conversion formula above to preview how stock will be calculated across packaging levels."}
+                    ? "No conversion formula in Unit Conversion Master includes this primary unit yet. Add one under Unit Conversion, then return here."
+                    : "Select a packaging formula above to preview and bind multi-level stock calculation."}
               </p>
             )}
           </div>

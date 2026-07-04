@@ -13,6 +13,11 @@ export type ItemRecord = {
   alternateUnitName: string;
   /** Linked Unit Conversion Master formula id (optional). */
   unitConversionId: string;
+  /** Snapshot multipliers from linked formula — used for stock calculation. */
+  conversionFirstMultiplier: number | null;
+  conversionSecondMultiplier: number | null;
+  conversionThirdMultiplier: number | null;
+  conversionTotalBaseUnits: number | null;
   openingStockQuantity: number;
   openingStockValue: number;
   purchaseRate: number;
@@ -32,6 +37,10 @@ export const EMPTY_ITEM_FORM: Omit<ItemRecord, "id" | "createdAt" | "updatedAt">
   alternateUnitId: "",
   alternateUnitName: "",
   unitConversionId: "",
+  conversionFirstMultiplier: null,
+  conversionSecondMultiplier: null,
+  conversionThirdMultiplier: null,
+  conversionTotalBaseUnits: null,
   openingStockQuantity: 0,
   openingStockValue: 0,
   purchaseRate: 0,
@@ -53,6 +62,22 @@ export function normalizeItemRecord(
     alternateUnitId: row.alternateUnitId ?? "",
     alternateUnitName: row.alternateUnitName ?? "",
     unitConversionId: row.unitConversionId ?? "",
+    conversionFirstMultiplier:
+      row.conversionFirstMultiplier === null || row.conversionFirstMultiplier === undefined
+        ? null
+        : Number(row.conversionFirstMultiplier) || null,
+    conversionSecondMultiplier:
+      row.conversionSecondMultiplier === null || row.conversionSecondMultiplier === undefined
+        ? null
+        : Number(row.conversionSecondMultiplier) || null,
+    conversionThirdMultiplier:
+      row.conversionThirdMultiplier === null || row.conversionThirdMultiplier === undefined
+        ? null
+        : Number(row.conversionThirdMultiplier) || null,
+    conversionTotalBaseUnits:
+      row.conversionTotalBaseUnits === null || row.conversionTotalBaseUnits === undefined
+        ? null
+        : Number(row.conversionTotalBaseUnits) || null,
     openingStockQuantity: Number(row.openingStockQuantity) || 0,
     openingStockValue: Number(row.openingStockValue) || 0,
     purchaseRate: Number(row.purchaseRate) || 0,

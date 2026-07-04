@@ -9,7 +9,6 @@ type View = "list" | "add";
 export default function MasterPanelView() {
   const [view, setView] = useState<View>("list");
 
-  // फॉर्म सबमिट होने के बाद वापस लिस्ट पर जाने के लिए फंक्शन
   const handleSuccess = () => {
     setView("list");
   };
@@ -30,8 +29,8 @@ export default function MasterPanelView() {
 
       {view === "add" ? (
         <div className="bg-white p-6 rounded-md shadow">
-          {/* यहाँ हम फॉर्म को उसका जरूरी सामान (Props) दे रहे हैं */}
-          <EmployeeForm onSuccess={handleSuccess} onClose={() => setView("list")} />
+          {/* यहाँ सिर्फ वही प्रॉपर्टी दी है जो फॉर्म को चाहिए */}
+          <EmployeeForm onSuccess={handleSuccess} />
           
           <button 
             onClick={() => setView("list")}

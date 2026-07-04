@@ -35,7 +35,7 @@ export default function MasterPanelView() {
               </div>
 
               <div className="bg-white p-6 rounded-md shadow text-center text-gray-500">
-              No employees found in the list. Click "+ Add New Employee" to get started.
+              No employees found in the list. Click + Add New Employee to get started.
               </div>
               </div>
               );

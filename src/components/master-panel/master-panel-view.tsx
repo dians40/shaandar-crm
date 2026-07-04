@@ -29,7 +29,6 @@ export default function MasterPanelView() {
 
       {view === "add" ? (
         <div className="bg-white p-6 rounded-md shadow">
-          {/* यहाँ फॉर्म की मांग के अनुसार onSuccess और onBack दोनों दे दिए हैं */}
           <EmployeeForm onSuccess={handleSuccess} onBack={() => setView("list")} />
           
           <button 
@@ -40,7 +39,8 @@ export default function MasterPanelView() {
           </button>
         </div>
       ) : (
-        <EmployeeList />
+        /* यहाँ हम EmployeeList की मांग के अनुसार खाली लिस्ट और ऑन-ऐड फंक्शन पास कर रहे हैं */
+        <EmployeeList employees={[]} onAdd={() => setView("add")} />
       )}
     </div>
   );

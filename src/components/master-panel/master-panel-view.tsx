@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { getSupabaseClient } from "@/lib/supabase/client";
 import { mapEmployeeRowToListItem } from "@/lib/map-employee-to-db";
 import type { EmployeeListItem } from "@/types/employee-list";
 import type { EmployeeType } from "@/types/employee-form";
@@ -135,7 +135,7 @@ function MasterPanelContent() {
     setError(null);
 
     try {
-      const client = supabase;
+      const client = getSupabaseClient();
       const fromMethod = client?.from;
 
       if (!client || typeof fromMethod !== "function") {

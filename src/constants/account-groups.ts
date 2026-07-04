@@ -46,10 +46,3 @@ export function buildSeedAccountGroups(now = new Date().toISOString()): AccountG
 export const DEFAULT_ACCOUNT_GROUP_NAMES = BALANCE_SHEET_ACCOUNT_GROUP_SEEDS.map(
   (seed) => seed.name
 );
-
-export const IMPLEMENTED_ADMINISTRATION_MODULE_IDS = new Set([
-  "accounts",
-  "account-group",
-  "employee-management",
-  "godowns-locations",
-]);

@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { IMPLEMENTED_ADMINISTRATION_MODULE_IDS } from "@/constants/account-groups";
+import { IMPLEMENTED_ADMINISTRATION_MODULE_IDS } from "@/constants/units";
 import {
   DEFAULT_MASTER_PANEL_MODULE_ID,
   getGroupForModule,
@@ -22,6 +22,8 @@ import GodownManagementPanel from "./godown-management-panel";
 import MasterPanelManagerNav from "./master-panel-manager-nav";
 import ModulePlaceholder from "./module-placeholder";
 import OvertimeTrackerPanel from "./overtime-tracker-panel";
+import UnitConversionManagementPanel from "./unit-conversion-management-panel";
+import UnitsManagementPanel from "./units-management-panel";
 
 type ErrorBoundaryState = {
   hasError: boolean;
@@ -106,6 +108,10 @@ function MasterPanelContent() {
           return <EmployeeManagementPanel />;
         case "godowns-locations":
           return <GodownManagementPanel />;
+        case "units":
+          return <UnitsManagementPanel />;
+        case "unit-conversion":
+          return <UnitConversionManagementPanel />;
         case "overtime-tracker":
           return <OvertimeTrackerPanel />;
         default: {

@@ -130,7 +130,7 @@ const ADMINISTRATION_MODULES: MasterPanelModule[] = [
     title: "Unit Conversion Engine",
     subtitle: "UOM conversion rules between units",
     icon: Calculator,
-    placeholderMessage: "Unit Conversion Engine Coming Soon",
+    placeholderMessage: "",
   },
   {
     id: "units",
@@ -139,7 +139,7 @@ const ADMINISTRATION_MODULES: MasterPanelModule[] = [
     title: "Units",
     subtitle: "Base unit of measure definitions",
     icon: Ruler,
-    placeholderMessage: "Units master coming soon",
+    placeholderMessage: "",
   },
   {
     id: "bill-of-sundries",

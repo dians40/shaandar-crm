@@ -17,6 +17,7 @@ import { formatSalaryDisplay } from "@/lib/map-employee-to-db";
 import type { EmployeeListItem } from "@/types/employee-list";
 import { SupabaseConnectedBadge } from "./supabase-setup-banner";
 import ModuleListActionGroup from "./module-list-action-group";
+import ModuleListRecordLink from "./module-list-record-link";
 import ModuleListSearchBar from "./module-list-search-bar";
 
 type Props = {
@@ -238,9 +239,16 @@ export default function EmployeeList({
                       : "");
 
                   return (
-                    <tr key={employee.id} className="hover:bg-corporate-bg/60">
-                      <td className="whitespace-nowrap px-5 py-4 text-sm font-medium text-corporate-text">
-                        {employee.name}
+                    <tr
+                      key={employee.id}
+                      className="cursor-pointer hover:bg-corporate-bg/60"
+                      onClick={() => onView(employee.id)}
+                    >
+                      <td className="whitespace-nowrap px-5 py-4 text-sm">
+                        <ModuleListRecordLink
+                          label={employee.name}
+                          onOpen={() => onView(employee.id)}
+                        />
                       </td>
                       <td className="whitespace-nowrap px-5 py-4">
                         <span className="inline-flex rounded-full bg-corporate-brand-light px-2.5 py-1 text-xs font-medium text-corporate-brand">
@@ -291,7 +299,10 @@ export default function EmployeeList({
                             )}
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-5 py-4 text-right">
+                      <td
+                        className="whitespace-nowrap px-5 py-4 text-right"
+                        onClick={(event) => event.stopPropagation()}
+                      >
                         <ModuleListActionGroup
                           onView={() => onView(employee.id)}
                           onSelect={() =>

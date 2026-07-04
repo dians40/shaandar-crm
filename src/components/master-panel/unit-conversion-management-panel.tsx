@@ -36,9 +36,12 @@ function hydrateFormNames(
     intermediateUnitName: form.intermediateUnitId
       ? unitNameById[form.intermediateUnitId] ?? form.intermediateUnitName
       : form.intermediateUnitName,
-    finalUnitName: form.finalUnitId
-      ? unitNameById[form.finalUnitId] ?? form.finalUnitName
-      : form.finalUnitName,
+    tertiaryUnitName: form.tertiaryUnitId
+      ? unitNameById[form.tertiaryUnitId] ?? form.tertiaryUnitName
+      : form.tertiaryUnitName,
+    fourthUnitName: form.fourthUnitId
+      ? unitNameById[form.fourthUnitId] ?? form.fourthUnitName
+      : form.fourthUnitName,
   };
 }
 
@@ -69,7 +72,8 @@ export default function UnitConversionManagementPanel() {
       conversions.filter((row) =>
         matchesUniversalNameSearch(searchQuery, row.baseUnitName, [
           row.intermediateUnitName,
-          row.finalUnitName,
+          row.tertiaryUnitName,
+          row.fourthUnitName,
           row.id,
           row.totalBaseUnits != null ? String(row.totalBaseUnits) : "",
           formatChainShort(row, unitNameById),
@@ -166,11 +170,13 @@ export default function UnitConversionManagementPanel() {
           title={viewingRecord.baseUnitName}
           subtitle="Unit Conversion Chain Profile"
           fields={[
-            { label: "Main Unit", value: viewingRecord.baseUnitName },
+            { label: "Level 1 — Main Unit", value: viewingRecord.baseUnitName },
             { label: "Multiplier 1", value: viewingRecord.firstMultiplier },
-            { label: "Intermediate Unit", value: viewingRecord.intermediateUnitName },
+            { label: "Level 2 — Secondary Unit", value: viewingRecord.intermediateUnitName },
             { label: "Multiplier 2", value: viewingRecord.secondMultiplier },
-            { label: "Final Unit", value: viewingRecord.finalUnitName },
+            { label: "Level 3 — Tertiary Unit", value: viewingRecord.tertiaryUnitName },
+            { label: "Multiplier 3", value: viewingRecord.thirdMultiplier },
+            { label: "Level 4 — Fourth Unit", value: viewingRecord.fourthUnitName },
             {
               label: "Chain Summary",
               value: formatChainSummary(viewingRecord, unitNameById),

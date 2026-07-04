@@ -1,15 +1,26 @@
 export type UnitConversionRecord = {
   id: string;
-  /** Main unit — the only mandatory field. */
+  /** Level 1 — Main Primary Unit (mandatory). */
   baseUnitId: string;
   baseUnitName: string;
+  /** Multiplier from Level 1 → Level 2. */
   firstMultiplier: number | null;
+  /** Level 2 — Secondary Unit. */
   intermediateUnitId: string | null;
   intermediateUnitName: string | null;
+  /** Multiplier from Level 2 → Level 3. */
   secondMultiplier: number | null;
-  finalUnitId: string | null;
-  finalUnitName: string | null;
-  /** Product of provided multipliers; null when no multipliers are set. */
+  /** Level 3 — Tertiary Unit. */
+  tertiaryUnitId: string | null;
+  tertiaryUnitName: string | null;
+  /** Multiplier from Level 3 → Level 4. */
+  thirdMultiplier: number | null;
+  /** Level 4 — Fourth conversion unit. */
+  fourthUnitId: string | null;
+  fourthUnitName: string | null;
+  /** @deprecated Migrated to tertiaryUnit on read; not written on new saves. */
+  finalUnitId?: string | null;
+  finalUnitName?: string | null;
   totalBaseUnits: number | null;
   createdAt: string;
   updatedAt: string;
@@ -17,7 +28,7 @@ export type UnitConversionRecord = {
 
 export type UnitConversionFormState = Omit<
   UnitConversionRecord,
-  "id" | "totalBaseUnits" | "createdAt" | "updatedAt"
+  "id" | "totalBaseUnits" | "createdAt" | "updatedAt" | "finalUnitId" | "finalUnitName"
 >;
 
 export const EMPTY_UNIT_CONVERSION_FORM: UnitConversionFormState = {
@@ -27,8 +38,11 @@ export const EMPTY_UNIT_CONVERSION_FORM: UnitConversionFormState = {
   intermediateUnitId: null,
   intermediateUnitName: null,
   secondMultiplier: null,
-  finalUnitId: null,
-  finalUnitName: null,
+  tertiaryUnitId: null,
+  tertiaryUnitName: null,
+  thirdMultiplier: null,
+  fourthUnitId: null,
+  fourthUnitName: null,
 };
 
 type LegacyConversionRow = Partial<UnitConversionRecord> & {
@@ -37,9 +51,6 @@ type LegacyConversionRow = Partial<UnitConversionRecord> & {
   conversionFactor?: number;
   subUnitId?: string;
   subUnitName?: string;
-  tertiaryUnitId?: string;
-  tertiaryUnitName?: string;
-  thirdMultiplier?: number;
 };
 
 function toOptionalNumber(value: unknown): number | null {
@@ -60,14 +71,16 @@ function hasPositiveMultiplier(value: number | null | undefined): value is numbe
 
 const CHAIN_ARROW = " ➔ ";
 
+export type ConversionChainStep = {
+  multiplier: number | null;
+  unit: string;
+};
+
 export type ConversionDisplayChain = {
   baseUnitName: string;
-  multiplier1: number | null;
-  intermediateUnit: string | null;
-  multiplier2: number | null;
-  finalUnit: string | null;
+  steps: ConversionChainStep[];
   total: number | null;
-  isThreeTier: boolean;
+  totalUnit: string | null;
 };
 
 function resolveUnitName(
@@ -81,82 +94,113 @@ function resolveUnitName(
   return null;
 }
 
-/** Hydrate chain fields from stored state so intermediate tiers never disappear in UI. */
+export function computeTotalBaseUnits(
+  firstMultiplier: number | null | undefined,
+  secondMultiplier: number | null | undefined,
+  thirdMultiplier?: number | null | undefined
+): number | null {
+  const multipliers = [firstMultiplier, secondMultiplier, thirdMultiplier].filter(
+    (value): value is number => hasPositiveMultiplier(value)
+  );
+
+  if (multipliers.length === 0) return null;
+  return multipliers.reduce((product, value) => product * value, 1);
+}
+
+export function resolveTotalBaseUnits(record: UnitConversionRecord): number | null {
+  return computeTotalBaseUnits(
+    record.firstMultiplier,
+    record.secondMultiplier,
+    record.thirdMultiplier
+  );
+}
+
+/** Hydrate all 4 chain levels from stored state — never skip tiers when data exists. */
 export function resolveConversionDisplay(
   record: UnitConversionRecord,
   unitNameById: Record<string, string> = {}
 ): ConversionDisplayChain {
   const baseUnitName = record.baseUnitName?.trim() || "—";
-  const multiplier1 = hasPositiveMultiplier(record.firstMultiplier)
-    ? record.firstMultiplier
-    : null;
-  const multiplier2 = hasPositiveMultiplier(record.secondMultiplier)
-    ? record.secondMultiplier
-    : null;
-  const intermediateUnit = resolveUnitName(
+
+  const secondary = resolveUnitName(
     record.intermediateUnitId,
     record.intermediateUnitName,
     unitNameById
   );
-  const finalUnit = resolveUnitName(record.finalUnitId, record.finalUnitName, unitNameById);
-  const total = computeTotalBaseUnits(record.firstMultiplier, record.secondMultiplier);
-
-  const isThreeTier = Boolean(
-    multiplier1 != null &&
-      intermediateUnit &&
-      multiplier2 != null &&
-      finalUnit &&
-      intermediateUnit !== finalUnit
+  const tertiary = resolveUnitName(
+    record.tertiaryUnitId,
+    record.tertiaryUnitName,
+    unitNameById
+  );
+  const fourth = resolveUnitName(
+    record.fourthUnitId,
+    record.fourthUnitName,
+    unitNameById
   );
 
-  return {
-    baseUnitName,
-    multiplier1,
-    intermediateUnit,
-    multiplier2,
-    finalUnit,
-    total,
-    isThreeTier,
-  };
-}
+  const mult1 = hasPositiveMultiplier(record.firstMultiplier)
+    ? record.firstMultiplier
+    : null;
+  const mult2 = hasPositiveMultiplier(record.secondMultiplier)
+    ? record.secondMultiplier
+    : null;
+  const mult3 = hasPositiveMultiplier(record.thirdMultiplier)
+    ? record.thirdMultiplier
+    : null;
 
-export function computeTotalBaseUnits(
-  firstMultiplier: number | null | undefined,
-  secondMultiplier: number | null | undefined
-): number | null {
-  const first = hasPositiveMultiplier(firstMultiplier) ? firstMultiplier : null;
-  const second = hasPositiveMultiplier(secondMultiplier) ? secondMultiplier : null;
+  const steps: ConversionChainStep[] = [];
 
-  if (first != null && second != null) return first * second;
-  if (first != null) return first;
-  if (second != null) return second;
-  return null;
-}
+  if (secondary) {
+    steps.push({ multiplier: mult1, unit: secondary });
+    if (tertiary) {
+      steps.push({ multiplier: mult2, unit: tertiary });
+      if (fourth) {
+        steps.push({ multiplier: mult3, unit: fourth });
+      }
+    } else if (fourth) {
+      steps.push({ multiplier: mult2 ?? mult3, unit: fourth });
+    }
+  } else if (tertiary) {
+    steps.push({ multiplier: mult1, unit: tertiary });
+    if (fourth) {
+      steps.push({ multiplier: mult2 ?? mult3, unit: fourth });
+    }
+  } else if (fourth) {
+    steps.push({ multiplier: mult1, unit: fourth });
+  } else if (mult1 != null) {
+    steps.push({ multiplier: mult1, unit: baseUnitName });
+  }
 
-/** Recompute total from live fields — avoids stale or NaN stored values. */
-export function resolveTotalBaseUnits(record: UnitConversionRecord): number | null {
-  return computeTotalBaseUnits(record.firstMultiplier, record.secondMultiplier);
+  const total = computeTotalBaseUnits(mult1, mult2, mult3);
+  const totalUnit = fourth ?? tertiary ?? secondary ?? baseUnitName;
+
+  return { baseUnitName, steps, total, totalUnit };
 }
 
 export function normalizeUnitConversionRecord(
   row: LegacyConversionRow & Pick<UnitConversionRecord, "id">
 ): UnitConversionRecord {
-  const hasNewShape = Boolean(row.baseUnitId || row.intermediateUnitId || row.finalUnitId);
+  const hasNewShape = Boolean(
+    row.baseUnitId || row.intermediateUnitId || row.tertiaryUnitId || row.fourthUnitId
+  );
 
   if (!hasNewShape && row.mainUnitId) {
     const firstMultiplier = toOptionalNumber(row.conversionFactor);
-    const intermediateUnitId = toOptionalString(row.subUnitId);
-    const intermediateUnitName = toOptionalString(row.subUnitName);
+    const secondaryId = toOptionalString(row.subUnitId);
+    const secondaryName = toOptionalString(row.subUnitName);
     return {
       id: row.id,
       baseUnitId: row.mainUnitId,
       baseUnitName: row.mainUnitName ?? "",
       firstMultiplier,
-      intermediateUnitId,
-      intermediateUnitName,
+      intermediateUnitId: secondaryId,
+      intermediateUnitName: secondaryName,
       secondMultiplier: null,
-      finalUnitId: intermediateUnitId,
-      finalUnitName: intermediateUnitName,
+      tertiaryUnitId: secondaryId,
+      tertiaryUnitName: secondaryName,
+      thirdMultiplier: null,
+      fourthUnitId: null,
+      fourthUnitName: null,
       totalBaseUnits: computeTotalBaseUnits(firstMultiplier, null),
       createdAt: row.createdAt ?? new Date().toISOString(),
       updatedAt: row.updatedAt ?? new Date().toISOString(),
@@ -164,17 +208,27 @@ export function normalizeUnitConversionRecord(
   }
 
   const firstMultiplier = toOptionalNumber(row.firstMultiplier);
-  let secondMultiplier = toOptionalNumber(row.secondMultiplier);
+  const secondMultiplier = toOptionalNumber(row.secondMultiplier);
+  const thirdMultiplier = toOptionalNumber(row.thirdMultiplier);
   const intermediateUnitId = toOptionalString(row.intermediateUnitId);
   const intermediateUnitName = toOptionalString(row.intermediateUnitName);
-  const finalUnitId = toOptionalString(row.finalUnitId);
-  const finalUnitName = toOptionalString(row.finalUnitName);
 
-  // Fold legacy 4-level chains into the flexible 3-tier model while preserving totals.
-  const legacyTertiary = toOptionalString(row.tertiaryUnitId);
-  const legacyThirdMult = toOptionalNumber(row.thirdMultiplier);
-  if (legacyTertiary && secondMultiplier && legacyThirdMult) {
-    secondMultiplier = secondMultiplier * legacyThirdMult;
+  let tertiaryUnitId = toOptionalString(row.tertiaryUnitId);
+  let tertiaryUnitName = toOptionalString(row.tertiaryUnitName);
+  let fourthUnitId = toOptionalString(row.fourthUnitId);
+  let fourthUnitName = toOptionalString(row.fourthUnitName);
+
+  const legacyFinalId = toOptionalString(row.finalUnitId);
+  const legacyFinalName = toOptionalString(row.finalUnitName);
+
+  if (!fourthUnitId && legacyFinalId) {
+    if (tertiaryUnitId && tertiaryUnitId !== legacyFinalId) {
+      fourthUnitId = legacyFinalId;
+      fourthUnitName = legacyFinalName;
+    } else if (!tertiaryUnitId) {
+      tertiaryUnitId = legacyFinalId;
+      tertiaryUnitName = legacyFinalName;
+    }
   }
 
   return {
@@ -185,9 +239,12 @@ export function normalizeUnitConversionRecord(
     intermediateUnitId,
     intermediateUnitName,
     secondMultiplier,
-    finalUnitId,
-    finalUnitName,
-    totalBaseUnits: computeTotalBaseUnits(firstMultiplier, secondMultiplier),
+    tertiaryUnitId,
+    tertiaryUnitName,
+    thirdMultiplier,
+    fourthUnitId,
+    fourthUnitName,
+    totalBaseUnits: computeTotalBaseUnits(firstMultiplier, secondMultiplier, thirdMultiplier),
     createdAt: row.createdAt ?? new Date().toISOString(),
     updatedAt: row.updatedAt ?? new Date().toISOString(),
   };
@@ -201,7 +258,8 @@ export function validateUnitConversionForm(form: UnitConversionFormState): strin
   const unitIds = [
     form.baseUnitId,
     form.intermediateUnitId,
-    form.finalUnitId,
+    form.tertiaryUnitId,
+    form.fourthUnitId,
   ].filter((id): id is string => Boolean(id?.trim()));
 
   if (new Set(unitIds).size !== unitIds.length) {
@@ -216,6 +274,10 @@ export function validateUnitConversionForm(form: UnitConversionFormState): strin
     return "Multiplier 2 must be greater than zero when provided.";
   }
 
+  if (form.thirdMultiplier !== null && form.thirdMultiplier <= 0) {
+    return "Multiplier 3 must be greater than zero when provided.";
+  }
+
   return null;
 }
 
@@ -226,33 +288,22 @@ export function formatChainSummary(
   const chain = resolveConversionDisplay(record, unitNameById);
   const parts: string[] = [];
 
-  if (chain.isThreeTier) {
-    parts.push(
-      `1 ${chain.baseUnitName} = ${chain.multiplier1} ${chain.intermediateUnit}`
-    );
-    parts.push(
-      `1 ${chain.intermediateUnit} = ${chain.multiplier2} ${chain.finalUnit}`
-    );
-  } else if (chain.multiplier1 != null && chain.intermediateUnit) {
-    parts.push(
-      `1 ${chain.baseUnitName} = ${chain.multiplier1} ${chain.intermediateUnit}`
-    );
-  } else if (chain.multiplier1 != null && chain.finalUnit) {
-    parts.push(
-      `1 ${chain.baseUnitName} = ${chain.multiplier1} ${chain.finalUnit}`
-    );
-  } else if (chain.multiplier1 != null) {
-    parts.push(`1 ${chain.baseUnitName} = ${chain.multiplier1}`);
-  } else if (chain.intermediateUnit) {
-    parts.push(`1 ${chain.baseUnitName} = 1 ${chain.intermediateUnit}`);
-  } else {
+  if (chain.steps.length === 0) {
     parts.push(`Main unit: ${chain.baseUnitName}`);
+  } else {
+    let previousUnit = chain.baseUnitName;
+    for (const step of chain.steps) {
+      if (step.multiplier != null) {
+        parts.push(`1 ${previousUnit} = ${step.multiplier} ${step.unit}`);
+      } else {
+        parts.push(`1 ${previousUnit} = 1 ${step.unit}`);
+      }
+      previousUnit = step.unit;
+    }
   }
 
-  if (chain.total != null && chain.total > 0) {
-    const targetUnit =
-      chain.finalUnit ?? chain.intermediateUnit ?? chain.baseUnitName;
-    parts.push(`Total = ${chain.total.toLocaleString("en-IN")} ${targetUnit}`);
+  if (chain.total != null && chain.total > 0 && chain.totalUnit) {
+    parts.push(`Total = ${chain.total.toLocaleString("en-IN")} ${chain.totalUnit}`);
   }
 
   return `${parts.join(", ")}.`;
@@ -265,36 +316,12 @@ export function formatChainShort(
   const chain = resolveConversionDisplay(record, unitNameById);
   const segments: string[] = [`1 ${chain.baseUnitName}`];
 
-  if (chain.isThreeTier) {
-    segments.push(`${chain.multiplier1} ${chain.intermediateUnit}`);
-    segments.push(`${chain.multiplier2} ${chain.finalUnit}`);
-    return segments.join(CHAIN_ARROW);
-  }
-
-  if (chain.multiplier1 != null && chain.intermediateUnit) {
-    segments.push(`${chain.multiplier1} ${chain.intermediateUnit}`);
-  } else if (chain.multiplier1 != null && chain.finalUnit) {
-    segments.push(`${chain.multiplier1} ${chain.finalUnit}`);
-  } else if (chain.multiplier1 != null) {
-    segments.push(String(chain.multiplier1));
-  } else if (chain.intermediateUnit) {
-    segments.push(chain.intermediateUnit);
-  }
-
-  if (
-    chain.multiplier2 != null &&
-    chain.finalUnit &&
-    !chain.isThreeTier &&
-    !segments.some((segment) => segment.includes(chain.finalUnit!))
-  ) {
-    segments.push(`${chain.multiplier2} ${chain.finalUnit}`);
-  } else if (
-    chain.finalUnit &&
-    chain.intermediateUnit &&
-    !chain.isThreeTier &&
-    !segments.some((segment) => segment.includes(chain.finalUnit!))
-  ) {
-    segments.push(chain.finalUnit);
+  for (const step of chain.steps) {
+    if (step.multiplier != null) {
+      segments.push(`${step.multiplier} ${step.unit}`);
+    } else {
+      segments.push(step.unit);
+    }
   }
 
   return segments.join(CHAIN_ARROW);
@@ -310,26 +337,29 @@ export function formatTotalBaseUnits(
     return "—";
   }
 
-  const unit = chain.finalUnit ?? chain.intermediateUnit ?? chain.baseUnitName;
-  return `${chain.total.toLocaleString("en-IN")} ${unit}`;
+  return `${chain.total.toLocaleString("en-IN")} ${chain.totalUnit ?? chain.baseUnitName}`;
 }
 
 export function buildConversionPayload(
   form: UnitConversionFormState
-): Omit<UnitConversionRecord, "id" | "createdAt" | "updatedAt"> {
-  const firstMultiplier = form.firstMultiplier;
-  const secondMultiplier = form.secondMultiplier;
-
+): Omit<UnitConversionRecord, "id" | "createdAt" | "updatedAt" | "finalUnitId" | "finalUnitName"> {
   return {
     baseUnitId: form.baseUnitId,
     baseUnitName: form.baseUnitName,
-    firstMultiplier,
+    firstMultiplier: form.firstMultiplier,
     intermediateUnitId: form.intermediateUnitId,
     intermediateUnitName: form.intermediateUnitName,
-    secondMultiplier,
-    finalUnitId: form.finalUnitId,
-    finalUnitName: form.finalUnitName,
-    totalBaseUnits: computeTotalBaseUnits(firstMultiplier, secondMultiplier),
+    secondMultiplier: form.secondMultiplier,
+    tertiaryUnitId: form.tertiaryUnitId,
+    tertiaryUnitName: form.tertiaryUnitName,
+    thirdMultiplier: form.thirdMultiplier,
+    fourthUnitId: form.fourthUnitId,
+    fourthUnitName: form.fourthUnitName,
+    totalBaseUnits: computeTotalBaseUnits(
+      form.firstMultiplier,
+      form.secondMultiplier,
+      form.thirdMultiplier
+    ),
   };
 }
 
@@ -341,7 +371,10 @@ export function recordToFormState(record: UnitConversionRecord): UnitConversionF
     intermediateUnitId: record.intermediateUnitId,
     intermediateUnitName: record.intermediateUnitName,
     secondMultiplier: record.secondMultiplier,
-    finalUnitId: record.finalUnitId,
-    finalUnitName: record.finalUnitName,
+    tertiaryUnitId: record.tertiaryUnitId,
+    tertiaryUnitName: record.tertiaryUnitName,
+    thirdMultiplier: record.thirdMultiplier,
+    fourthUnitId: record.fourthUnitId,
+    fourthUnitName: record.fourthUnitName,
   };
 }

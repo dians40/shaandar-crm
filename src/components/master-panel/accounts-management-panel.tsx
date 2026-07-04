@@ -16,6 +16,7 @@ import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
+import ModuleListRecordLink from "./module-list-record-link";
 import ModuleListSearchBar from "./module-list-search-bar";
 import UniversalRecordProfile from "./universal-record-profile";
 import {
@@ -467,8 +468,14 @@ export default function AccountsManagementPanel() {
               </tr>
             ) : (
               filteredAccounts.map((row) => (
-                <tr key={row.id}>
-                  <td className="px-4 py-3 text-sm font-medium">{row.name}</td>
+                <tr
+                  key={row.id}
+                  className="cursor-pointer hover:bg-corporate-bg/60"
+                  onClick={() => openView(row)}
+                >
+                  <td className="px-4 py-3 text-sm">
+                    <ModuleListRecordLink label={row.name} onOpen={() => openView(row)} />
+                  </td>
                   <td className="px-4 py-3 text-sm">{row.groupName}</td>
                   <td className="px-4 py-3 text-sm">
                     ₹{row.openingBalanceAmount.toLocaleString("en-IN")} {row.openingBalanceType}
@@ -477,7 +484,10 @@ export default function AccountsManagementPanel() {
                     {row.billByBillBalancing ? "Yes" : "No"}
                   </td>
                   <td className="px-4 py-3 text-sm">{row.creditDays}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td
+                    className="px-4 py-3 text-right"
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     <ModuleListActionGroup
                       onView={() => openView(row)}
                       onSelect={() =>

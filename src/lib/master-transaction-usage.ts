@@ -92,7 +92,8 @@ function unitUsedInMasters(
     (row) =>
       row.baseUnitId === unitId ||
       row.intermediateUnitId === unitId ||
-      row.finalUnitId === unitId
+      row.tertiaryUnitId === unitId ||
+      row.fourthUnitId === unitId
   );
   return inItems || inConversions;
 }

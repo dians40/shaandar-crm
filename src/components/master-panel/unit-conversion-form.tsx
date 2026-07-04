@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { SelectInput, TextInput } from "@/components/forms/form-fields";
 import {
   computeTotalBaseUnits,
+  formatChainShort,
   formatChainSummary,
   type UnitConversionFormState,
 } from "@/types/unit-conversion";
@@ -53,8 +54,13 @@ export default function UnitConversionForm({
   );
 
   const previewTotal = useMemo(
-    () => computeTotalBaseUnits(form.firstMultiplier, form.secondMultiplier),
-    [form.firstMultiplier, form.secondMultiplier]
+    () =>
+      computeTotalBaseUnits(
+        form.firstMultiplier,
+        form.secondMultiplier,
+        form.thirdMultiplier
+      ),
+    [form.firstMultiplier, form.secondMultiplier, form.thirdMultiplier]
   );
 
   const chainSummary = useMemo(() => {
@@ -71,8 +77,11 @@ export default function UnitConversionForm({
         intermediateUnitId: form.intermediateUnitId,
         intermediateUnitName: form.intermediateUnitName,
         secondMultiplier: form.secondMultiplier,
-        finalUnitId: form.finalUnitId,
-        finalUnitName: form.finalUnitName,
+        tertiaryUnitId: form.tertiaryUnitId,
+        tertiaryUnitName: form.tertiaryUnitName,
+        thirdMultiplier: form.thirdMultiplier,
+        fourthUnitId: form.fourthUnitId,
+        fourthUnitName: form.fourthUnitName,
         totalBaseUnits: previewTotal,
         createdAt: "",
         updatedAt: "",
@@ -81,8 +90,33 @@ export default function UnitConversionForm({
     );
   }, [form, previewTotal, unitNameById]);
 
+  const chainShort = useMemo(
+    () =>
+      formatChainShort(
+        {
+          id: "",
+          baseUnitId: form.baseUnitId,
+          baseUnitName: form.baseUnitName,
+          firstMultiplier: form.firstMultiplier,
+          intermediateUnitId: form.intermediateUnitId,
+          intermediateUnitName: form.intermediateUnitName,
+          secondMultiplier: form.secondMultiplier,
+          tertiaryUnitId: form.tertiaryUnitId,
+          tertiaryUnitName: form.tertiaryUnitName,
+          thirdMultiplier: form.thirdMultiplier,
+          fourthUnitId: form.fourthUnitId,
+          fourthUnitName: form.fourthUnitName,
+          totalBaseUnits: previewTotal,
+          createdAt: "",
+          updatedAt: "",
+        },
+        unitNameById
+      ),
+    [form, previewTotal, unitNameById]
+  );
+
   const setUnitField = (
-    field: "base" | "intermediate" | "final",
+    field: "base" | "secondary" | "tertiary" | "fourth",
     unitId: string
   ) => {
     if (field === "base") {
@@ -96,34 +130,48 @@ export default function UnitConversionForm({
     }
 
     if (!unitId || unitId === OPTIONAL_UNIT) {
-      if (field === "intermediate") {
+      if (field === "secondary") {
         onChange({
           ...form,
           intermediateUnitId: null,
           intermediateUnitName: null,
         });
+      } else if (field === "tertiary") {
+        onChange({
+          ...form,
+          tertiaryUnitId: null,
+          tertiaryUnitName: null,
+        });
       } else {
         onChange({
           ...form,
-          finalUnitId: null,
-          finalUnitName: null,
+          fourthUnitId: null,
+          fourthUnitName: null,
         });
       }
       return;
     }
 
     const unit = units.find((row) => row.id === unitId);
-    if (field === "intermediate") {
+    const name = unit?.name ?? null;
+
+    if (field === "secondary") {
       onChange({
         ...form,
         intermediateUnitId: unitId,
-        intermediateUnitName: unit?.name ?? null,
+        intermediateUnitName: name,
+      });
+    } else if (field === "tertiary") {
+      onChange({
+        ...form,
+        tertiaryUnitId: unitId,
+        tertiaryUnitName: name,
       });
     } else {
       onChange({
         ...form,
-        finalUnitId: unitId,
-        finalUnitName: unit?.name ?? null,
+        fourthUnitId: unitId,
+        fourthUnitName: name,
       });
     }
   };
@@ -135,7 +183,7 @@ export default function UnitConversionForm({
           {isEdit ? "Edit / Modify Conversion" : "Add Conversion"}
         </h2>
         <p className="text-sm text-corporate-muted">
-          Main unit is required. Enter multipliers and units only for the levels you need.
+          4-level chain: Main → Secondary → Tertiary → Fourth. Only Main Unit is required.
         </p>
       </div>
 
@@ -147,7 +195,7 @@ export default function UnitConversionForm({
 
       <div className="space-y-4">
         <SelectInput
-          label="Main Unit"
+          label="Level 1 — Main Primary Unit"
           required
           value={form.baseUnitId}
           placeholder="Select main unit"
@@ -169,14 +217,14 @@ export default function UnitConversionForm({
                 firstMultiplier: parseOptionalMultiplier(e.target.value),
               })
             }
-            hint="Optional — e.g. 120"
+            hint="Main → Secondary (e.g. 80)"
           />
           <SelectInput
-            label="Intermediate Unit"
+            label="Level 2 — Secondary Unit"
             value={form.intermediateUnitId ?? OPTIONAL_UNIT}
             options={optionalOptions}
-            onChange={(e) => setUnitField("intermediate", e.target.value)}
-            hint="Optional — e.g. Packet, Dozen"
+            onChange={(e) => setUnitField("secondary", e.target.value)}
+            hint="Optional — e.g. Packet"
           />
         </div>
 
@@ -193,22 +241,49 @@ export default function UnitConversionForm({
                 secondMultiplier: parseOptionalMultiplier(e.target.value),
               })
             }
-            hint="Optional — e.g. 70"
+            hint="Secondary → Tertiary (e.g. 90)"
           />
           <SelectInput
-            label="Final Unit"
-            value={form.finalUnitId ?? OPTIONAL_UNIT}
+            label="Level 3 — Tertiary Unit"
+            value={form.tertiaryUnitId ?? OPTIONAL_UNIT}
             options={optionalOptions}
-            onChange={(e) => setUnitField("final", e.target.value)}
-            hint="Optional — e.g. Pieces, Gram"
+            onChange={(e) => setUnitField("tertiary", e.target.value)}
+            hint="Optional — e.g. Pieces"
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextInput
+            label="Multiplier 3"
+            type="number"
+            min="0.0001"
+            step="any"
+            value={form.thirdMultiplier != null ? String(form.thirdMultiplier) : ""}
+            onChange={(e) =>
+              onChange({
+                ...form,
+                thirdMultiplier: parseOptionalMultiplier(e.target.value),
+              })
+            }
+            hint="Tertiary → Fourth level"
+          />
+          <SelectInput
+            label="Level 4 — Fourth Unit"
+            value={form.fourthUnitId ?? OPTIONAL_UNIT}
+            options={optionalOptions}
+            onChange={(e) => setUnitField("fourth", e.target.value)}
+            hint="Optional — e.g. Gram, Strip"
           />
         </div>
 
         <div className="rounded-lg border border-corporate-brand/30 bg-corporate-brand-light/30 px-4 py-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-corporate-brand">
-            Conversion Preview
+            Chain Preview
           </p>
-          <p className="mt-2 text-sm leading-relaxed text-corporate-text">{chainSummary}</p>
+          <p className="mt-2 text-sm font-medium leading-relaxed text-corporate-text">
+            {chainShort}
+          </p>
+          <p className="mt-1 text-sm leading-relaxed text-corporate-muted">{chainSummary}</p>
         </div>
       </div>
 

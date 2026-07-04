@@ -9,8 +9,9 @@ import {
   formatTotalBaseUnits,
   type UnitConversionRecord,
 } from "@/types/unit-conversion";
-import ModuleListActionGroup from "./module-list-action-group";
 import MasterRemoveOrProtected from "./master-remove-or-protected";
+import ModuleListActionGroup from "./module-list-action-group";
+import ModuleListRecordLink from "./module-list-record-link";
 
 type UnitConversionListProps = {
   conversions: UnitConversionRecord[];
@@ -69,9 +70,16 @@ export default function UnitConversionList({
             </tr>
           ) : (
             filteredConversions.map((row) => (
-              <tr key={row.id}>
-                <td className="whitespace-nowrap px-4 py-3 text-sm font-medium">
-                  {row.baseUnitName}
+              <tr
+                key={row.id}
+                className="cursor-pointer hover:bg-corporate-bg/60"
+                onClick={() => onView(row)}
+              >
+                <td className="whitespace-nowrap px-4 py-3 text-sm">
+                  <ModuleListRecordLink
+                    label={row.baseUnitName}
+                    onOpen={() => onView(row)}
+                  />
                 </td>
                 <td className="max-w-md px-4 py-3 text-sm">
                   {formatChainSummary(row, unitNameById)}
@@ -82,7 +90,10 @@ export default function UnitConversionList({
                 <td className="whitespace-nowrap px-4 py-3 text-sm">
                   {formatTotalBaseUnits(row, unitNameById)}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td
+                  className="px-4 py-3 text-right"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <ModuleListActionGroup
                     onView={() => onView(row)}
                     onSelect={() =>

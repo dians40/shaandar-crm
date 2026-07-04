@@ -3,19 +3,19 @@
 import { useMemo, useState } from "react";
 import {
   AlertCircle,
-  Eye,
   Loader2,
-  Pencil,
   Plus,
   RefreshCw,
   Trash2,
   Users,
 } from "lucide-react";
 import { deleteEmployee, patchEmployeeSalary } from "@/lib/employees-api";
-import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
+import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
+import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import { formatSalaryDisplay } from "@/lib/map-employee-to-db";
 import type { EmployeeListItem } from "@/types/employee-list";
 import { SupabaseConnectedBadge } from "./supabase-setup-banner";
+import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListSearchBar from "./module-list-search-bar";
 
 type Props = {
@@ -30,15 +30,6 @@ type Props = {
   /** Hide duplicate Add button when parent provides sub-tabs */
   hideHeaderAddButton?: boolean;
 };
-
-function matchesSearch(employee: EmployeeListItem, query: string): boolean {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
-
-  return [employee.firstName, employee.lastName, employee.name, employee.mobileNumber]
-    .filter(Boolean)
-    .some((value) => value.toLowerCase().includes(normalized));
-}
 
 export default function EmployeeList({
   employees = [],
@@ -58,7 +49,17 @@ export default function EmployeeList({
   const [actionError, setActionError] = useState<string | null>(null);
 
   const filteredEmployees = useMemo(
-    () => employees.filter((employee) => matchesSearch(employee, searchQuery)),
+    () =>
+      employees.filter((employee) =>
+        matchesUniversalNameSearch(searchQuery, employee.name, [
+          employee.firstName,
+          employee.lastName,
+          employee.mobileNumber,
+          employee.employeeType,
+          employee.vehicleNumber,
+          employee.machineAssignment,
+        ])
+      ),
     [employees, searchQuery]
   );
 
@@ -286,42 +287,40 @@ export default function EmployeeList({
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-right">
-                        <div className="inline-flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onView(employee.id)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-corporate-border px-2.5 py-1.5 text-xs font-medium text-corporate-text hover:bg-corporate-bg"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            View
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onEdit(employee.id)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-corporate-border px-2.5 py-1.5 text-xs font-medium text-corporate-text hover:bg-corporate-bg"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            Edit
-                          </button>
-                          {!employee.hasAttendanceRecords ? (
-                            <button
-                              type="button"
-                              disabled={deletingId === employee.id}
-                              onClick={() => void handleDelete(employee)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              {deletingId === employee.id ? "..." : "Remove"}
-                            </button>
-                          ) : (
-                            <span
-                              className="inline-flex items-center rounded-lg border border-corporate-border px-2.5 py-1.5 text-xs text-corporate-muted"
-                              title="Cannot delete — attendance records exist"
-                            >
-                              Protected
-                            </span>
-                          )}
-                        </div>
+                        <ModuleListActionGroup
+                          onView={() => onView(employee.id)}
+                          onSelect={() =>
+                            selectMasterPanelEntity({
+                              entityType: "employee",
+                              entityId: employee.id,
+                              entityName: employee.name,
+                              sourceModuleId: "employee-management",
+                              targetModuleId: "overtime-tracker",
+                            })
+                          }
+                          onEdit={() => onEdit(employee.id)}
+                          editLabel="Edit"
+                          extra={
+                            !employee.hasAttendanceRecords ? (
+                              <button
+                                type="button"
+                                disabled={deletingId === employee.id}
+                                onClick={() => void handleDelete(employee)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {deletingId === employee.id ? "..." : "Remove"}
+                              </button>
+                            ) : (
+                              <span
+                                className="inline-flex items-center rounded-lg border border-corporate-border px-2.5 py-1.5 text-xs text-corporate-muted"
+                                title="Cannot delete — attendance records exist"
+                              >
+                                Protected
+                              </span>
+                            )
+                          }
+                        />
                       </td>
                     </tr>
                   );

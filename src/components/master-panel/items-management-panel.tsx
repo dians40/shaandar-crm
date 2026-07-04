@@ -1,13 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Boxes, Pencil, Trash2 } from "lucide-react";
+import { Boxes, Trash2 } from "lucide-react";
 import { SelectInput, TextInput } from "@/components/forms/form-fields";
 import { formatUnitLabel } from "@/constants/units";
 import { useItemGroups } from "@/hooks/use-item-groups";
 import { useItems } from "@/hooks/use-items";
 import { useUnits } from "@/hooks/use-units";
-import { LIST_SEARCH_EMPTY_MESSAGE, matchesListSearch } from "@/lib/list-search-filter";
+import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
+import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import {
   EMPTY_ITEM_FORM,
   GST_TAX_OPTIONS,
@@ -15,9 +16,11 @@ import {
   type ItemRecord,
 } from "@/types/item";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
+import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListSearchBar from "./module-list-search-bar";
+import UniversalRecordProfile from "./universal-record-profile";
 
-type ViewMode = "list" | "add" | "edit";
+type ViewMode = "list" | "add" | "edit" | "detail";
 
 export default function ItemsManagementPanel() {
   const { items, isReady, addItem, updateItem, removeItem } = useItems();
@@ -28,6 +31,12 @@ export default function ItemsManagementPanel() {
   const [form, setForm] = useState(EMPTY_ITEM_FORM);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewingId, setViewingId] = useState<string | null>(null);
+
+  const viewingRecord = useMemo(
+    () => items.find((row) => row.id === viewingId) ?? null,
+    [items, viewingId]
+  );
 
   const unitDropdownOptions = useMemo(
     () =>
@@ -51,8 +60,7 @@ export default function ItemsManagementPanel() {
   const filteredItems = useMemo(
     () =>
       items.filter((row) =>
-        matchesListSearch(searchQuery, [
-          row.itemName,
+        matchesUniversalNameSearch(searchQuery, row.itemName, [
           row.id,
           row.itemGroupName,
           row.primaryUnitName,
@@ -73,6 +81,11 @@ export default function ItemsManagementPanel() {
   const openAdd = () => {
     resetForm();
     setView("add");
+  };
+
+  const openView = (record: ItemRecord) => {
+    setViewingId(record.id);
+    setView("detail");
   };
 
   const openEdit = (record: ItemRecord) => {
@@ -167,7 +180,7 @@ export default function ItemsManagementPanel() {
     removeItem(record.id);
   };
 
-  const subTab: "list" | "add" = view === "list" ? "list" : "add";
+  const subTab: "list" | "add" = view === "add" ? "add" : "list";
 
   const tabBar = (
     <ModuleAddListTabBar
@@ -175,6 +188,7 @@ export default function ItemsManagementPanel() {
       active={subTab}
       onList={() => {
         resetForm();
+        setViewingId(null);
         setView("list");
       }}
       onAdd={openAdd}
@@ -186,6 +200,43 @@ export default function ItemsManagementPanel() {
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading items master...
       </div>
+    );
+  }
+
+  if (view === "detail" && viewingRecord) {
+    return (
+      <>
+        {tabBar}
+        <UniversalRecordProfile
+          title={viewingRecord.itemName}
+          subtitle={`${viewingRecord.itemGroupName || "Uncategorized"} · Item Profile`}
+          fields={[
+            { label: "Item Group", value: viewingRecord.itemGroupName },
+            { label: "Primary Unit", value: viewingRecord.primaryUnitName },
+            { label: "Alternate Unit", value: viewingRecord.alternateUnitName },
+            { label: "Opening Stock Qty", value: viewingRecord.openingStockQuantity },
+            {
+              label: "Opening Stock Value",
+              value: `₹${viewingRecord.openingStockValue.toLocaleString("en-IN")}`,
+            },
+            {
+              label: "Purchase Rate",
+              value: `₹${viewingRecord.purchaseRate.toLocaleString("en-IN")}`,
+            },
+            {
+              label: "Sales Rate / MRP",
+              value: `₹${viewingRecord.salesRateMrp.toLocaleString("en-IN")}`,
+            },
+            { label: "GST %", value: viewingRecord.gstTaxPercentage },
+            { label: "HSN Code", value: viewingRecord.hsnCode },
+          ]}
+          onBack={() => {
+            setViewingId(null);
+            setView("list");
+          }}
+          onEdit={() => openEdit(viewingRecord)}
+        />
+      </>
     );
   }
 
@@ -424,24 +475,29 @@ export default function ItemsManagementPanel() {
                       <p className="text-xs text-corporate-muted">{row.hsnCode || "—"}</p>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="inline-flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(row)}
-                          className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Edit / Modify
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(row)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Remove
-                        </button>
-                      </div>
+                      <ModuleListActionGroup
+                        onView={() => openView(row)}
+                        onSelect={() =>
+                          selectMasterPanelEntity({
+                            entityType: "item",
+                            entityId: row.id,
+                            entityName: row.itemName,
+                            sourceModuleId: "items-products",
+                            targetModuleId: "sales-dispatch",
+                          })
+                        }
+                        onEdit={() => openEdit(row)}
+                        extra={
+                          <button
+                            type="button"
+                            onClick={() => handleRemove(row)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Remove
+                          </button>
+                        }
+                      />
                     </td>
                   </tr>
                 ))

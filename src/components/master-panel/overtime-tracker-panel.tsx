@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Clock, Pencil, Plus } from "lucide-react";
+import { Clock, Plus } from "lucide-react";
 import { SelectInput, TextInput, TextareaInput } from "@/components/forms/form-fields";
 import {
   OVERTIME_LOCATION_PRESETS,
@@ -12,15 +12,27 @@ import { useEmployees } from "@/hooks/use-employees";
 import { useGodowns } from "@/hooks/use-godowns";
 import { useOvertimeRecords } from "@/hooks/use-overtime";
 import {
+  LIST_SEARCH_EMPTY_MESSAGE,
+  matchesUniversalNameSearch,
+} from "@/lib/list-search-filter";
+import {
+  MASTER_PANEL_ENTITY_SELECTED_EVENT,
+  readMasterPanelSelection,
+  selectMasterPanelEntity,
+} from "@/lib/master-panel-entity-bridge";
+import {
   calculateOvertimeHours,
   EMPTY_OVERTIME_FORM,
   type OvertimeRecord,
   type OvertimeShiftType,
 } from "@/types/overtime";
+import ModuleListActionGroup from "./module-list-action-group";
+import ModuleListSearchBar from "./module-list-search-bar";
+import UniversalRecordProfile from "./universal-record-profile";
 
 const MACHINE_CUSTOM_VALUE = "__custom_machine__";
 
-type ViewMode = "list" | "add" | "edit";
+type ViewMode = "list" | "add" | "edit" | "detail";
 
 export default function OvertimeTrackerPanel() {
   const { employees, isLoading: employeesLoading } = useEmployees();
@@ -32,6 +44,48 @@ export default function OvertimeTrackerPanel() {
   const [machineSelect, setMachineSelect] = useState("");
   const [customMachine, setCustomMachine] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [viewingId, setViewingId] = useState<string | null>(null);
+
+  const viewingRecord = useMemo(
+    () => records.find((row) => row.id === viewingId) ?? null,
+    [records, viewingId]
+  );
+
+  const filteredRecords = useMemo(
+    () =>
+      records.filter((row) =>
+        matchesUniversalNameSearch(searchQuery, row.employeeName, [
+          row.shiftType,
+          row.fromTime,
+          row.toTime,
+          row.workLocation,
+          row.workLocationAssignment,
+          row.assignedManager,
+          row.assignedMachine,
+          row.approvedBy,
+          row.narration,
+          String(row.amountToPay),
+          String(row.totalHours),
+        ])
+      ),
+    [records, searchQuery]
+  );
+
+  const applySelectedEmployee = (employeeId: string, employeeName: string) => {
+    setForm((prev) => ({
+      ...prev,
+      employeeId,
+      employeeName,
+    }));
+  };
+
+  const consumePendingEmployeeSelection = () => {
+    const selection = readMasterPanelSelection();
+    if (selection?.entityType === "employee" && selection.entityId) {
+      applySelectedEmployee(selection.entityId, selection.entityName);
+    }
+  };
 
   const totalHours = useMemo(
     () => calculateOvertimeHours(form.fromTime, form.toTime),
@@ -124,7 +178,13 @@ export default function OvertimeTrackerPanel() {
 
   const openAdd = () => {
     resetForm();
+    consumePendingEmployeeSelection();
     setView("add");
+  };
+
+  const openView = (record: OvertimeRecord) => {
+    setViewingId(record.id);
+    setView("detail");
   };
 
   const openEdit = (record: OvertimeRecord) => {
@@ -209,11 +269,55 @@ export default function OvertimeTrackerPanel() {
     }
   }, [totalHours, view, form.amountToPay]);
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ entityType?: string; entityId?: string; entityName?: string }>).detail;
+      if (detail?.entityType === "employee" && detail.entityId) {
+        resetForm();
+        applySelectedEmployee(detail.entityId, detail.entityName ?? "");
+        setView("add");
+      }
+    };
+
+    window.addEventListener(MASTER_PANEL_ENTITY_SELECTED_EVENT, handler);
+    return () => window.removeEventListener(MASTER_PANEL_ENTITY_SELECTED_EVENT, handler);
+  }, []);
+
   if (!isReady || !godownsReady) {
     return (
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading overtime records...
       </div>
+    );
+  }
+
+  if (view === "detail" && viewingRecord) {
+    return (
+      <UniversalRecordProfile
+        title={viewingRecord.employeeName}
+        subtitle={`${viewingRecord.shiftType} · Overtime Record`}
+        fields={[
+          { label: "Shift Type", value: viewingRecord.shiftType },
+          { label: "From Time", value: viewingRecord.fromTime },
+          { label: "To Time", value: viewingRecord.toTime },
+          { label: "Total Hours", value: viewingRecord.totalHours },
+          {
+            label: "Amount to Pay",
+            value: `₹${viewingRecord.amountToPay.toLocaleString("en-IN")}`,
+          },
+          { label: "Assigned Machine", value: viewingRecord.assignedMachine },
+          { label: "Work Location", value: viewingRecord.workLocation },
+          { label: "Work Assignment", value: viewingRecord.workLocationAssignment },
+          { label: "Assigned Manager", value: viewingRecord.assignedManager },
+          { label: "Approved By", value: viewingRecord.approvedBy },
+          { label: "Narration", value: viewingRecord.narration },
+        ]}
+        onBack={() => {
+          setViewingId(null);
+          setView("list");
+        }}
+        onEdit={() => openEdit(viewingRecord)}
+      />
     );
   }
 
@@ -397,6 +501,12 @@ export default function OvertimeTrackerPanel() {
         </button>
       </div>
 
+      <ModuleListSearchBar
+        moduleName="Overtime"
+        value={searchQuery}
+        onChange={setSearchQuery}
+      />
+
       <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
         <table className="min-w-full divide-y divide-corporate-border">
           <thead className="bg-corporate-bg">
@@ -432,8 +542,14 @@ export default function OvertimeTrackerPanel() {
                   No overtime records yet.
                 </td>
               </tr>
+            ) : filteredRecords.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  {LIST_SEARCH_EMPTY_MESSAGE}
+                </td>
+              </tr>
             ) : (
-              records.map((row) => (
+              filteredRecords.map((row) => (
                 <tr key={row.id}>
                   <td className="px-4 py-3 text-sm font-medium">{row.employeeName}</td>
                   <td className="px-4 py-3 text-sm">{row.shiftType}</td>
@@ -456,14 +572,22 @@ export default function OvertimeTrackerPanel() {
                   <td className="px-4 py-3 text-sm">₹{row.amountToPay.toLocaleString("en-IN")}</td>
                   <td className="px-4 py-3 text-sm">{row.approvedBy}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(row)}
-                      className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                      Edit Overtime
-                    </button>
+                    <ModuleListActionGroup
+                      onView={() => openView(row)}
+                      onSelect={() =>
+                        selectMasterPanelEntity({
+                          entityType: "employee",
+                          entityId: row.employeeId,
+                          entityName: row.employeeName,
+                          sourceModuleId: "overtime-tracker",
+                          targetModuleId: "overtime-tracker",
+                        })
+                      }
+                      selectLabel="Use Employee"
+                      onEdit={() => openEdit(row)}
+                      editLabel="Edit Overtime"
+                      showSelect={Boolean(row.employeeId)}
+                    />
                   </td>
                 </tr>
               ))

@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FolderTree, Pencil, Trash2 } from "lucide-react";
+import { FolderTree, Trash2 } from "lucide-react";
 import { SelectInput, TextInput } from "@/components/forms/form-fields";
 import { useAccountGroups } from "@/hooks/use-account-groups";
-import { LIST_SEARCH_EMPTY_MESSAGE, matchesListSearch } from "@/lib/list-search-filter";
+import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
+import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
+import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListSearchBar from "./module-list-search-bar";
+import UniversalRecordProfile from "./universal-record-profile";
 import {
   CATEGORY_FOR_NATURE,
   EMPTY_ACCOUNT_GROUP_FORM,
@@ -16,7 +19,7 @@ import {
   type AccountGroupRecord,
 } from "@/types/account-group";
 
-type ViewMode = "list" | "add" | "edit";
+type ViewMode = "list" | "add" | "edit" | "detail";
 
 export default function AccountGroupManagementPanel() {
   const { groups, parentOptions, isReady, addGroup, updateGroup, removeGroup } =
@@ -26,6 +29,12 @@ export default function AccountGroupManagementPanel() {
   const [form, setForm] = useState(EMPTY_ACCOUNT_GROUP_FORM);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewingId, setViewingId] = useState<string | null>(null);
+
+  const viewingRecord = useMemo(
+    () => groups.find((row) => row.id === viewingId) ?? null,
+    [groups, viewingId]
+  );
 
   const parentDropdownOptions = useMemo(
     () =>
@@ -44,8 +53,7 @@ export default function AccountGroupManagementPanel() {
   const filteredGroups = useMemo(
     () =>
       groups.filter((row) =>
-        matchesListSearch(searchQuery, [
-          row.name,
+        matchesUniversalNameSearch(searchQuery, row.name, [
           row.id,
           row.parentGroup,
           row.nature,
@@ -64,6 +72,11 @@ export default function AccountGroupManagementPanel() {
   const openAdd = () => {
     resetForm();
     setView("add");
+  };
+
+  const openView = (record: AccountGroupRecord) => {
+    setViewingId(record.id);
+    setView("detail");
   };
 
   const openEdit = (record: AccountGroupRecord) => {
@@ -124,7 +137,7 @@ export default function AccountGroupManagementPanel() {
     removeGroup(record.id);
   };
 
-  const subTab: "list" | "add" = view === "list" ? "list" : "add";
+  const subTab: "list" | "add" = view === "add" ? "add" : "list";
 
   if (!isReady) {
     return (
@@ -140,11 +153,35 @@ export default function AccountGroupManagementPanel() {
       active={subTab}
       onList={() => {
         resetForm();
+        setViewingId(null);
         setView("list");
       }}
       onAdd={openAdd}
     />
   );
+
+  if (view === "detail" && viewingRecord) {
+    return (
+      <>
+        {tabBar}
+        <UniversalRecordProfile
+          title={viewingRecord.name}
+          subtitle="Account Group Profile"
+          fields={[
+            { label: "Parent Group", value: viewingRecord.parentGroup },
+            { label: "Nature", value: viewingRecord.nature },
+            { label: "Category", value: viewingRecord.category },
+            { label: "System Seed", value: viewingRecord.isSystemSeed },
+          ]}
+          onBack={() => {
+            setViewingId(null);
+            setView("list");
+          }}
+          onEdit={() => openEdit(viewingRecord)}
+        />
+      </>
+    );
+  }
 
   if (view === "add" || view === "edit") {
     const editingRecord = editingId
@@ -306,26 +343,31 @@ export default function AccountGroupManagementPanel() {
                     <td className="px-4 py-3 text-sm">{row.nature}</td>
                     <td className="px-4 py-3 text-sm">{row.category}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="inline-flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(row)}
-                          className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Edit
-                        </button>
-                        {!row.isSystemSeed && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemove(row)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Remove
-                          </button>
-                        )}
-                      </div>
+                      <ModuleListActionGroup
+                        onView={() => openView(row)}
+                        onSelect={() =>
+                          selectMasterPanelEntity({
+                            entityType: "account-group",
+                            entityId: row.id,
+                            entityName: row.name,
+                            sourceModuleId: "account-group",
+                          })
+                        }
+                        onEdit={() => openEdit(row)}
+                        editLabel="Edit"
+                        extra={
+                          !row.isSystemSeed ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRemove(row)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Remove
+                            </button>
+                          ) : undefined
+                        }
+                      />
                     </td>
                   </tr>
                 ))

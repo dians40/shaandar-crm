@@ -3,6 +3,7 @@
 import {
   Component,
   useCallback,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
@@ -14,6 +15,7 @@ import {
   getMasterPanelModule,
   type MasterPanelModuleId,
 } from "@/constants/master-panel-modules";
+import { MASTER_PANEL_NAVIGATE_EVENT } from "@/lib/master-panel-entity-bridge";
 import AccountGroupManagementPanel from "./account-group-management-panel";
 import AccountsManagementPanel from "./accounts-management-panel";
 import AdministrationPlaceholderPanel from "./administration-placeholder-panel";
@@ -88,6 +90,18 @@ function MasterPanelContent() {
 
   const handleModuleSelect = useCallback((id: MasterPanelModuleId) => {
     setActiveModuleId(id);
+  }, []);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ targetModuleId?: MasterPanelModuleId }>).detail;
+      if (detail?.targetModuleId) {
+        setActiveModuleId(detail.targetModuleId);
+      }
+    };
+
+    window.addEventListener(MASTER_PANEL_NAVIGATE_EVENT, handler);
+    return () => window.removeEventListener(MASTER_PANEL_NAVIGATE_EVENT, handler);
   }, []);
 
   const renderModuleWorkspace = () => {

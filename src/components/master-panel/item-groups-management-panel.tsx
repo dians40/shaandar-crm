@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FolderTree, Pencil, Trash2 } from "lucide-react";
+import { FolderTree, Trash2 } from "lucide-react";
 import { SelectInput, TextInput } from "@/components/forms/form-fields";
 import { useItemGroups } from "@/hooks/use-item-groups";
-import { LIST_SEARCH_EMPTY_MESSAGE, matchesListSearch } from "@/lib/list-search-filter";
+import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
+import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import {
   EMPTY_ITEM_GROUP_FORM,
   ITEM_GROUP_PRIMARY_PARENT,
@@ -12,9 +13,11 @@ import {
   type ItemGroupRecord,
 } from "@/types/item-group";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
+import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListSearchBar from "./module-list-search-bar";
+import UniversalRecordProfile from "./universal-record-profile";
 
-type ViewMode = "list" | "add" | "edit";
+type ViewMode = "list" | "add" | "edit" | "detail";
 
 export default function ItemGroupsManagementPanel() {
   const { groups, parentOptions, isReady, addGroup, updateGroup, removeGroup } =
@@ -24,6 +27,12 @@ export default function ItemGroupsManagementPanel() {
   const [form, setForm] = useState(EMPTY_ITEM_GROUP_FORM);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewingId, setViewingId] = useState<string | null>(null);
+
+  const viewingRecord = useMemo(
+    () => groups.find((row) => row.id === viewingId) ?? null,
+    [groups, viewingId]
+  );
 
   const parentDropdownOptions = useMemo(
     () =>
@@ -37,7 +46,7 @@ export default function ItemGroupsManagementPanel() {
   const filteredGroups = useMemo(
     () =>
       groups.filter((row) =>
-        matchesListSearch(searchQuery, [row.name, row.id, row.parentGroup])
+        matchesUniversalNameSearch(searchQuery, row.name, [row.id, row.parentGroup])
       ),
     [groups, searchQuery]
   );
@@ -51,6 +60,11 @@ export default function ItemGroupsManagementPanel() {
   const openAdd = () => {
     resetForm();
     setView("add");
+  };
+
+  const openView = (record: ItemGroupRecord) => {
+    setViewingId(record.id);
+    setView("detail");
   };
 
   const openEdit = (record: ItemGroupRecord) => {
@@ -90,7 +104,7 @@ export default function ItemGroupsManagementPanel() {
     removeGroup(record.id);
   };
 
-  const subTab: "list" | "add" = view === "list" ? "list" : "add";
+  const subTab: "list" | "add" = view === "add" ? "add" : "list";
 
   const tabBar = (
     <ModuleAddListTabBar
@@ -98,6 +112,7 @@ export default function ItemGroupsManagementPanel() {
       active={subTab}
       onList={() => {
         resetForm();
+        setViewingId(null);
         setView("list");
       }}
       onAdd={openAdd}
@@ -109,6 +124,26 @@ export default function ItemGroupsManagementPanel() {
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading item groups...
       </div>
+    );
+  }
+
+  if (view === "detail" && viewingRecord) {
+    return (
+      <>
+        {tabBar}
+        <UniversalRecordProfile
+          title={viewingRecord.name}
+          subtitle="Item Group Profile"
+          fields={[
+            { label: "Parent Group", value: viewingRecord.parentGroup },
+          ]}
+          onBack={() => {
+            setViewingId(null);
+            setView("list");
+          }}
+          onEdit={() => openEdit(viewingRecord)}
+        />
+      </>
     );
   }
 
@@ -227,24 +262,28 @@ export default function ItemGroupsManagementPanel() {
                     <td className="px-4 py-3 text-sm font-medium">{row.name}</td>
                     <td className="px-4 py-3 text-sm">{row.parentGroup}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="inline-flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(row)}
-                          className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Edit / Modify
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(row)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Remove
-                        </button>
-                      </div>
+                      <ModuleListActionGroup
+                        onView={() => openView(row)}
+                        onSelect={() =>
+                          selectMasterPanelEntity({
+                            entityType: "item-group",
+                            entityId: row.id,
+                            entityName: row.name,
+                            sourceModuleId: "item-groups",
+                          })
+                        }
+                        onEdit={() => openEdit(row)}
+                        extra={
+                          <button
+                            type="button"
+                            onClick={() => handleRemove(row)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Remove
+                          </button>
+                        }
+                      />
                     </td>
                   </tr>
                 ))

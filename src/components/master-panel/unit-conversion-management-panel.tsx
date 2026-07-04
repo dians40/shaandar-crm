@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import { useUnitConversions } from "@/hooks/use-unit-conversions";
 import { useUnits } from "@/hooks/use-units";
-import { matchesListSearch } from "@/lib/list-search-filter";
+import { matchesUniversalNameSearch } from "@/lib/list-search-filter";
 import {
   buildConversionPayload,
   EMPTY_UNIT_CONVERSION_FORM,
   formatChainShort,
   formatChainSummary,
+  formatTotalBaseUnits,
   recordToFormState,
   validateUnitConversionForm,
   type UnitConversionFormState,
@@ -18,8 +19,9 @@ import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListSearchBar from "./module-list-search-bar";
 import UnitConversionForm from "./unit-conversion-form";
 import UnitConversionList from "./unit-conversion-list";
+import UniversalRecordProfile from "./universal-record-profile";
 
-type ViewMode = "list" | "add" | "edit";
+type ViewMode = "list" | "add" | "edit" | "detail";
 
 export default function UnitConversionManagementPanel() {
   const { units, unitOptions, isReady: unitsReady } = useUnits();
@@ -30,12 +32,17 @@ export default function UnitConversionManagementPanel() {
   const [form, setForm] = useState<UnitConversionFormState>(EMPTY_UNIT_CONVERSION_FORM);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewingId, setViewingId] = useState<string | null>(null);
+
+  const viewingRecord = useMemo(
+    () => conversions.find((row) => row.id === viewingId) ?? null,
+    [conversions, viewingId]
+  );
 
   const filteredConversions = useMemo(
     () =>
       conversions.filter((row) =>
-        matchesListSearch(searchQuery, [
-          row.baseUnitName,
+        matchesUniversalNameSearch(searchQuery, row.baseUnitName, [
           row.intermediateUnitName,
           row.finalUnitName,
           row.id,
@@ -56,6 +63,11 @@ export default function UnitConversionManagementPanel() {
   const openAdd = () => {
     resetForm();
     setView("add");
+  };
+
+  const openView = (record: UnitConversionRecord) => {
+    setViewingId(record.id);
+    setView("detail");
   };
 
   const openEdit = (record: UnitConversionRecord) => {
@@ -90,7 +102,7 @@ export default function UnitConversionManagementPanel() {
     removeConversion(record.id);
   };
 
-  const subTab: "list" | "add" = view === "list" ? "list" : "add";
+  const subTab: "list" | "add" = view === "add" ? "add" : "list";
 
   const tabBar = (
     <ModuleAddListTabBar
@@ -98,6 +110,7 @@ export default function UnitConversionManagementPanel() {
       active={subTab}
       onList={() => {
         resetForm();
+        setViewingId(null);
         setView("list");
       }}
       onAdd={openAdd}
@@ -109,6 +122,33 @@ export default function UnitConversionManagementPanel() {
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading unit conversions...
       </div>
+    );
+  }
+
+  if (view === "detail" && viewingRecord) {
+    return (
+      <>
+        {tabBar}
+        <UniversalRecordProfile
+          title={viewingRecord.baseUnitName}
+          subtitle="Unit Conversion Chain Profile"
+          fields={[
+            { label: "Main Unit", value: viewingRecord.baseUnitName },
+            { label: "Multiplier 1", value: viewingRecord.firstMultiplier },
+            { label: "Intermediate Unit", value: viewingRecord.intermediateUnitName },
+            { label: "Multiplier 2", value: viewingRecord.secondMultiplier },
+            { label: "Final Unit", value: viewingRecord.finalUnitName },
+            { label: "Chain Summary", value: formatChainSummary(viewingRecord) },
+            { label: "Short Formula", value: formatChainShort(viewingRecord) },
+            { label: "Total", value: formatTotalBaseUnits(viewingRecord) },
+          ]}
+          onBack={() => {
+            setViewingId(null);
+            setView("list");
+          }}
+          onEdit={() => openEdit(viewingRecord)}
+        />
+      </>
     );
   }
 
@@ -153,6 +193,7 @@ export default function UnitConversionManagementPanel() {
         <UnitConversionList
           conversions={conversions}
           filteredConversions={filteredConversions}
+          onView={openView}
           onEdit={openEdit}
           onRemove={handleRemove}
         />

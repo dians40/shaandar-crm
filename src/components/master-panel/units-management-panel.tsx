@@ -1,20 +1,23 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Pencil, Ruler, Trash2 } from "lucide-react";
+import { Ruler, Trash2 } from "lucide-react";
 import { TextInput } from "@/components/forms/form-fields";
 import { formatUnitLabel } from "@/constants/units";
 import { useUnits } from "@/hooks/use-units";
-import { LIST_SEARCH_EMPTY_MESSAGE, matchesListSearch } from "@/lib/list-search-filter";
+import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
+import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import {
   EMPTY_UNIT_FORM,
   validateUnitForm,
   type UnitRecord,
 } from "@/types/unit";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
+import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListSearchBar from "./module-list-search-bar";
+import UniversalRecordProfile from "./universal-record-profile";
 
-type ViewMode = "list" | "add" | "edit";
+type ViewMode = "list" | "add" | "edit" | "detail";
 
 export default function UnitsManagementPanel() {
   const { units, isReady, addUnit, updateUnit, removeUnit } = useUnits();
@@ -23,11 +26,17 @@ export default function UnitsManagementPanel() {
   const [form, setForm] = useState(EMPTY_UNIT_FORM);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [viewingId, setViewingId] = useState<string | null>(null);
+
+  const viewingRecord = useMemo(
+    () => units.find((row) => row.id === viewingId) ?? null,
+    [units, viewingId]
+  );
 
   const filteredUnits = useMemo(
     () =>
       units.filter((row) =>
-        matchesListSearch(searchQuery, [row.name, row.shortCode, row.id])
+        matchesUniversalNameSearch(searchQuery, row.name, [row.shortCode, row.id])
       ),
     [units, searchQuery]
   );
@@ -41,6 +50,11 @@ export default function UnitsManagementPanel() {
   const openAdd = () => {
     resetForm();
     setView("add");
+  };
+
+  const openView = (record: UnitRecord) => {
+    setViewingId(record.id);
+    setView("detail");
   };
 
   const openEdit = (record: UnitRecord) => {
@@ -92,7 +106,7 @@ export default function UnitsManagementPanel() {
     removeUnit(record.id);
   };
 
-  const subTab: "list" | "add" = view === "list" ? "list" : "add";
+  const subTab: "list" | "add" = view === "add" ? "add" : "list";
 
   const tabBar = (
     <ModuleAddListTabBar
@@ -100,6 +114,7 @@ export default function UnitsManagementPanel() {
       active={subTab}
       onList={() => {
         resetForm();
+        setViewingId(null);
         setView("list");
       }}
       onAdd={openAdd}
@@ -111,6 +126,28 @@ export default function UnitsManagementPanel() {
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading units...
       </div>
+    );
+  }
+
+  if (view === "detail" && viewingRecord) {
+    return (
+      <>
+        {tabBar}
+        <UniversalRecordProfile
+          title={formatUnitLabel(viewingRecord)}
+          subtitle="Unit Profile"
+          fields={[
+            { label: "Unit Name", value: viewingRecord.name },
+            { label: "Short Code", value: viewingRecord.shortCode },
+            { label: "System Seed", value: viewingRecord.isSystemSeed },
+          ]}
+          onBack={() => {
+            setViewingId(null);
+            setView("list");
+          }}
+          onEdit={() => openEdit(viewingRecord)}
+        />
+      </>
     );
   }
 
@@ -242,26 +279,30 @@ export default function UnitsManagementPanel() {
                     </td>
                     <td className="px-4 py-3 text-sm">{row.shortCode}</td>
                     <td className="px-4 py-3 text-right">
-                      <div className="inline-flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(row)}
-                          className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Edit / Modify
-                        </button>
-                        {!row.isSystemSeed && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemove(row)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            Remove
-                          </button>
-                        )}
-                      </div>
+                      <ModuleListActionGroup
+                        onView={() => openView(row)}
+                        onSelect={() =>
+                          selectMasterPanelEntity({
+                            entityType: "unit",
+                            entityId: row.id,
+                            entityName: row.name,
+                            sourceModuleId: "units",
+                          })
+                        }
+                        onEdit={() => openEdit(row)}
+                        extra={
+                          !row.isSystemSeed ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRemove(row)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Remove
+                            </button>
+                          ) : undefined
+                        }
+                      />
                     </td>
                   </tr>
                 ))

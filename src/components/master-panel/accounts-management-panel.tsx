@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Landmark, Pencil, Trash2 } from "lucide-react";
+import { Landmark, Trash2 } from "lucide-react";
 import {
   SelectInput,
   TextInput,
@@ -10,9 +10,12 @@ import {
 } from "@/components/forms/form-fields";
 import { useAccountGroups } from "@/hooks/use-account-groups";
 import { useAccounts } from "@/hooks/use-accounts";
-import { LIST_SEARCH_EMPTY_MESSAGE, matchesListSearch } from "@/lib/list-search-filter";
+import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
+import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
+import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListSearchBar from "./module-list-search-bar";
+import UniversalRecordProfile from "./universal-record-profile";
 import {
   EMPTY_ACCOUNT_FORM,
   validateAccountForm,
@@ -21,7 +24,7 @@ import {
 } from "@/types/account";
 import { cn } from "@/lib/utils";
 
-type ViewMode = "list" | "add" | "edit";
+type ViewMode = "list" | "add" | "edit" | "detail";
 
 export default function AccountsManagementPanel() {
   const { accounts, isReady, addAccount, updateAccount, removeAccount } = useAccounts();
@@ -30,18 +33,23 @@ export default function AccountsManagementPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_ACCOUNT_FORM);
   const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [viewingId, setViewingId] = useState<string | null>(null);
 
   const groupOptions = useMemo(
     () => (groupNames ?? []).map((name) => ({ value: name, label: name })),
     [groupNames]
   );
 
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const viewingRecord = useMemo(
+    () => accounts.find((row) => row.id === viewingId) ?? null,
+    [accounts, viewingId]
+  );
   const filteredAccounts = useMemo(
     () =>
       accounts.filter((row) =>
-        matchesListSearch(searchQuery, [
-          row.name,
+        matchesUniversalNameSearch(searchQuery, row.name, [
           row.id,
           row.groupName,
           row.gstNumber,
@@ -61,6 +69,11 @@ export default function AccountsManagementPanel() {
   const openAdd = () => {
     resetForm();
     setView("add");
+  };
+
+  const openView = (record: AccountRecord) => {
+    setViewingId(record.id);
+    setView("detail");
   };
 
   const openEdit = (record: AccountRecord) => {
@@ -127,7 +140,7 @@ export default function AccountsManagementPanel() {
     );
   }
 
-  const subTab: "list" | "add" = view === "list" ? "list" : "add";
+  const subTab: "list" | "add" = view === "add" ? "add" : "list";
 
   const tabBar = (
     <ModuleAddListTabBar
@@ -135,11 +148,50 @@ export default function AccountsManagementPanel() {
       active={subTab}
       onList={() => {
         resetForm();
+        setViewingId(null);
         setView("list");
       }}
       onAdd={openAdd}
     />
   );
+
+  if (view === "detail" && viewingRecord) {
+    return (
+      <>
+        {tabBar}
+        <UniversalRecordProfile
+          title={viewingRecord.name}
+          subtitle={`${viewingRecord.groupName} · Party Account Profile`}
+          fields={[
+            { label: "Group", value: viewingRecord.groupName },
+            {
+              label: "Opening Balance",
+              value: `₹${viewingRecord.openingBalanceAmount.toLocaleString("en-IN")} ${viewingRecord.openingBalanceType}`,
+            },
+            { label: "GST Number", value: viewingRecord.gstNumber },
+            { label: "PAN Number", value: viewingRecord.panNumber },
+            { label: "Mobile", value: viewingRecord.mobileNumber },
+            { label: "Contact Person", value: viewingRecord.contactPersonNumber },
+            { label: "Address", value: viewingRecord.address },
+            { label: "Station / Destination", value: viewingRecord.stationDestination },
+            { label: "Distance (km)", value: viewingRecord.distanceKm },
+            { label: "Bill-by-Bill", value: viewingRecord.billByBillBalancing },
+            { label: "Credit Days", value: viewingRecord.creditDays },
+            { label: "Bank Account", value: viewingRecord.bankAccountNo },
+            { label: "Bank IFSC", value: viewingRecord.bankIfsc },
+            { label: "Bank Name", value: viewingRecord.bankName },
+            { label: "Others", value: viewingRecord.others },
+            { label: "Maintenance Flags", value: viewingRecord.maintenanceFlags },
+          ]}
+          onBack={() => {
+            setViewingId(null);
+            setView("list");
+          }}
+          onEdit={() => openEdit(viewingRecord)}
+        />
+      </>
+    );
+  }
 
   if (view === "add" || view === "edit") {
     return (
@@ -419,24 +471,28 @@ export default function AccountsManagementPanel() {
                   </td>
                   <td className="px-4 py-3 text-sm">{row.creditDays}</td>
                   <td className="px-4 py-3 text-right">
-                    <div className="inline-flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(row)}
-                        className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Edit / Modify
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRemove(row)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Remove
-                      </button>
-                    </div>
+                    <ModuleListActionGroup
+                      onView={() => openView(row)}
+                      onSelect={() =>
+                        selectMasterPanelEntity({
+                          entityType: "account",
+                          entityId: row.id,
+                          entityName: row.name,
+                          sourceModuleId: "accounts",
+                        })
+                      }
+                      onEdit={() => openEdit(row)}
+                      extra={
+                        <button
+                          type="button"
+                          onClick={() => handleRemove(row)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2 py-1 text-xs text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Remove
+                        </button>
+                      }
+                    />
                   </td>
                 </tr>
               ))

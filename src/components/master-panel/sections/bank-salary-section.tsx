@@ -10,17 +10,20 @@ import {
   MINIMUM_OUTPUT_OPTIONS,
   PACKING_ITEM_OPTIONS,
 } from "@/constants/employee-options";
+import { STATUTORY_STATUS_OPTIONS } from "@/lib/statutory-status";
 import { VARIABLE_SALARY_BASIS } from "@/constants/statutory-rates";
 import {
   calculateAllowances,
   calculateContractTotal,
 } from "@/lib/salary-breakdown";
-import type { BankAndSalary, ContractPacking, FoodingAllowance, SalaryBasis } from "@/types/employee-form";
+import type { BankAndSalaryErrors } from "@/lib/validate-employee-form";
+import type { BankAndSalary, ContractPacking, FoodingAllowance, SalaryBasis, StatutoryStatus } from "@/types/employee-form";
 import StatutoryCalculationPanel from "./statutory-calculation-panel";
 
 type Props = {
   data: BankAndSalary;
   salaryBasis?: SalaryBasis | "";
+  errors?: BankAndSalaryErrors;
   onChange: (data: BankAndSalary) => void;
 };
 
@@ -28,7 +31,7 @@ function formatCurrency(value: number): string {
   return `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default function BankSalarySection({ data, salaryBasis = "", onChange }: Props) {
+export default function BankSalarySection({ data, salaryBasis = "", errors = {}, onChange }: Props) {
   const updateField = <K extends keyof BankAndSalary>(
     key: K,
     value: BankAndSalary[K]
@@ -260,17 +263,37 @@ export default function BankSalarySection({ data, salaryBasis = "", onChange }: 
           Statutory Benefits
         </h3>
         <div className="grid gap-4 sm:grid-cols-2">
-          <ToggleInput
-            label="Enable ESI Deduction"
-            description="When enabled, ESI is deducted from payroll; when disabled, ESI evaluates to 0"
-            checked={data.esiEnabled}
-            onChange={(checked) => updateField("esiEnabled", checked)}
+          <SelectInput
+            label="ESI Status"
+            name="esiStatus"
+            required
+            value={data.esiStatus}
+            error={errors.esiStatus}
+            onChange={(e) =>
+              updateField("esiStatus", e.target.value as StatutoryStatus | "")
+            }
+            placeholder="Select ESI status"
+            hint="Non-Active sets ESI payroll deduction to 0"
+            options={STATUTORY_STATUS_OPTIONS.map((status) => ({
+              value: status,
+              label: status,
+            }))}
           />
-          <ToggleInput
-            label="PF Enable"
-            description="PF deduction on Basic salary only"
-            checked={data.pfEnabled}
-            onChange={(checked) => updateField("pfEnabled", checked)}
+          <SelectInput
+            label="PF Status"
+            name="pfStatus"
+            required
+            value={data.pfStatus}
+            error={errors.pfStatus}
+            onChange={(e) =>
+              updateField("pfStatus", e.target.value as StatutoryStatus | "")
+            }
+            placeholder="Select PF status"
+            hint="Non-Active sets PF payroll deduction to 0"
+            options={STATUTORY_STATUS_OPTIONS.map((status) => ({
+              value: status,
+              label: status,
+            }))}
           />
         </div>
         <StatutoryCalculationPanel data={data} salaryBasis={salaryBasis} />

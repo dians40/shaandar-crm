@@ -1,7 +1,8 @@
 "use client";
 
+import { useMemo } from "react";
 import { SelectInput } from "@/components/forms/form-fields";
-import { MACHINE_OPTIONS } from "@/constants/employee-options";
+import { useGeneralSettings } from "@/hooks/use-general-settings";
 import type { WorkAssignment } from "@/types/employee-form";
 
 type Props = {
@@ -10,6 +11,17 @@ type Props = {
 };
 
 export default function WorkAssignmentSection({ data, onChange }: Props) {
+  const { machineOptions, isReady } = useGeneralSettings();
+
+  const options = useMemo(() => {
+    const current = data.machineAssignment.trim();
+    if (!current) return machineOptions;
+    if (machineOptions.some((option) => option.value === current)) {
+      return machineOptions;
+    }
+    return [{ value: current, label: current }, ...machineOptions];
+  }, [data.machineAssignment, machineOptions]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -30,12 +42,9 @@ export default function WorkAssignmentSection({ data, onChange }: Props) {
           onChange={(e) =>
             onChange({ ...data, machineAssignment: e.target.value })
           }
-          placeholder="Not assigned yet (optional)"
-          options={MACHINE_OPTIONS.filter((m) => m !== "None").map((machine) => ({
-              value: machine,
-              label: machine,
-            }))}
-          hint="Optional — assign machine in a later step if needed"
+          placeholder={isReady ? "Not assigned yet (optional)" : "Loading machines..."}
+          options={options}
+          hint="Dynamic list from General Settings — re-assign freely at any time"
         />
       </div>
 

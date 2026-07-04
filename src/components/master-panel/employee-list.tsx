@@ -59,10 +59,10 @@ export default function EmployeeList({
           employee.lastName,
           employee.mobileNumber,
           employee.employeeType,
-          employee.vehicleNumber,
           employee.machineAssignment,
-          employee.assignedFirm,
-          employee.assignedContractor,
+          employee.assignedFromGroup,
+          employee.esiStatus,
+          employee.pfStatus,
         ])
       ),
     [employees, searchQuery]
@@ -200,19 +200,16 @@ export default function EmployeeList({
                   Mobile
                 </th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
-                  Vehicle No.
-                </th>
-                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
                   Machine
                 </th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
-                  Assigned Firm
-                </th>
-                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
-                  Contractor
+                  Assigned From / Group
                 </th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
                   ESI Status
+                </th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
+                  PF Status
                 </th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
                   Salary (Editable)
@@ -270,26 +267,31 @@ export default function EmployeeList({
                         {employee.mobileNumber}
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-muted">
-                        {employee.vehicleNumber}
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-muted">
                         {employee.machineAssignment}
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-text">
-                        {employee.assignedFirm}
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-muted">
-                        {employee.assignedContractor}
+                        {employee.assignedFromGroup}
                       </td>
                       <td className="whitespace-nowrap px-5 py-4">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
-                            employee.esiEnabled
+                            employee.esiStatus === "Active"
                               ? "bg-emerald-50 text-emerald-700"
                               : "bg-corporate-bg text-corporate-muted"
                           }`}
                         >
-                          {employee.esiEnabled ? "Active" : "Inactive"}
+                          {employee.esiStatus}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-4">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                            employee.pfStatus === "Active"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-corporate-bg text-corporate-muted"
+                          }`}
+                        >
+                          {employee.pfStatus}
                         </span>
                       </td>
                       <td className="px-5 py-4" onClick={stopMasterListRowClick}>

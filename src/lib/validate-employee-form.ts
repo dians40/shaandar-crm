@@ -1,4 +1,4 @@
-import type { BasicInformation } from "@/types/employee-form";
+import type { BasicInformation, BankAndSalary } from "@/types/employee-form";
 
 export type BasicInformationField =
   | "firstName"
@@ -7,12 +7,15 @@ export type BasicInformationField =
   | "dateOfBirth"
   | "employeeType"
   | "gender"
-  | "assignedFirm"
-  | "assignedContractor";
+  | "assignedFromGroup";
+
+export type BankAndSalaryField = "esiStatus" | "pfStatus";
 
 export type BasicInformationErrors = Partial<
   Record<BasicInformationField, string>
 >;
+
+export type BankAndSalaryErrors = Partial<Record<BankAndSalaryField, string>>;
 
 export function validateBasicInformation(
   data: BasicInformation
@@ -39,14 +42,9 @@ export function validateBasicInformation(
     errors.employeeType = "Employee type is required.";
   }
 
-  const hasFirm = Boolean(data.assignedFirm?.trim());
-  const hasContractor = Boolean(data.assignedContractor?.trim());
-
-  if (!hasFirm && !hasContractor) {
-    const message =
-      "Select either Assigned Firm or Assigned Contractor — at least one is required.";
-    errors.assignedFirm = message;
-    errors.assignedContractor = message;
+  if (!data.assignedFromGroup.trim()) {
+    errors.assignedFromGroup =
+      "Assigned From / Contractor Group is required.";
   }
 
   if (!data.mobileNumber.trim()) {
@@ -58,8 +56,32 @@ export function validateBasicInformation(
   return errors;
 }
 
+export function validateBankAndSalary(data: BankAndSalary): BankAndSalaryErrors {
+  const errors: BankAndSalaryErrors = {};
+
+  if (!data.esiStatus) {
+    errors.esiStatus = "ESI Status is required.";
+  }
+
+  if (!data.pfStatus) {
+    errors.pfStatus = "PF Status is required.";
+  }
+
+  return errors;
+}
+
 export function hasValidationErrors(
-  errors: BasicInformationErrors
+  errors: BasicInformationErrors | BankAndSalaryErrors
 ): boolean {
   return Object.keys(errors).length > 0;
+}
+
+export function validateEmployeeForm(data: {
+  basicInformation: BasicInformation;
+  bankAndSalary: BankAndSalary;
+}): { basic: BasicInformationErrors; bank: BankAndSalaryErrors } {
+  return {
+    basic: validateBasicInformation(data.basicInformation),
+    bank: validateBankAndSalary(data.bankAndSalary),
+  };
 }

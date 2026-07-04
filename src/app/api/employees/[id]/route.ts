@@ -7,7 +7,7 @@ import {
   mapEmployeeRowToListItem,
   mapFormToEmployeeInsert,
 } from "@/lib/map-employee-to-db";
-import { validateBasicInformation } from "@/lib/validate-employee-form";
+import { validateEmployeeForm } from "@/lib/validate-employee-form";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractDocumentFiles } from "@/lib/form-data-utils";
 import { uploadEmployeeDocuments } from "@/lib/supabase/upload-documents";
@@ -80,11 +80,13 @@ export async function PUT(request: Request, context: RouteContext) {
 
     const employeePayload = JSON.parse(employeeJson) as EmployeePayload;
 
-    const validationErrors = validateBasicInformation(
-      employeePayload.basicInformation
-    );
-    if (Object.keys(validationErrors).length > 0) {
-      const firstError = Object.values(validationErrors)[0];
+    const { basic: validationErrors, bank: bankErrors } = validateEmployeeForm({
+      basicInformation: employeePayload.basicInformation,
+      bankAndSalary: employeePayload.bankAndSalary,
+    });
+    if (Object.keys(validationErrors).length > 0 || Object.keys(bankErrors).length > 0) {
+      const firstError =
+        Object.values(validationErrors)[0] ?? Object.values(bankErrors)[0];
       return NextResponse.json({ error: firstError ?? "Invalid employee data." }, { status: 400 });
     }
 

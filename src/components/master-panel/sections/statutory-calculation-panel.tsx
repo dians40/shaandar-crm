@@ -10,6 +10,7 @@ import {
   getEffectiveGrossSalary,
   parseSalaryAmount,
 } from "@/lib/statutory-calculations";
+import { isStatutoryActive } from "@/lib/statutory-status";
 import type { BankAndSalary, SalaryBasis } from "@/types/employee-form";
 import { VARIABLE_SALARY_BASIS } from "@/constants/statutory-rates";
 
@@ -21,11 +22,9 @@ type Props = {
 export default function StatutoryCalculationPanel({ data, salaryBasis = "" }: Props) {
   const basicSalary = parseSalaryAmount(data.basicSalary || data.fixSalaryAmount);
   const allowances = calculateAllowances(basicSalary);
-  const deductions = calculateSalaryDeductions(
-    basicSalary,
-    data.pfEnabled,
-    data.esiEnabled
-  );
+  const pfActive = isStatutoryActive(data.pfStatus);
+  const esiActive = isStatutoryActive(data.esiStatus);
+  const deductions = calculateSalaryDeductions(basicSalary, pfActive, esiActive);
 
   const variableGross = getEffectiveGrossSalary(
     data.fixSalaryAmount,
@@ -40,10 +39,10 @@ export default function StatutoryCalculationPanel({ data, salaryBasis = "" }: Pr
   );
 
   const esiBase = Math.min(allowances.grossWithAllowances, ESI_RATES.wageCeilingMonthly);
-  const pfEmployer = data.pfEnabled
+  const pfEmployer = pfActive
     ? (basicSalary * (PF_RATES.employerEpfPercent + PF_RATES.employerAdminPercent)) / 100
     : 0;
-  const esiEmployer = data.esiEnabled
+  const esiEmployer = esiActive
     ? (esiBase * ESI_RATES.employerPercent) / 100
     : 0;
 
@@ -109,8 +108,8 @@ export default function StatutoryCalculationPanel({ data, salaryBasis = "" }: Pr
       <div className="grid gap-4 lg:grid-cols-2">
         <article className="rounded-lg border border-corporate-border bg-corporate-surface p-4">
           <h4 className="text-sm font-semibold text-corporate-text">{ESI_RATES.label}</h4>
-          {!data.esiEnabled ? (
-            <p className="mt-2 text-sm text-corporate-muted">ESI is disabled for this employee.</p>
+          {!esiActive ? (
+            <p className="mt-2 text-sm text-corporate-muted">ESI is non-active for this employee.</p>
           ) : (
             <dl className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between">
@@ -149,8 +148,8 @@ export default function StatutoryCalculationPanel({ data, salaryBasis = "" }: Pr
 
         <article className="rounded-lg border border-corporate-border bg-corporate-surface p-4">
           <h4 className="text-sm font-semibold text-corporate-text">{PF_RATES.label}</h4>
-          {!data.pfEnabled ? (
-            <p className="mt-2 text-sm text-corporate-muted">PF is disabled for this employee.</p>
+          {!pfActive ? (
+            <p className="mt-2 text-sm text-corporate-muted">PF is non-active for this employee.</p>
           ) : (
             <dl className="mt-3 space-y-2 text-sm">
               <div className="flex justify-between">

@@ -15,7 +15,9 @@ import { createEmployee, fetchEmployee, updateEmployee } from "@/lib/employees-a
 import {
   hasValidationErrors,
   validateBasicInformation,
+  validateBankAndSalary,
   type BasicInformationErrors,
+  type BankAndSalaryErrors,
 } from "@/lib/validate-employee-form";
 import {
   INITIAL_EMPLOYEE_FORM,
@@ -50,6 +52,7 @@ export default function EmployeeForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
   const [basicErrors, setBasicErrors] = useState<BasicInformationErrors>({});
+  const [bankErrors, setBankErrors] = useState<BankAndSalaryErrors>({});
 
   useEffect(() => {
     if (mode !== "edit" || !employeeId) return;
@@ -74,6 +77,13 @@ export default function EmployeeForm({
   const runBasicValidation = () => {
     const errors = validateBasicInformation(formData.basicInformation);
     setBasicErrors(errors);
+    setShowValidation(true);
+    return !hasValidationErrors(errors);
+  };
+
+  const runBankValidation = () => {
+    const errors = validateBankAndSalary(formData.bankAndSalary);
+    setBankErrors(errors);
     setShowValidation(true);
     return !hasValidationErrors(errors);
   };
@@ -138,15 +148,19 @@ export default function EmployeeForm({
           <BankSalarySection
             data={formData.bankAndSalary}
             salaryBasis={formData.basicInformation.salaryBasis}
-            onChange={(bankAndSalary) =>
-              setFormData((prev) => ({ ...prev, bankAndSalary }))
-            }
+            errors={showValidation ? bankErrors : {}}
+            onChange={(bankAndSalary) => {
+              setFormData((prev) => ({ ...prev, bankAndSalary }));
+              if (showValidation) {
+                setBankErrors(validateBankAndSalary(bankAndSalary));
+              }
+            }}
           />
         );
       default:
         return null;
     }
-  }, [activeSection, formData, basicErrors, showValidation]);
+  }, [activeSection, formData, basicErrors, bankErrors, showValidation]);
 
   const goNext = () => {
     if (activeSection === "basic" && !runBasicValidation()) return;
@@ -167,6 +181,10 @@ export default function EmployeeForm({
   const handleSubmit = async () => {
     if (!runBasicValidation()) {
       setActiveSection("basic");
+      return;
+    }
+    if (!runBankValidation()) {
+      setActiveSection("bank");
       return;
     }
 
@@ -198,6 +216,7 @@ export default function EmployeeForm({
     setSubmitError(null);
     setShowValidation(false);
     setBasicErrors({});
+    setBankErrors({});
   };
 
   if (isLoading) {
@@ -282,12 +301,15 @@ export default function EmployeeForm({
         </div>
       </div>
 
-      {showValidation && hasValidationErrors(basicErrors) && activeSection !== "basic" && (
+      {showValidation &&
+        (hasValidationErrors(basicErrors) || hasValidationErrors(bankErrors)) &&
+        activeSection !== "basic" &&
+        activeSection !== "bank" && (
         <div
           className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
           role="alert"
         >
-          Please complete all required fields in Basic Information before submitting.
+          Please complete all required fields in Basic Information and Bank & Salary before submitting.
         </div>
       )}
 

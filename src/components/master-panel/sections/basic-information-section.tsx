@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   SelectInput,
   TextInput,
@@ -7,19 +8,14 @@ import {
   FileInputField,
 } from "@/components/forms/form-fields";
 import {
-  ASSIGNED_FIRM_OPTIONS,
   GENDER_OPTIONS,
   getSalaryBasisOptionsForEmployeeType,
 } from "@/constants/employee-options";
 import { useGeneralSettings } from "@/hooks/use-general-settings";
+import { buildAssignedFromGroupOptions } from "@/lib/employee-assigned-from";
 import { calculateAgeFromDob, DOCUMENT_LABELS } from "@/lib/employee-form-utils";
 import type { BasicInformationErrors } from "@/lib/validate-employee-form";
-import type {
-  AssignedFirm,
-  BasicInformation,
-  Gender,
-  SalaryBasis,
-} from "@/types/employee-form";
+import type { BasicInformation, Gender, SalaryBasis } from "@/types/employee-form";
 
 type Props = {
   data: BasicInformation;
@@ -44,15 +40,21 @@ export default function BasicInformationSection({
   onProfilePhotoChange,
   onChange,
 }: Props) {
-  const { contractorOptions, employeeTypeOptions, isReady: settingsReady } =
+  const { contractorNames, employeeTypeOptions, isReady: settingsReady } =
     useGeneralSettings();
+
+  const assignedFromOptions = useMemo(() => {
+    const base = buildAssignedFromGroupOptions(contractorNames);
+    const current = data.assignedFromGroup.trim();
+    if (!current || base.some((option) => option.value === current)) {
+      return base;
+    }
+    return [{ value: current, label: current }, ...base];
+  }, [contractorNames, data.assignedFromGroup]);
 
   const salaryOptions = data.employeeType
     ? getSalaryBasisOptionsForEmployeeType(data.employeeType)
     : [];
-
-  const firmRequired = !data.assignedContractor.trim();
-  const contractorRequired = !data.assignedFirm.trim();
 
   const updateField = <K extends keyof BasicInformation>(
     key: K,
@@ -101,7 +103,7 @@ export default function BasicInformationSection({
           Basic Information
         </h2>
         <p className="mt-1 text-sm text-corporate-muted">
-          Personal details, vehicle linkage, references, and employment classification.
+          Personal details, references, and employment classification.
         </p>
       </div>
 
@@ -133,14 +135,6 @@ export default function BasicInformationSection({
             hint={DOCUMENT_LABELS.profilePhoto.hint}
             fileName={profileDisplayName}
             onFileChange={onProfilePhotoChange}
-          />
-          <TextInput
-            label="Vehicle Number"
-            name="vehicleNumber"
-            placeholder="e.g. MH-12-AB-1234"
-            value={data.vehicleNumber}
-            onChange={(e) => updateField("vehicleNumber", e.target.value.toUpperCase())}
-            hint="Track which driver/labor is assigned to which vehicle"
           />
           <TextInput
             label="Joining Date"
@@ -289,41 +283,19 @@ export default function BasicInformationSection({
         </h3>
         <div className="grid gap-5 sm:grid-cols-2">
           <SelectInput
-            label="Assigned Firm / Company"
-            name="assignedFirm"
-            required={firmRequired}
-            value={data.assignedFirm}
-            error={errors.assignedFirm}
-            onChange={(e) =>
-              updateField("assignedFirm", e.target.value as AssignedFirm | "")
-            }
-            placeholder="Select firm / company"
-            hint={
-              contractorRequired
-                ? "Required when contractor is not selected"
-                : "Optional when contractor is selected"
-            }
-            options={ASSIGNED_FIRM_OPTIONS.map((firm) => ({
-              value: firm,
-              label: firm,
-            }))}
-          />
-          <SelectInput
-            label="Assigned Contractor"
-            name="assignedContractor"
-            required={contractorRequired}
-            value={data.assignedContractor}
-            error={errors.assignedContractor}
-            onChange={(e) => updateField("assignedContractor", e.target.value)}
+            label="Assigned From / Contractor Group"
+            name="assignedFromGroup"
+            required
+            value={data.assignedFromGroup}
+            error={errors.assignedFromGroup}
+            onChange={(e) => updateField("assignedFromGroup", e.target.value)}
             placeholder={
-              settingsReady ? "Select contractor" : "Loading contractors..."
+              settingsReady
+                ? "Select firm or contractor group"
+                : "Loading options..."
             }
-            hint={
-              firmRequired
-                ? "Required when firm is not selected"
-                : "Optional when firm is selected"
-            }
-            options={contractorOptions}
+            hint="Firms and contractors from General Settings in one unified list"
+            options={assignedFromOptions}
           />
           <SelectInput
             label="Employee Type"

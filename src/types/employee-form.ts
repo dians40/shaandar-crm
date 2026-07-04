@@ -11,6 +11,8 @@ export type AssignedFirm = "Krishna Food Product" | "MAHEK Industries";
 
 export type AssignedContractor = string;
 
+export type StatutoryStatus = "Active" | "Non-Active";
+
 export type FoodingAllowance =
   | "Daily Food Provided by Company"
   | "Self-Managed / Eaten by Self";
@@ -77,14 +79,12 @@ export type BasicInformation = {
   alternativeMobileNumber: string;
   fullAddress: string;
   pinCode: string;
-  vehicleNumber: string;
   policeStationName: string;
   referenceFromName: string;
   referenceMobileNumber: string;
   employeeType: EmployeeType | "";
   salaryBasis: SalaryBasis | "";
-  assignedFirm: AssignedFirm | "";
-  assignedContractor: AssignedContractor | "";
+  assignedFromGroup: string;
 };
 
 export type WorkAssignment = {
@@ -106,8 +106,8 @@ export type BankAndSalary = {
   variableSalaryEnabled: boolean;
   dailyRate: string;
   workedDays: string;
-  esiEnabled: boolean;
-  pfEnabled: boolean;
+  esiStatus: StatutoryStatus | "";
+  pfStatus: StatutoryStatus | "";
   foodingAllowance: FoodingAllowance | "";
   contractPacking: ContractPacking;
   bonusLastYear: string;
@@ -174,14 +174,12 @@ export const INITIAL_EMPLOYEE_FORM: EmployeeFormData = {
     alternativeMobileNumber: "",
     fullAddress: "",
     pinCode: "",
-    vehicleNumber: "",
     policeStationName: "",
     referenceFromName: "",
     referenceMobileNumber: "",
     employeeType: "",
     salaryBasis: "",
-    assignedFirm: "",
-    assignedContractor: "",
+    assignedFromGroup: "",
   },
   workAssignment: {
     machineAssignment: "",
@@ -199,8 +197,8 @@ export const INITIAL_EMPLOYEE_FORM: EmployeeFormData = {
     variableSalaryEnabled: false,
     dailyRate: "",
     workedDays: "",
-    esiEnabled: false,
-    pfEnabled: false,
+    esiStatus: "",
+    pfStatus: "",
     foodingAllowance: "",
     contractPacking: { ...INITIAL_CONTRACT_PACKING },
     bonusLastYear: "",

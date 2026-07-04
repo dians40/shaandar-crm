@@ -3,17 +3,27 @@
 import { useState, useEffect } from "react";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
-// हमने इम्पोर्ट का रास्ता बदलकर सही फ़ाइल '@/lib/supabase/client' कर दिया है
 import { supabase } from "@/lib/supabase/client"; 
+
+// एम्प्लोयी का सही स्ट्रक्चर (Type) सेट कर रहे हैं ताकि TypeScript एरर न दे
+interface Employee {
+  id: string;
+  name: string;
+  employee_type?: string;
+  mobile?: string;
+  vehicle_no?: string;
+  salary?: number;
+  [key: string]: unknown;
+}
 
 export default function MasterPanelView() {
   const [view, setView] = useState<"list" | "add">("list");
-  const [employees, setEmployees] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]); // यहाँ से 'any' हटा दिया गया है
 
   const fetchEmployees = async () => {
     const { data, error } = await supabase.from("employees").select("*");
     if (!error && data) {
-      setEmployees(data);
+      setEmployees(data as Employee[]);
     }
   };
 

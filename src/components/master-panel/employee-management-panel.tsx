@@ -4,7 +4,7 @@ import { useCallback, useState, type ReactNode } from "react";
 import EmployeeBioDataCard from "./employee-bio-data-card";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
-import EmployeeSubTabBar from "./employee-sub-tab-bar";
+import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import SupabaseSetupBanner from "./supabase-setup-banner";
 import { useEmployees } from "@/hooks/use-employees";
 
@@ -48,7 +48,8 @@ export default function EmployeeManagementPanel() {
 
   const withSubTabs = (content: ReactNode) => (
     <>
-      <EmployeeSubTabBar
+      <ModuleAddListTabBar
+        moduleName="Employee"
         active={subTab}
         onList={handleListTab}
         onAdd={handleAddTab}

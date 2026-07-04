@@ -94,7 +94,7 @@ const ADMINISTRATION_MODULES: MasterPanelModule[] = [
     title: "Account Group",
     subtitle: "Group hierarchy for accounting heads",
     icon: FolderTree,
-    placeholderMessage: "Account group configuration coming soon",
+    placeholderMessage: "",
   },
   {
     id: "items-products",

@@ -7,12 +7,16 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { IMPLEMENTED_ADMINISTRATION_MODULE_IDS } from "@/constants/account-groups";
 import {
   DEFAULT_MASTER_PANEL_MODULE_ID,
+  getGroupForModule,
   getMasterPanelModule,
   type MasterPanelModuleId,
 } from "@/constants/master-panel-modules";
+import AccountGroupManagementPanel from "./account-group-management-panel";
 import AccountsManagementPanel from "./accounts-management-panel";
+import AdministrationPlaceholderPanel from "./administration-placeholder-panel";
 import EmployeeManagementPanel from "./employee-management-panel";
 import GodownManagementPanel from "./godown-management-panel";
 import MasterPanelManagerNav from "./master-panel-manager-nav";
@@ -96,16 +100,27 @@ function MasterPanelContent() {
       switch (moduleId) {
         case "accounts":
           return <AccountsManagementPanel />;
+        case "account-group":
+          return <AccountGroupManagementPanel />;
         case "employee-management":
           return <EmployeeManagementPanel />;
         case "godowns-locations":
           return <GodownManagementPanel />;
         case "overtime-tracker":
           return <OvertimeTrackerPanel />;
-        default:
+        default: {
+          const moduleGroup = getGroupForModule(moduleId);
+          if (
+            moduleGroup?.id === "administration" &&
+            !IMPLEMENTED_ADMINISTRATION_MODULE_IDS.has(moduleId) &&
+            activeModule
+          ) {
+            return <AdministrationPlaceholderPanel module={activeModule} />;
+          }
           return activeModule ? (
             <ModulePlaceholder module={activeModule} />
           ) : null;
+        }
       }
     } catch (error) {
       console.error(`Module workspace failed (${moduleId}):`, error);

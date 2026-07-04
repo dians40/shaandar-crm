@@ -2,21 +2,42 @@
 
 import { cn } from "@/lib/utils";
 
-type EmployeeSubTab = "list" | "add";
+export type ModuleAddListTab = "list" | "add";
 
 type Props = {
-  active: EmployeeSubTab;
+  moduleName: string;
+  active: ModuleAddListTab;
   onList: () => void;
   onAdd: () => void;
 };
 
-export default function EmployeeSubTabBar({ active, onList, onAdd }: Props) {
+/** Standard Administration top-bar: Add [Module] + List */
+export default function ModuleAddListTabBar({
+  moduleName,
+  active,
+  onList,
+  onAdd,
+}: Props) {
   return (
     <div
-      className="mb-4 flex gap-2"
+      className="mb-4 flex flex-wrap gap-2"
       role="tablist"
-      aria-label="Employee workspace views"
+      aria-label={`${moduleName} workspace views`}
     >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active === "add"}
+        onClick={onAdd}
+        className={cn(
+          "rounded-full border px-5 py-2 text-sm font-semibold transition-colors",
+          active === "add"
+            ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
+            : "border-corporate-border bg-white text-corporate-text hover:border-corporate-brand/40 hover:bg-corporate-brand/5"
+        )}
+      >
+        Add {moduleName}
+      </button>
       <button
         type="button"
         role="tab"
@@ -30,20 +51,6 @@ export default function EmployeeSubTabBar({ active, onList, onAdd }: Props) {
         )}
       >
         List
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={active === "add"}
-        onClick={onAdd}
-        className={cn(
-          "rounded-full border px-5 py-2 text-sm font-semibold transition-colors",
-          active === "add"
-            ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
-            : "border-corporate-border bg-white text-corporate-text hover:border-corporate-brand/40 hover:bg-corporate-brand/5"
-        )}
-      >
-        Add Employee
       </button>
     </div>
   );

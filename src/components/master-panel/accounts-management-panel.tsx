@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Landmark, Pencil, Plus, Trash2 } from "lucide-react";
+import { Landmark, Pencil, Trash2 } from "lucide-react";
 import {
   SelectInput,
   TextInput,
@@ -10,6 +10,7 @@ import {
 } from "@/components/forms/form-fields";
 import { useAccountGroups } from "@/hooks/use-account-groups";
 import { useAccounts } from "@/hooks/use-accounts";
+import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import {
   EMPTY_ACCOUNT_FORM,
   validateAccountForm,
@@ -22,15 +23,15 @@ type ViewMode = "list" | "add" | "edit";
 
 export default function AccountsManagementPanel() {
   const { accounts, isReady, addAccount, updateAccount, removeAccount } = useAccounts();
-  const { groups, isReady: groupsReady } = useAccountGroups();
+  const { groupNames, isReady: groupsReady } = useAccountGroups();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_ACCOUNT_FORM);
   const [error, setError] = useState<string | null>(null);
 
   const groupOptions = useMemo(
-    () => (groups ?? []).map((name) => ({ value: name, label: name })),
-    [groups]
+    () => (groupNames ?? []).map((name) => ({ value: name, label: name })),
+    [groupNames]
   );
 
   const resetForm = () => {
@@ -108,9 +109,25 @@ export default function AccountsManagementPanel() {
     );
   }
 
+  const subTab: "list" | "add" = view === "list" ? "list" : "add";
+
+  const tabBar = (
+    <ModuleAddListTabBar
+      moduleName="Account"
+      active={subTab}
+      onList={() => {
+        resetForm();
+        setView("list");
+      }}
+      onAdd={openAdd}
+    />
+  );
+
   if (view === "add" || view === "edit") {
     return (
-      <div className="space-y-5 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
+      <>
+        {tabBar}
+        <div className="space-y-5 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
         <div>
           <h2 className="text-lg font-semibold text-corporate-text">
             {view === "add" ? "Add Account" : "Edit / Modify Account"}
@@ -311,28 +328,21 @@ export default function AccountsManagementPanel() {
             Cancel
           </button>
         </div>
-      </div>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <>
+      {tabBar}
+      <div className="space-y-5">
         <div>
           <h2 className="text-lg font-semibold text-corporate-text">Accounts Master</h2>
           <p className="text-sm text-corporate-muted">
             Add, edit, or remove ledger accounts with full party details.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openAdd}
-          className="inline-flex items-center gap-1.5 rounded-full bg-corporate-brand px-4 py-2 text-sm font-medium text-white"
-        >
-          <Plus className="h-4 w-4" />
-          Add
-        </button>
-      </div>
 
       <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
         <table className="min-w-full divide-y divide-corporate-border">
@@ -404,6 +414,7 @@ export default function AccountsManagementPanel() {
           </tbody>
         </table>
       </div>
-    </div>
+      </div>
+    </>
   );
 }

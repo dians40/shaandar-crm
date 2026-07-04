@@ -12,7 +12,11 @@ export type MasterEntityType =
   | "item-group"
   | "unit"
   | "unit-conversion"
-  | "godown";
+  | "godown"
+  | "bill-of-sundry"
+  | "bom"
+  | "salary-component"
+  | "vehicle";
 
 type UsageContext = {
   overtimeRecords?: OvertimeRecord[];
@@ -149,6 +153,10 @@ export function isUsedInTransactions(
     case "account":
     case "item":
     case "unit-conversion":
+    case "bill-of-sundry":
+    case "bom":
+    case "salary-component":
+    case "vehicle":
     default:
       return false;
   }

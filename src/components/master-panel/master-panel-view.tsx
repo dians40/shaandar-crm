@@ -28,6 +28,10 @@ import ModulePlaceholder from "./module-placeholder";
 import OvertimeTrackerPanel from "./overtime-tracker-panel";
 import UnitConversionManagementPanel from "./unit-conversion-management-panel";
 import UnitsManagementPanel from "./units-management-panel";
+import BillOfSundriesManagementPanel from "./bill-of-sundries-management-panel";
+import BomManagementPanel from "./bom-management-panel";
+import SalaryComponentManagementPanel from "./salary-component-management-panel";
+import VehiclesManagementMasterPanel from "./vehicles-management-master-panel";
 
 type ErrorBoundaryState = {
   hasError: boolean;
@@ -132,6 +136,14 @@ function MasterPanelContent() {
           return <UnitsManagementPanel />;
         case "unit-conversion":
           return <UnitConversionManagementPanel />;
+        case "bill-of-sundries":
+          return <BillOfSundriesManagementPanel />;
+        case "bom":
+          return <BomManagementPanel />;
+        case "salary-component":
+          return <SalaryComponentManagementPanel />;
+        case "vehicles-management-master":
+          return <VehiclesManagementMasterPanel />;
         case "overtime-tracker":
           return <OvertimeTrackerPanel />;
         default: {

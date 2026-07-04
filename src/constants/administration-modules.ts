@@ -10,4 +10,8 @@ export const IMPLEMENTED_ADMINISTRATION_MODULE_IDS = new Set<MasterPanelModuleId
   "item-groups",
   "units",
   "unit-conversion",
+  "bill-of-sundries",
+  "bom",
+  "salary-component",
+  "vehicles-management-master",
 ]);

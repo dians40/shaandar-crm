@@ -46,12 +46,3 @@ export function buildSeedUnits(now = new Date().toISOString()): UnitRecord[] {
     updatedAt: now,
   }));
 }
-
-export const IMPLEMENTED_ADMINISTRATION_MODULE_IDS = new Set([
-  "accounts",
-  "account-group",
-  "employee-management",
-  "godowns-locations",
-  "units",
-  "unit-conversion",
-]);

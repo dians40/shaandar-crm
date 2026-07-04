@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { IMPLEMENTED_ADMINISTRATION_MODULE_IDS } from "@/constants/units";
+import { IMPLEMENTED_ADMINISTRATION_MODULE_IDS } from "@/constants/administration-modules";
 import {
   DEFAULT_MASTER_PANEL_MODULE_ID,
   getGroupForModule,

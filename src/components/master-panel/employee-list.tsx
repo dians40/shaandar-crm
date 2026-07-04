@@ -26,6 +26,8 @@ type Props = {
   onView: (id: string) => void;
   onEdit: (id: string) => void;
   onRefresh: () => void;
+  /** Hide duplicate Add button when parent provides sub-tabs */
+  hideHeaderAddButton?: boolean;
 };
 
 function matchesSearch(employee: EmployeeListItem, query: string): boolean {
@@ -46,6 +48,7 @@ export default function EmployeeList({
   onView,
   onEdit,
   onRefresh,
+  hideHeaderAddButton = false,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
   const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
@@ -130,28 +133,31 @@ export default function EmployeeList({
           </div>
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={onAddNew}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-corporate-brand px-4 py-2 text-sm font-medium text-white hover:bg-corporate-brand/90"
-          >
-            <Plus className="h-4 w-4" />
-            Add Employee
-          </button>
+          {!hideHeaderAddButton && (
+            <button
+              type="button"
+              onClick={onAddNew}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-corporate-brand px-4 py-2 text-sm font-medium text-white hover:bg-corporate-brand/90"
+            >
+              <Plus className="h-4 w-4" />
+              Add Employee
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-corporate-muted" />
-        <input
-          type="search"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search by first or last name..."
-          className="input-field w-full pl-10"
-          aria-label="Search employees by first or last name"
-        />
-      </div>
+      <div className="space-y-4 rounded-xl border border-corporate-border bg-corporate-surface p-4 shadow-card">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-corporate-muted" />
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by first or last name..."
+            className="input-field w-full pl-10"
+            aria-label="Search employees by first or last name"
+          />
+        </div>
 
       {(error || actionError) && (
         <div
@@ -175,7 +181,7 @@ export default function EmployeeList({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
+      <div className="overflow-hidden rounded-xl border border-corporate-border bg-white">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-corporate-border">
             <thead className="bg-corporate-bg">
@@ -338,6 +344,7 @@ export default function EmployeeList({
           {searchQuery.trim() ? ` matching "${searchQuery.trim()}"` : ""}
         </p>
       )}
+      </div>
     </div>
   );
 }

@@ -85,7 +85,7 @@ const ADMINISTRATION_MODULES: MasterPanelModule[] = [
     title: "Accounts",
     subtitle: "Chart of accounts and ledger masters",
     icon: Landmark,
-    placeholderMessage: "Accounts master setup coming soon",
+    placeholderMessage: "",
   },
   {
     id: "account-group",

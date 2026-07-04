@@ -12,6 +12,7 @@ import {
   getMasterPanelModule,
   type MasterPanelModuleId,
 } from "@/constants/master-panel-modules";
+import AccountsManagementPanel from "./accounts-management-panel";
 import EmployeeManagementPanel from "./employee-management-panel";
 import GodownManagementPanel from "./godown-management-panel";
 import MasterPanelManagerNav from "./master-panel-manager-nav";
@@ -93,6 +94,8 @@ function MasterPanelContent() {
 
     try {
       switch (moduleId) {
+        case "accounts":
+          return <AccountsManagementPanel />;
         case "employee-management":
           return <EmployeeManagementPanel />;
         case "godowns-locations":

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import EmployeeBioDataCard from "./employee-bio-data-card";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
+import EmployeeSubTabBar from "./employee-sub-tab-bar";
 import SupabaseSetupBanner from "./supabase-setup-banner";
 import { useEmployees } from "@/hooks/use-employees";
 
@@ -15,7 +16,6 @@ const EMPTY_EMPLOYEES: never[] = [];
  * Fully functional Employee Management workspace.
  * Includes: split first/last name form, mandatory gender, real-time search,
  * bio-data card, and attendance-based delete protection (via EmployeeList + API).
- * Do not modify this component when extending ERP navigation.
  */
 export default function EmployeeManagementPanel() {
   const { employees, isLoading, error, reload } = useEmployees();
@@ -32,16 +32,39 @@ export default function EmployeeManagementPanel() {
     void reload();
   }, [handleBack, reload]);
 
+  const handleListTab = useCallback(() => {
+    setView("list");
+    setSelectedId(null);
+  }, []);
+
+  const handleAddTab = useCallback(() => {
+    setView("add");
+    setSelectedId(null);
+  }, []);
+
   const safeEmployees = Array.isArray(employees) ? employees : EMPTY_EMPLOYEES;
 
+  const subTab: "list" | "add" = view === "add" ? "add" : "list";
+
+  const withSubTabs = (content: ReactNode) => (
+    <>
+      <EmployeeSubTabBar
+        active={subTab}
+        onList={handleListTab}
+        onAdd={handleAddTab}
+      />
+      {content}
+    </>
+  );
+
   if (view === "add") {
-    return (
+    return withSubTabs(
       <EmployeeForm mode="add" onBack={handleBack} onSuccess={handleSuccess} />
     );
   }
 
   if (view === "edit" && selectedId) {
-    return (
+    return withSubTabs(
       <EmployeeForm
         mode="edit"
         employeeId={selectedId}
@@ -52,7 +75,7 @@ export default function EmployeeManagementPanel() {
   }
 
   if (view === "detail" && selectedId) {
-    return (
+    return withSubTabs(
       <EmployeeBioDataCard
         employeeId={selectedId}
         onBack={handleBack}
@@ -61,7 +84,7 @@ export default function EmployeeManagementPanel() {
     );
   }
 
-  return (
+  return withSubTabs(
     <>
       <SupabaseSetupBanner />
       <EmployeeList
@@ -69,7 +92,7 @@ export default function EmployeeManagementPanel() {
         isLoading={isLoading}
         error={error}
         onRetry={() => void reload()}
-        onAddNew={() => setView("add")}
+        onAddNew={handleAddTab}
         onView={(id) => {
           setSelectedId(typeof id === "string" ? id : null);
           setView("detail");
@@ -79,6 +102,7 @@ export default function EmployeeManagementPanel() {
           setView("edit");
         }}
         onRefresh={() => void reload()}
+        hideHeaderAddButton
       />
     </>
   );

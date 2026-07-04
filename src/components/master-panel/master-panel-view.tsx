@@ -1,11 +1,9 @@
-// @ts-nocheck
 "use client";
 
 import { useState, useEffect } from "react";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
-import { supabase } from "@/lib/supabase/client"; 
-
+import { supabase } from "@/lib/supabase/client";
 interface Employee {
   id: string;
   name: string;

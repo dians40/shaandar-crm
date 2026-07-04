@@ -6,7 +6,6 @@ import { SelectInput, TextInput } from "@/components/forms/form-fields";
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useItemGroups } from "@/hooks/use-item-groups";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
-import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import {
   EMPTY_ITEM_GROUP_FORM,
   ITEM_GROUP_PRIMARY_PARENT,
@@ -16,8 +15,18 @@ import {
 import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
-import ModuleListSearchBar from "./module-list-search-bar";
 import UniversalRecordProfile from "./universal-record-profile";
+import {
+  MASTER_LIST_BODY_CELL_CLASS,
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_HEADER_CELL_RIGHT_CLASS,
+  UniversalMasterListActionsCell,
+  UniversalMasterListNameCell,
+  UniversalMasterListRow,
+  UniversalMasterListShell,
+  UniversalMasterListTable,
+} from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
 
@@ -220,83 +229,63 @@ export default function ItemGroupsManagementPanel() {
   return (
     <>
       {tabBar}
-      <div className="space-y-5">
-        <div>
-          <h2 className="text-lg font-semibold text-corporate-text">Item Groups List</h2>
-          <p className="text-sm text-corporate-muted">
-            Product category hierarchy for the items master.
-          </p>
-        </div>
-
-        <ModuleListSearchBar
-          moduleName="Item Group"
-          value={searchQuery}
-          onChange={setSearchQuery}
-        />
-
-        <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
-          <table className="min-w-full divide-y divide-corporate-border">
-            <thead className="bg-corporate-bg">
+      <UniversalMasterListShell
+        moduleName="Item Group"
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        title="Item Groups List"
+        subtitle="Product category hierarchy for the items master."
+      >
+        <UniversalMasterListTable>
+          <thead className={MASTER_LIST_HEAD_CLASS}>
+            <tr>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Group Name</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Parent Group</th>
+              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-corporate-border">
+            {groups.length === 0 ? (
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Group Name
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Parent Group
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-corporate-muted">
-                  Actions
-                </th>
+                <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  <FolderTree className="mx-auto mb-2 h-6 w-6 opacity-60" />
+                  No item groups yet. Use Add Item Group to create one.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-corporate-border">
-              {groups.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                    <FolderTree className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                    No item groups yet. Use Add Item Group to create one.
-                  </td>
-                </tr>
-              ) : filteredGroups.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                    {LIST_SEARCH_EMPTY_MESSAGE}
-                  </td>
-                </tr>
-              ) : (
-                filteredGroups.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3 text-sm font-medium">{row.name}</td>
-                    <td className="px-4 py-3 text-sm">{row.parentGroup}</td>
-                    <td className="px-4 py-3 text-right">
-                      <ModuleListActionGroup
-                        onView={() => openView(row)}
-                        onSelect={() =>
-                          selectMasterPanelEntity({
-                            entityType: "item-group",
-                            entityId: row.id,
-                            entityName: row.name,
-                            sourceModuleId: "item-groups",
-                          })
-                        }
-                        onEdit={() => openEdit(row)}
-                        extra={
-                          <MasterRemoveOrProtected
-                            canRemove={
-                              !checkUsedInTransactions("item-group", row.id, row.name)
-                            }
-                            onRemove={() => handleRemove(row)}
-                          />
-                        }
-                      />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            ) : filteredGroups.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  {LIST_SEARCH_EMPTY_MESSAGE}
+                </td>
+              </tr>
+            ) : (
+              filteredGroups.map((row) => (
+                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
+                  <UniversalMasterListNameCell
+                    name={row.name}
+                    onEdit={() => openEdit(row)}
+                  />
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.parentGroup}</td>
+                  <UniversalMasterListActionsCell>
+                    <ModuleListActionGroup
+                      onView={() => openView(row)}
+                      onEdit={() => openEdit(row)}
+                      extra={
+                        <MasterRemoveOrProtected
+                          canRemove={
+                            !checkUsedInTransactions("item-group", row.id, row.name)
+                          }
+                          onRemove={() => handleRemove(row)}
+                        />
+                      }
+                    />
+                  </UniversalMasterListActionsCell>
+                </UniversalMasterListRow>
+              ))
+            )}
+          </tbody>
+        </UniversalMasterListTable>
+      </UniversalMasterListShell>
     </>
   );
 }

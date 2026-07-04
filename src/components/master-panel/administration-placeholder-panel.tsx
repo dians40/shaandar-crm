@@ -5,7 +5,12 @@ import { Construction } from "lucide-react";
 import type { MasterPanelModule } from "@/constants/master-panel-modules";
 import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
-import ModuleListSearchBar from "./module-list-search-bar";
+import {
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_TABLE_WRAPPER_CLASS,
+  UniversalMasterListShell,
+} from "./universal-master-list";
 
 type Props = {
   module: MasterPanelModule;
@@ -28,22 +33,17 @@ export default function AdministrationPlaceholderPanel({ module }: Props) {
       />
 
       {view === "list" ? (
-        <div className="space-y-4">
-          <ModuleListSearchBar
-            moduleName={moduleName}
-            value={searchQuery}
-            onChange={setSearchQuery}
-          />
-          <div className="overflow-hidden rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
+        <UniversalMasterListShell
+          moduleName={moduleName}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+        >
+          <div className={MASTER_LIST_TABLE_WRAPPER_CLASS}>
             <table className="min-w-full divide-y divide-corporate-border">
-              <thead className="bg-corporate-bg">
+              <thead className={MASTER_LIST_HEAD_CLASS}>
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                    Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                    Status
-                  </th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Name</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -58,7 +58,7 @@ export default function AdministrationPlaceholderPanel({ module }: Props) {
               </tbody>
             </table>
           </div>
-        </div>
+        </UniversalMasterListShell>
       ) : (
         <div className="rounded-xl border border-dashed border-corporate-border bg-corporate-surface p-8 text-center shadow-card">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-corporate-brand-light text-corporate-brand">

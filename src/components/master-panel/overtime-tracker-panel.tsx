@@ -18,7 +18,6 @@ import {
 import {
   MASTER_PANEL_ENTITY_SELECTED_EVENT,
   readMasterPanelSelection,
-  selectMasterPanelEntity,
 } from "@/lib/master-panel-entity-bridge";
 import {
   calculateOvertimeHours,
@@ -574,19 +573,8 @@ export default function OvertimeTrackerPanel() {
                   <td className="px-4 py-3 text-right">
                     <ModuleListActionGroup
                       onView={() => openView(row)}
-                      onSelect={() =>
-                        selectMasterPanelEntity({
-                          entityType: "employee",
-                          entityId: row.employeeId,
-                          entityName: row.employeeName,
-                          sourceModuleId: "overtime-tracker",
-                          targetModuleId: "overtime-tracker",
-                        })
-                      }
-                      selectLabel="Use Employee"
                       onEdit={() => openEdit(row)}
                       editLabel="Edit Overtime"
-                      showSelect={Boolean(row.employeeId)}
                     />
                   </td>
                 </tr>

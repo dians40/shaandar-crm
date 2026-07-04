@@ -11,7 +11,6 @@ import { useUnitConversions } from "@/hooks/use-unit-conversions";
 import { useUnits } from "@/hooks/use-units";
 import { conversionMatchesItemUnits } from "@/lib/item-unit-conversion";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
-import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import {
   EMPTY_ITEM_FORM,
   GST_TAX_OPTIONS,
@@ -23,8 +22,18 @@ import ItemUnitMappingSection from "./item-unit-mapping-section";
 import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
-import ModuleListSearchBar from "./module-list-search-bar";
 import UniversalRecordProfile from "./universal-record-profile";
+import {
+  MASTER_LIST_BODY_CELL_CLASS,
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_HEADER_CELL_RIGHT_CLASS,
+  UniversalMasterListActionsCell,
+  UniversalMasterListNameCell,
+  UniversalMasterListRow,
+  UniversalMasterListShell,
+  UniversalMasterListTable,
+} from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
 
@@ -459,120 +468,91 @@ export default function ItemsManagementPanel() {
   return (
     <>
       {tabBar}
-      <div className="space-y-5">
-        <div>
-          <h2 className="text-lg font-semibold text-corporate-text">Items List</h2>
-          <p className="text-sm text-corporate-muted">
-            SKU master with groups, units, stock, rates, and GST details.
-          </p>
-        </div>
-
-        <ModuleListSearchBar
-          moduleName="Item"
-          value={searchQuery}
-          onChange={setSearchQuery}
-        />
-
-        <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
-          <table className="min-w-full divide-y divide-corporate-border">
-            <thead className="bg-corporate-bg">
+      <UniversalMasterListShell
+        moduleName="Item"
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        title="Items List"
+        subtitle="SKU master with groups, units, stock, rates, and GST details."
+      >
+        <UniversalMasterListTable>
+          <thead className={MASTER_LIST_HEAD_CLASS}>
+            <tr>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Item</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Group</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Units</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Opening Stock</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Rates</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>GST / HSN</th>
+              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-corporate-border">
+            {items.length === 0 ? (
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Item
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Group
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Units
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Opening Stock
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Rates
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  GST / HSN
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-corporate-muted">
-                  Actions
-                </th>
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  <Boxes className="mx-auto mb-2 h-6 w-6 opacity-60" />
+                  No items yet. Use Add Item to create one.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-corporate-border">
-              {items.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                    <Boxes className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                    No items yet. Use Add Item to create one.
-                  </td>
-                </tr>
-              ) : filteredItems.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                    {LIST_SEARCH_EMPTY_MESSAGE}
-                  </td>
-                </tr>
-              ) : (
-                filteredItems.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3 text-sm font-medium">{row.itemName}</td>
-                    <td className="px-4 py-3 text-sm">{row.itemGroupName || "—"}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <p>{row.primaryUnitName || "—"}</p>
-                      {row.alternateUnitName && (
-                        <p className="text-xs text-corporate-muted">
-                          Alt: {row.alternateUnitName}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <p>Qty: {row.openingStockQuantity}</p>
+            ) : filteredItems.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  {LIST_SEARCH_EMPTY_MESSAGE}
+                </td>
+              </tr>
+            ) : (
+              filteredItems.map((row) => (
+                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
+                  <UniversalMasterListNameCell
+                    name={row.itemName}
+                    onEdit={() => openEdit(row)}
+                  />
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.itemGroupName || "—"}</td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                    <p>{row.primaryUnitName || "—"}</p>
+                    {row.alternateUnitName && (
                       <p className="text-xs text-corporate-muted">
-                        Value: ₹{row.openingStockValue.toLocaleString("en-IN")}
+                        Alt: {row.alternateUnitName}
                       </p>
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <p>Purchase: ₹{row.purchaseRate.toLocaleString("en-IN")}</p>
-                      <p className="text-xs text-corporate-muted">
-                        MRP: ₹{row.salesRateMrp.toLocaleString("en-IN")}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <p>{row.gstTaxPercentage}%</p>
-                      <p className="text-xs text-corporate-muted">{row.hsnCode || "—"}</p>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <ModuleListActionGroup
-                        onView={() => openView(row)}
-                        onSelect={() =>
-                          selectMasterPanelEntity({
-                            entityType: "item",
-                            entityId: row.id,
-                            entityName: row.itemName,
-                            sourceModuleId: "items-products",
-                            targetModuleId: "sales-dispatch",
-                          })
-                        }
-                        onEdit={() => openEdit(row)}
-                        extra={
-                          <MasterRemoveOrProtected
-                            canRemove={
-                              !checkUsedInTransactions("item", row.id, row.itemName)
-                            }
-                            onRemove={() => handleRemove(row)}
-                          />
-                        }
-                      />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                    )}
+                  </td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                    <p>Qty: {row.openingStockQuantity}</p>
+                    <p className="text-xs text-corporate-muted">
+                      Value: ₹{row.openingStockValue.toLocaleString("en-IN")}
+                    </p>
+                  </td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                    <p>Purchase: ₹{row.purchaseRate.toLocaleString("en-IN")}</p>
+                    <p className="text-xs text-corporate-muted">
+                      MRP: ₹{row.salesRateMrp.toLocaleString("en-IN")}
+                    </p>
+                  </td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                    <p>{row.gstTaxPercentage}%</p>
+                    <p className="text-xs text-corporate-muted">{row.hsnCode || "—"}</p>
+                  </td>
+                  <UniversalMasterListActionsCell>
+                    <ModuleListActionGroup
+                      onView={() => openView(row)}
+                      onEdit={() => openEdit(row)}
+                      extra={
+                        <MasterRemoveOrProtected
+                          canRemove={
+                            !checkUsedInTransactions("item", row.id, row.itemName)
+                          }
+                          onRemove={() => handleRemove(row)}
+                        />
+                      }
+                    />
+                  </UniversalMasterListActionsCell>
+                </UniversalMasterListRow>
+              ))
+            )}
+          </tbody>
+        </UniversalMasterListTable>
+      </UniversalMasterListShell>
     </>
   );
 }

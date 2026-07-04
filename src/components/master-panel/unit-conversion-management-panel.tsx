@@ -17,10 +17,10 @@ import {
   type UnitConversionRecord,
 } from "@/types/unit-conversion";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
-import ModuleListSearchBar from "./module-list-search-bar";
 import UnitConversionForm from "./unit-conversion-form";
 import UnitConversionList from "./unit-conversion-list";
 import UniversalRecordProfile from "./universal-record-profile";
+import { UniversalMasterListShell } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
 
@@ -225,20 +225,13 @@ export default function UnitConversionManagementPanel() {
   return (
     <>
       {tabBar}
-      <div className="space-y-5">
-        <div>
-          <h2 className="text-lg font-semibold text-corporate-text">Conversion List</h2>
-          <p className="text-sm text-corporate-muted">
-            Flexible unit conversions — from simple 1-step to multi-level chains.
-          </p>
-        </div>
-
-        <ModuleListSearchBar
-          moduleName="Conversion"
-          value={searchQuery}
-          onChange={setSearchQuery}
-        />
-
+      <UniversalMasterListShell
+        moduleName="Conversion"
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        title="Conversion List"
+        subtitle="Flexible unit conversions — from simple 1-step to multi-level chains."
+      >
         <UnitConversionList
           conversions={conversions}
           filteredConversions={filteredConversions}
@@ -248,7 +241,7 @@ export default function UnitConversionManagementPanel() {
           onEdit={openEdit}
           onRemove={handleRemove}
         />
-      </div>
+      </UniversalMasterListShell>
     </>
   );
 }

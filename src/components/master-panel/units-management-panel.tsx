@@ -7,7 +7,6 @@ import { formatUnitLabel } from "@/constants/units";
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useUnits } from "@/hooks/use-units";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
-import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import {
   EMPTY_UNIT_FORM,
   validateUnitForm,
@@ -15,9 +14,19 @@ import {
 } from "@/types/unit";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
-import ModuleListSearchBar from "./module-list-search-bar";
 import MasterRemoveOrProtected from "./master-remove-or-protected";
 import UniversalRecordProfile from "./universal-record-profile";
+import {
+  MASTER_LIST_BODY_CELL_CLASS,
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_HEADER_CELL_RIGHT_CLASS,
+  UniversalMasterListActionsCell,
+  UniversalMasterListNameCell,
+  UniversalMasterListRow,
+  UniversalMasterListShell,
+  UniversalMasterListTable,
+} from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
 
@@ -226,96 +235,78 @@ export default function UnitsManagementPanel() {
   return (
     <>
       {tabBar}
-      <div className="space-y-5">
-        <div>
-          <h2 className="text-lg font-semibold text-corporate-text">Units List</h2>
-          <p className="text-sm text-corporate-muted">
-            18 pre-seeded business units — add custom units as needed.
-          </p>
-        </div>
-
+      <UniversalMasterListShell
+        moduleName="Unit"
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        title="Units List"
+        subtitle="18 pre-seeded business units — add custom units as needed."
+      >
         {error && (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
           </p>
         )}
 
-        <ModuleListSearchBar
-          moduleName="Unit"
-          value={searchQuery}
-          onChange={setSearchQuery}
-        />
-
-        <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
-          <table className="min-w-full divide-y divide-corporate-border">
-            <thead className="bg-corporate-bg">
+        <UniversalMasterListTable>
+          <thead className={MASTER_LIST_HEAD_CLASS}>
+            <tr>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Unit</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Short Code</th>
+              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-corporate-border">
+            {units.length === 0 ? (
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Unit
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Short Code
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-corporate-muted">
-                  Actions
-                </th>
+                <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  <Ruler className="mx-auto mb-2 h-6 w-6 opacity-60" />
+                  No units yet.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-corporate-border">
-              {units.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                    <Ruler className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                    No units yet.
-                  </td>
-                </tr>
-              ) : filteredUnits.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                    {LIST_SEARCH_EMPTY_MESSAGE}
-                  </td>
-                </tr>
-              ) : (
-                filteredUnits.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3 text-sm font-medium">
-                      {formatUnitLabel(row)}
-                      {row.isSystemSeed && (
-                        <span className="ml-2 text-xs text-corporate-muted">(System)</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm">{row.shortCode}</td>
-                    <td className="px-4 py-3 text-right">
-                      <ModuleListActionGroup
-                        onView={() => openView(row)}
-                        onSelect={() =>
-                          selectMasterPanelEntity({
-                            entityType: "unit",
-                            entityId: row.id,
-                            entityName: row.name,
-                            sourceModuleId: "units",
-                          })
-                        }
-                        onEdit={() => openEdit(row)}
-                        extra={
-                          !row.isSystemSeed ? (
-                            <MasterRemoveOrProtected
-                              canRemove={
-                                !checkUsedInTransactions("unit", row.id, row.name)
-                              }
-                              onRemove={() => handleRemove(row)}
-                            />
-                          ) : undefined
-                        }
-                      />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            ) : filteredUnits.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  {LIST_SEARCH_EMPTY_MESSAGE}
+                </td>
+              </tr>
+            ) : (
+              filteredUnits.map((row) => (
+                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
+                  <UniversalMasterListNameCell
+                    name={formatUnitLabel(row)}
+                    onEdit={() => openEdit(row)}
+                    suffix={
+                      row.isSystemSeed ? (
+                        <span className="ml-2 text-xs font-normal text-corporate-muted">
+                          (System)
+                        </span>
+                      ) : undefined
+                    }
+                  />
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.shortCode}</td>
+                  <UniversalMasterListActionsCell>
+                    <ModuleListActionGroup
+                      onView={() => openView(row)}
+                      onEdit={() => openEdit(row)}
+                      extra={
+                        !row.isSystemSeed ? (
+                          <MasterRemoveOrProtected
+                            canRemove={
+                              !checkUsedInTransactions("unit", row.id, row.name)
+                            }
+                            onRemove={() => handleRemove(row)}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  </UniversalMasterListActionsCell>
+                </UniversalMasterListRow>
+              ))
+            )}
+          </tbody>
+        </UniversalMasterListTable>
+      </UniversalMasterListShell>
     </>
   );
 }

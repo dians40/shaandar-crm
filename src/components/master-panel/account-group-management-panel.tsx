@@ -6,12 +6,21 @@ import { SelectInput, TextInput } from "@/components/forms/form-fields";
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useAccountGroups } from "@/hooks/use-account-groups";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
-import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
-import ModuleListSearchBar from "./module-list-search-bar";
 import UniversalRecordProfile from "./universal-record-profile";
+import {
+  MASTER_LIST_BODY_CELL_CLASS,
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_HEADER_CELL_RIGHT_CLASS,
+  UniversalMasterListActionsCell,
+  UniversalMasterListNameCell,
+  UniversalMasterListRow,
+  UniversalMasterListShell,
+  UniversalMasterListTable,
+} from "./universal-master-list";
 import {
   CATEGORY_FOR_NATURE,
   EMPTY_ACCOUNT_GROUP_FORM,
@@ -282,109 +291,87 @@ export default function AccountGroupManagementPanel() {
   return (
     <>
       {tabBar}
-      <div className="space-y-5">
-        <div>
-          <h2 className="text-lg font-semibold text-corporate-text">Account Group List</h2>
-          <p className="text-sm text-corporate-muted">
-            Foundation ledger hierarchy for accounts master and balance sheet reporting.
-          </p>
-        </div>
-
+      <UniversalMasterListShell
+        moduleName="Account Group"
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        title="Account Group List"
+        subtitle="Foundation ledger hierarchy for accounts master and balance sheet reporting."
+      >
         {error && (
           <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
           </p>
         )}
 
-        <ModuleListSearchBar
-          moduleName="Account Group"
-          value={searchQuery}
-          onChange={setSearchQuery}
-        />
-
-        <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
-          <table className="min-w-full divide-y divide-corporate-border">
-            <thead className="bg-corporate-bg">
+        <UniversalMasterListTable>
+          <thead className={MASTER_LIST_HEAD_CLASS}>
+            <tr>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Group Name</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Parent</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Nature</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Category</th>
+              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-corporate-border">
+            {groups.length === 0 ? (
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Group Name
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Parent
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Nature
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Category
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-corporate-muted">
-                  Actions
-                </th>
+                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  <FolderTree className="mx-auto mb-2 h-6 w-6 opacity-60" />
+                  No account groups yet.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-corporate-border">
-              {groups.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                    <FolderTree className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                    No account groups yet.
-                  </td>
-                </tr>
-              ) : filteredGroups.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                    {LIST_SEARCH_EMPTY_MESSAGE}
-                  </td>
-                </tr>
-              ) : (
-                filteredGroups.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3 text-sm font-medium">
-                      {row.name}
-                      {row.isSystemSeed && (
-                        <span className="ml-2 text-xs text-corporate-muted">(System)</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm">{row.parentGroup}</td>
-                    <td className="px-4 py-3 text-sm">{row.nature}</td>
-                    <td className="px-4 py-3 text-sm">{row.category}</td>
-                    <td className="px-4 py-3 text-right">
-                      <ModuleListActionGroup
-                        onView={() => openView(row)}
-                        onSelect={() =>
-                          selectMasterPanelEntity({
-                            entityType: "account-group",
-                            entityId: row.id,
-                            entityName: row.name,
-                            sourceModuleId: "account-group",
-                          })
-                        }
-                        onEdit={() => openEdit(row)}
-                        editLabel="Edit"
-                        extra={
-                          !row.isSystemSeed ? (
-                            <MasterRemoveOrProtected
-                              canRemove={
-                                !checkUsedInTransactions(
-                                  "account-group",
-                                  row.id,
-                                  row.name
-                                )
-                              }
-                              onRemove={() => handleRemove(row)}
-                            />
-                          ) : undefined
-                        }
-                      />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            ) : filteredGroups.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  {LIST_SEARCH_EMPTY_MESSAGE}
+                </td>
+              </tr>
+            ) : (
+              filteredGroups.map((row) => (
+                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
+                  <UniversalMasterListNameCell
+                    name={row.name}
+                    onEdit={() => openEdit(row)}
+                    suffix={
+                      row.isSystemSeed ? (
+                        <span className="ml-2 text-xs font-normal text-corporate-muted">
+                          (System)
+                        </span>
+                      ) : undefined
+                    }
+                  />
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.parentGroup}</td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.nature}</td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.category}</td>
+                  <UniversalMasterListActionsCell>
+                    <ModuleListActionGroup
+                      onView={() => openView(row)}
+                      onEdit={() => openEdit(row)}
+                      editLabel="Edit"
+                      extra={
+                        !row.isSystemSeed ? (
+                          <MasterRemoveOrProtected
+                            canRemove={
+                              !checkUsedInTransactions(
+                                "account-group",
+                                row.id,
+                                row.name
+                              )
+                            }
+                            onRemove={() => handleRemove(row)}
+                          />
+                        ) : undefined
+                      }
+                    />
+                  </UniversalMasterListActionsCell>
+                </UniversalMasterListRow>
+              ))
+            )}
+          </tbody>
+        </UniversalMasterListTable>
+      </UniversalMasterListShell>
     </>
   );
 }

@@ -6,13 +6,22 @@ import { SelectInput, TextInput, TextareaInput } from "@/components/forms/form-f
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useGodowns } from "@/hooks/use-godowns";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
-import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import { EMPTY_GODOWN_FORM, type GodownRecord } from "@/types/godown";
 import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
-import ModuleListSearchBar from "./module-list-search-bar";
 import UniversalRecordProfile from "./universal-record-profile";
+import {
+  MASTER_LIST_BODY_CELL_CLASS,
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_HEADER_CELL_RIGHT_CLASS,
+  UniversalMasterListActionsCell,
+  UniversalMasterListNameCell,
+  UniversalMasterListRow,
+  UniversalMasterListShell,
+  UniversalMasterListTable,
+} from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
 
@@ -265,94 +274,69 @@ export default function GodownManagementPanel() {
   return (
     <>
       {tabBar}
-      <div className="space-y-5">
-        <div>
-          <h2 className="text-lg font-semibold text-corporate-text">Godown List</h2>
-          <p className="text-sm text-corporate-muted">
-            Manage warehouse locations for labor and inventory linkage.
-          </p>
-        </div>
-
-        <ModuleListSearchBar
-          moduleName="Godown"
-          value={searchQuery}
-          onChange={setSearchQuery}
-        />
-
-        <div className="overflow-hidden rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
-          <table className="min-w-full divide-y divide-corporate-border">
-            <thead className="bg-corporate-bg">
+      <UniversalMasterListShell
+        moduleName="Godown"
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        title="Godown List"
+        subtitle="Manage warehouse locations for labor and inventory linkage."
+      >
+        <UniversalMasterListTable>
+          <thead className={MASTER_LIST_HEAD_CLASS}>
+            <tr>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Name</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Code</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>City</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Manager</th>
+              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-corporate-border">
+            {godowns.length === 0 ? (
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Name
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Code
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  City
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                  Manager
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-corporate-muted">
-                  Actions
-                </th>
+                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  <Warehouse className="mx-auto mb-2 h-6 w-6 opacity-60" />
+                  No godowns yet. Use Add Godown to create one.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-corporate-border">
-              {godowns.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                    <Warehouse className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                    No godowns yet. Use Add Godown to create one.
-                  </td>
-                </tr>
-              ) : filteredGodowns.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                    {LIST_SEARCH_EMPTY_MESSAGE}
-                  </td>
-                </tr>
-              ) : (
-                filteredGodowns.map((row) => (
-                  <tr key={row.id}>
-                    <td className="px-4 py-3 text-sm font-medium">{row.name}</td>
-                    <td className="px-4 py-3 text-sm">{row.code}</td>
-                    <td className="px-4 py-3 text-sm">{row.city || "—"}</td>
-                    <td className="px-4 py-3 text-sm">{row.managerName || "—"}</td>
-                    <td className="px-4 py-3 text-right">
-                      <ModuleListActionGroup
-                        onView={() => openView(row)}
-                        onSelect={() =>
-                          selectMasterPanelEntity({
-                            entityType: "godown",
-                            entityId: row.id,
-                            entityName: row.name,
-                            sourceModuleId: "godowns-locations",
-                            targetModuleId: "inventory-transfer",
-                          })
-                        }
-                        onEdit={() => openEdit(row)}
-                        editLabel="Edit Godown"
-                        extra={
-                          <MasterRemoveOrProtected
-                            canRemove={
-                              !checkUsedInTransactions("godown", row.id, row.name)
-                            }
-                            onRemove={() => handleRemove(row)}
-                            label="Remove Godown"
-                          />
-                        }
-                      />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            ) : filteredGodowns.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  {LIST_SEARCH_EMPTY_MESSAGE}
+                </td>
+              </tr>
+            ) : (
+              filteredGodowns.map((row) => (
+                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
+                  <UniversalMasterListNameCell
+                    name={row.name}
+                    onEdit={() => openEdit(row)}
+                  />
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.code}</td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.city || "—"}</td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.managerName || "—"}</td>
+                  <UniversalMasterListActionsCell>
+                    <ModuleListActionGroup
+                      onView={() => openView(row)}
+                      onEdit={() => openEdit(row)}
+                      editLabel="Edit Godown"
+                      extra={
+                        <MasterRemoveOrProtected
+                          canRemove={
+                            !checkUsedInTransactions("godown", row.id, row.name)
+                          }
+                          onRemove={() => handleRemove(row)}
+                          label="Remove Godown"
+                        />
+                      }
+                    />
+                  </UniversalMasterListActionsCell>
+                </UniversalMasterListRow>
+              ))
+            )}
+          </tbody>
+        </UniversalMasterListTable>
+      </UniversalMasterListShell>
     </>
   );
 }

@@ -12,13 +12,13 @@ import {
 import { deleteEmployee, patchEmployeeSalary } from "@/lib/employees-api";
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
-import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import { formatSalaryDisplay } from "@/lib/map-employee-to-db";
 import type { EmployeeListItem } from "@/types/employee-list";
 import { SupabaseConnectedBadge } from "./supabase-setup-banner";
 import ModuleListActionGroup from "./module-list-action-group";
 import ModuleListRecordLink from "./module-list-record-link";
 import ModuleListSearchBar from "./module-list-search-bar";
+import { stopMasterListRowClick } from "./universal-master-list";
 
 type Props = {
   employees: EmployeeListItem[];
@@ -242,12 +242,12 @@ export default function EmployeeList({
                     <tr
                       key={employee.id}
                       className="cursor-pointer hover:bg-corporate-bg/60"
-                      onClick={() => onView(employee.id)}
+                      onClick={() => onEdit(employee.id)}
                     >
                       <td className="whitespace-nowrap px-5 py-4 text-sm">
                         <ModuleListRecordLink
                           label={employee.name}
-                          onOpen={() => onView(employee.id)}
+                          onOpen={() => onEdit(employee.id)}
                         />
                       </td>
                       <td className="whitespace-nowrap px-5 py-4">
@@ -264,7 +264,7 @@ export default function EmployeeList({
                       <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-muted">
                         {employee.machineAssignment}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4" onClick={stopMasterListRowClick}>
                         <div className="flex min-w-[160px] flex-col gap-1">
                           {employee.variableSalaryEnabled ? (
                             <span className="text-xs text-corporate-brand">
@@ -305,15 +305,6 @@ export default function EmployeeList({
                       >
                         <ModuleListActionGroup
                           onView={() => onView(employee.id)}
-                          onSelect={() =>
-                            selectMasterPanelEntity({
-                              entityType: "employee",
-                              entityId: employee.id,
-                              entityName: employee.name,
-                              sourceModuleId: "employee-management",
-                              targetModuleId: "overtime-tracker",
-                            })
-                          }
                           onEdit={() => onEdit(employee.id)}
                           editLabel="Edit"
                           extra={

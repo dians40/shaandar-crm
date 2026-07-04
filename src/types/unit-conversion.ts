@@ -287,27 +287,18 @@ export function formatChainSummary(
   unitNameById: Record<string, string> = {}
 ): string {
   const chain = resolveConversionDisplay(record, unitNameById);
-  const parts: string[] = [];
 
   if (chain.steps.length === 0) {
-    parts.push(`Main unit: ${chain.baseUnitName}`);
-  } else {
-    let previousUnit = chain.baseUnitName;
-    for (const step of chain.steps) {
-      if (step.multiplier != null) {
-        parts.push(`1 ${previousUnit} = ${step.multiplier} ${step.unit}`);
-      } else {
-        parts.push(`1 ${previousUnit} = 1 ${step.unit}`);
-      }
-      previousUnit = step.unit;
-    }
+    return `Main unit: ${chain.baseUnitName}`;
   }
+
+  const formula = formatChainProductFormula(record, unitNameById);
 
   if (chain.total != null && chain.total > 0 && chain.totalUnit) {
-    parts.push(`Total = ${chain.total.toLocaleString("en-IN")} ${chain.totalUnit}`);
+    return `${formula} · Total ${chain.total.toLocaleString("en-IN")} ${chain.totalUnit}`;
   }
 
-  return `${parts.join(", ")}.`;
+  return formula;
 }
 
 export function formatChainShort(

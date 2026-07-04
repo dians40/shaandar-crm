@@ -12,13 +12,21 @@ import { useAccountGroups } from "@/hooks/use-account-groups";
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useAccounts } from "@/hooks/use-accounts";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
-import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
-import ModuleListRecordLink from "./module-list-record-link";
-import ModuleListSearchBar from "./module-list-search-bar";
 import UniversalRecordProfile from "./universal-record-profile";
+import {
+  MASTER_LIST_BODY_CELL_CLASS,
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_HEADER_CELL_RIGHT_CLASS,
+  UniversalMasterListActionsCell,
+  UniversalMasterListNameCell,
+  UniversalMasterListRow,
+  UniversalMasterListShell,
+  UniversalMasterListTable,
+} from "./universal-master-list";
 import {
   EMPTY_ACCOUNT_FORM,
   validateAccountForm,
@@ -414,42 +422,22 @@ export default function AccountsManagementPanel() {
   return (
     <>
       {tabBar}
-      <div className="space-y-5">
-        <div>
-          <h2 className="text-lg font-semibold text-corporate-text">Accounts Master</h2>
-          <p className="text-sm text-corporate-muted">
-            Add, edit, or remove ledger accounts with full party details.
-          </p>
-        </div>
-
-        <ModuleListSearchBar
-          moduleName="Account"
-          value={searchQuery}
-          onChange={setSearchQuery}
-        />
-
-      <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
-        <table className="min-w-full divide-y divide-corporate-border">
-          <thead className="bg-corporate-bg">
+      <UniversalMasterListShell
+        moduleName="Account"
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        title="Accounts Master"
+        subtitle="Add, edit, or remove ledger accounts with full party details."
+      >
+        <UniversalMasterListTable>
+          <thead className={MASTER_LIST_HEAD_CLASS}>
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Name
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Group
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Opening Bal.
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Bill-by-Bill
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Credit Days
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-corporate-muted">
-                Actions
-              </th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Name</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Group</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Opening Bal.</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Bill-by-Bill</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Credit Days</th>
+              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
@@ -468,36 +456,22 @@ export default function AccountsManagementPanel() {
               </tr>
             ) : (
               filteredAccounts.map((row) => (
-                <tr
-                  key={row.id}
-                  className="cursor-pointer hover:bg-corporate-bg/60"
-                  onClick={() => openView(row)}
-                >
-                  <td className="px-4 py-3 text-sm">
-                    <ModuleListRecordLink label={row.name} onOpen={() => openView(row)} />
-                  </td>
-                  <td className="px-4 py-3 text-sm">{row.groupName}</td>
-                  <td className="px-4 py-3 text-sm">
+                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
+                  <UniversalMasterListNameCell
+                    name={row.name}
+                    onEdit={() => openEdit(row)}
+                  />
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.groupName}</td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
                     ₹{row.openingBalanceAmount.toLocaleString("en-IN")} {row.openingBalanceType}
                   </td>
-                  <td className="px-4 py-3 text-sm">
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
                     {row.billByBillBalancing ? "Yes" : "No"}
                   </td>
-                  <td className="px-4 py-3 text-sm">{row.creditDays}</td>
-                  <td
-                    className="px-4 py-3 text-right"
-                    onClick={(event) => event.stopPropagation()}
-                  >
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.creditDays}</td>
+                  <UniversalMasterListActionsCell>
                     <ModuleListActionGroup
                       onView={() => openView(row)}
-                      onSelect={() =>
-                        selectMasterPanelEntity({
-                          entityType: "account",
-                          entityId: row.id,
-                          entityName: row.name,
-                          sourceModuleId: "accounts",
-                        })
-                      }
                       onEdit={() => openEdit(row)}
                       extra={
                         <MasterRemoveOrProtected
@@ -508,14 +482,13 @@ export default function AccountsManagementPanel() {
                         />
                       }
                     />
-                  </td>
-                </tr>
+                  </UniversalMasterListActionsCell>
+                </UniversalMasterListRow>
               ))
             )}
           </tbody>
-        </table>
-      </div>
-      </div>
+        </UniversalMasterListTable>
+      </UniversalMasterListShell>
     </>
   );
 }

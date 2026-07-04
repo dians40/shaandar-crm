@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { UsersRound } from "lucide-react";
 import { SelectInput, TextInput } from "@/components/forms/form-fields";
-import { CONTRACTOR_OPTIONS } from "@/constants/employee-options";
+import { useGeneralSettings } from "@/hooks/use-general-settings";
 import { useEmployeeGroups } from "@/hooks/use-employee-groups";
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
@@ -33,6 +33,7 @@ type ViewMode = "list" | "add" | "edit" | "detail";
 
 export default function EmployeeGroupManagementPanel() {
   const { groups, isReady, addGroup, updateGroup, removeGroup } = useEmployeeGroups();
+  const { contractorOptions, isReady: settingsReady } = useGeneralSettings();
   const { checkUsedInTransactions } = useMasterDeletionGuard();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -186,11 +187,8 @@ export default function EmployeeGroupManagementPanel() {
             <SelectInput
               label="Contractor Name"
               value={form.contractorName}
-              placeholder="Select contractor"
-              options={CONTRACTOR_OPTIONS.map((contractor) => ({
-                value: contractor,
-                label: contractor,
-              }))}
+              placeholder={settingsReady ? "Select contractor" : "Loading contractors..."}
+              options={contractorOptions}
               onChange={(e) =>
                 setForm((p) => ({ ...p, contractorName: e.target.value }))
               }

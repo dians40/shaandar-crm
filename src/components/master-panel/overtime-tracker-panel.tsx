@@ -5,10 +5,10 @@ import { Clock, Plus } from "lucide-react";
 import { SelectInput, TextInput, TextareaInput } from "@/components/forms/form-fields";
 import {
   OVERTIME_LOCATION_PRESETS,
-  OVERTIME_MACHINE_PRESETS,
   OVERTIME_SUPERVISOR_PRESETS,
 } from "@/constants/overtime-options";
 import { useEmployees } from "@/hooks/use-employees";
+import { useGeneralSettings } from "@/hooks/use-general-settings";
 import { useGodowns } from "@/hooks/use-godowns";
 import { useOvertimeRecords } from "@/hooks/use-overtime";
 import {
@@ -36,6 +36,8 @@ type ViewMode = "list" | "add" | "edit" | "detail";
 export default function OvertimeTrackerPanel() {
   const { employees, isLoading: employeesLoading } = useEmployees();
   const { godowns, isReady: godownsReady } = useGodowns();
+  const { machineOptions: machineMasterOptions, isReady: machinesReady } =
+    useGeneralSettings();
   const { records, isReady, addRecord, updateRecord } = useOvertimeRecords();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -105,12 +107,13 @@ export default function OvertimeTrackerPanel() {
       .map((employee) => employee.machineAssignment?.trim())
       .filter((value): value is string => Boolean(value && value !== "—"));
     const unique = Array.from(new Set(fromEmployees));
+    const masterLabels = machineMasterOptions.map((option) => option.label);
+    const merged = Array.from(new Set([...masterLabels, ...unique]));
     return [
-      ...OVERTIME_MACHINE_PRESETS.map((label) => ({ value: label, label })),
-      ...unique.map((label) => ({ value: label, label })),
+      ...merged.map((label) => ({ value: label, label })),
       { value: MACHINE_CUSTOM_VALUE, label: "Other / type manually" },
     ];
-  }, [employees]);
+  }, [employees, machineMasterOptions]);
 
   const managerOptions = useMemo(() => {
     const fromEmployees = employees.map((employee) => employee.name);
@@ -282,7 +285,7 @@ export default function OvertimeTrackerPanel() {
     return () => window.removeEventListener(MASTER_PANEL_ENTITY_SELECTED_EVENT, handler);
   }, []);
 
-  if (!isReady || !godownsReady) {
+  if (!isReady || !godownsReady || !machinesReady) {
     return (
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading overtime records...

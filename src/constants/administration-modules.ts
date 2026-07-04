@@ -15,4 +15,5 @@ export const IMPLEMENTED_ADMINISTRATION_MODULE_IDS = new Set<MasterPanelModuleId
   "salary-component",
   "vehicles-management-master",
   "employee-group",
+  "general-settings",
 ]);

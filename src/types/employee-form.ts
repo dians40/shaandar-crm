@@ -1,4 +1,4 @@
-export type EmployeeType = "Contractor" | "Regular" | "Temporary";
+export type EmployeeType = string;
 
 export type SalaryBasis =
   | "Branch Salary"
@@ -9,11 +9,7 @@ export type SalaryBasis =
 
 export type AssignedFirm = "Krishna Food Product" | "MAHEK Industries";
 
-export type AssignedContractor =
-  | "Contractor 1"
-  | "Contractor 2"
-  | "Contractor 3"
-  | "Contractor 4";
+export type AssignedContractor = string;
 
 export type FoodingAllowance =
   | "Daily Food Provided by Company"

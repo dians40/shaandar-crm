@@ -33,6 +33,7 @@ import BomManagementPanel from "./bom-management-panel";
 import SalaryComponentManagementPanel from "./salary-component-management-panel";
 import VehiclesManagementMasterPanel from "./vehicles-management-master-panel";
 import EmployeeGroupManagementPanel from "./employee-group-management-panel";
+import GeneralSettingsManagementPanel from "./general-settings-management-panel";
 
 type ErrorBoundaryState = {
   hasError: boolean;
@@ -147,6 +148,8 @@ function MasterPanelContent() {
           return <VehiclesManagementMasterPanel />;
         case "employee-group":
           return <EmployeeGroupManagementPanel />;
+        case "general-settings":
+          return <GeneralSettingsManagementPanel />;
         case "overtime-tracker":
           return <OvertimeTrackerPanel />;
         default: {

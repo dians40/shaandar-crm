@@ -1,19 +1,31 @@
-import type {
-  EmployeeType,
-  EsIRole,
-  SalaryBasis,
-} from "@/types/employee-form";
-export const EMPLOYEE_TYPES: EmployeeType[] = [
-  "Contractor",
-  "Regular",
-  "Temporary",
-];
+import type { EsIRole, SalaryBasis } from "@/types/employee-form";
 
-export const SALARY_BASIS_BY_TYPE: Record<EmployeeType, SalaryBasis[]> = {
+export const LEGACY_EMPLOYEE_TYPES = ["Contractor", "Regular", "Temporary"] as const;
+
+export type LegacyEmployeeType = (typeof LEGACY_EMPLOYEE_TYPES)[number];
+
+export const SALARY_BASIS_BY_TYPE: Record<LegacyEmployeeType, SalaryBasis[]> = {
   Contractor: ["Contract-based", "Daily", "Weekly", "Monthly"],
   Regular: ["Branch Salary", "Monthly", "Weekly"],
   Temporary: ["Daily", "Weekly", "Monthly"],
 };
+
+export const DEFAULT_SALARY_BASIS_OPTIONS: SalaryBasis[] = [
+  "Branch Salary",
+  "Daily",
+  "Weekly",
+  "Monthly",
+  "Contract-based",
+];
+
+export function getSalaryBasisOptionsForEmployeeType(
+  employeeType: string
+): SalaryBasis[] {
+  if (employeeType in SALARY_BASIS_BY_TYPE) {
+    return SALARY_BASIS_BY_TYPE[employeeType as LegacyEmployeeType];
+  }
+  return DEFAULT_SALARY_BASIS_OPTIONS;
+}
 
 export const MACHINE_OPTIONS = [
   "Machine A",
@@ -61,15 +73,6 @@ export const ASSIGNED_FIRM_OPTIONS = [
 ] as const;
 
 export type AssignedFirm = (typeof ASSIGNED_FIRM_OPTIONS)[number];
-
-export const CONTRACTOR_OPTIONS = [
-  "Contractor 1",
-  "Contractor 2",
-  "Contractor 3",
-  "Contractor 4",
-] as const;
-
-export type AssignedContractor = (typeof CONTRACTOR_OPTIONS)[number];
 
 export const FORM_SECTIONS = [
   { id: "basic" as const, label: "Basic Information", shortLabel: "Basic" },

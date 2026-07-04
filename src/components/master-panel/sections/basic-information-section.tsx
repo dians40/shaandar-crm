@@ -8,18 +8,15 @@ import {
 } from "@/components/forms/form-fields";
 import {
   ASSIGNED_FIRM_OPTIONS,
-  CONTRACTOR_OPTIONS,
-  EMPLOYEE_TYPES,
   GENDER_OPTIONS,
-  SALARY_BASIS_BY_TYPE,
+  getSalaryBasisOptionsForEmployeeType,
 } from "@/constants/employee-options";
+import { useGeneralSettings } from "@/hooks/use-general-settings";
 import { calculateAgeFromDob, DOCUMENT_LABELS } from "@/lib/employee-form-utils";
 import type { BasicInformationErrors } from "@/lib/validate-employee-form";
 import type {
-  AssignedContractor,
   AssignedFirm,
   BasicInformation,
-  EmployeeType,
   Gender,
   SalaryBasis,
 } from "@/types/employee-form";
@@ -47,10 +44,15 @@ export default function BasicInformationSection({
   onProfilePhotoChange,
   onChange,
 }: Props) {
-  const salaryOptions =
-    data.employeeType && data.employeeType in SALARY_BASIS_BY_TYPE
-      ? SALARY_BASIS_BY_TYPE[data.employeeType as EmployeeType]
-      : [];
+  const { contractorOptions, employeeTypeOptions, isReady: settingsReady } =
+    useGeneralSettings();
+
+  const salaryOptions = data.employeeType
+    ? getSalaryBasisOptionsForEmployeeType(data.employeeType)
+    : [];
+
+  const firmRequired = !data.assignedContractor.trim();
+  const contractorRequired = !data.assignedFirm.trim();
 
   const updateField = <K extends keyof BasicInformation>(
     key: K,
@@ -67,12 +69,12 @@ export default function BasicInformationSection({
     });
   };
 
-  const handleEmployeeTypeChange = (employeeType: EmployeeType | "") => {
+  const handleEmployeeTypeChange = (employeeType: string) => {
+    const validOptions = employeeType
+      ? getSalaryBasisOptionsForEmployeeType(employeeType)
+      : [];
     const validSalary =
-      employeeType &&
-      SALARY_BASIS_BY_TYPE[employeeType as EmployeeType]?.includes(
-        data.salaryBasis as (typeof SALARY_BASIS_BY_TYPE)[EmployeeType][number]
-      );
+      employeeType && validOptions.includes(data.salaryBasis as SalaryBasis);
 
     onChange({
       ...data,
@@ -289,13 +291,18 @@ export default function BasicInformationSection({
           <SelectInput
             label="Assigned Firm / Company"
             name="assignedFirm"
-            required
+            required={firmRequired}
             value={data.assignedFirm}
             error={errors.assignedFirm}
             onChange={(e) =>
               updateField("assignedFirm", e.target.value as AssignedFirm | "")
             }
             placeholder="Select firm / company"
+            hint={
+              contractorRequired
+                ? "Required when contractor is not selected"
+                : "Optional when contractor is selected"
+            }
             options={ASSIGNED_FIRM_OPTIONS.map((firm) => ({
               value: firm,
               label: firm,
@@ -304,15 +311,19 @@ export default function BasicInformationSection({
           <SelectInput
             label="Assigned Contractor"
             name="assignedContractor"
+            required={contractorRequired}
             value={data.assignedContractor}
-            onChange={(e) =>
-              updateField("assignedContractor", e.target.value as AssignedContractor | "")
+            error={errors.assignedContractor}
+            onChange={(e) => updateField("assignedContractor", e.target.value)}
+            placeholder={
+              settingsReady ? "Select contractor" : "Loading contractors..."
             }
-            placeholder="Select contractor (optional)"
-            options={CONTRACTOR_OPTIONS.map((contractor) => ({
-              value: contractor,
-              label: contractor,
-            }))}
+            hint={
+              firmRequired
+                ? "Required when firm is not selected"
+                : "Optional when firm is selected"
+            }
+            options={contractorOptions}
           />
           <SelectInput
             label="Employee Type"
@@ -320,10 +331,11 @@ export default function BasicInformationSection({
             required
             value={data.employeeType}
             error={errors.employeeType}
-            onChange={(e) =>
-              handleEmployeeTypeChange(e.target.value as EmployeeType | "")
+            onChange={(e) => handleEmployeeTypeChange(e.target.value)}
+            placeholder={
+              settingsReady ? "Select employee type" : "Loading employee types..."
             }
-            options={EMPLOYEE_TYPES.map((type) => ({ value: type, label: type }))}
+            options={employeeTypeOptions}
           />
           <SelectInput
             label="Salary Basis"

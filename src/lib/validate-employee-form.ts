@@ -7,7 +7,8 @@ export type BasicInformationField =
   | "dateOfBirth"
   | "employeeType"
   | "gender"
-  | "assignedFirm";
+  | "assignedFirm"
+  | "assignedContractor";
 
 export type BasicInformationErrors = Partial<
   Record<BasicInformationField, string>
@@ -38,8 +39,14 @@ export function validateBasicInformation(
     errors.employeeType = "Employee type is required.";
   }
 
-  if (!data.assignedFirm) {
-    errors.assignedFirm = "Assigned firm / company is required.";
+  const hasFirm = Boolean(data.assignedFirm?.trim());
+  const hasContractor = Boolean(data.assignedContractor?.trim());
+
+  if (!hasFirm && !hasContractor) {
+    const message =
+      "Select either Assigned Firm or Assigned Contractor — at least one is required.";
+    errors.assignedFirm = message;
+    errors.assignedContractor = message;
   }
 
   if (!data.mobileNumber.trim()) {

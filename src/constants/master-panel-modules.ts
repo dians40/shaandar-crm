@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Ruler,
   ScrollText,
+  Settings,
   ShoppingCart,
   Timer,
   Truck,
@@ -42,6 +43,7 @@ export type MasterPanelModuleId =
   | "employee-group"
   | "salary-component"
   | "vehicles-management-master"
+  | "general-settings"
   | "sales-dispatch"
   | "sales-return"
   | "purchase-logs"
@@ -194,6 +196,15 @@ const ADMINISTRATION_MODULES: MasterPanelModule[] = [
     subtitle: "Fleet and vehicle registry",
     icon: Car,
     placeholderMessage: "Vehicles management master coming soon",
+  },
+  {
+    id: "general-settings",
+    serial: 14,
+    navLabel: "General Settings",
+    title: "General Settings",
+    subtitle: "Contractors, employee types, and machine registry for global dropdowns",
+    icon: Settings,
+    placeholderMessage: "",
   },
 ];
 

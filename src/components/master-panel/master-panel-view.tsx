@@ -15,7 +15,9 @@ import {
 } from "@/constants/master-panel-modules";
 import { cn } from "@/lib/utils";
 import EmployeeManagementPanel from "./employee-management-panel";
+import GodownManagementPanel from "./godown-management-panel";
 import ModulePlaceholder from "./module-placeholder";
+import OvertimeTrackerPanel from "./overtime-tracker-panel";
 
 type ErrorBoundaryState = {
   hasError: boolean;
@@ -64,7 +66,7 @@ class MasterPanelErrorBoundary extends Component<
   }
 }
 
-function ErpModuleNav({
+function MasterPanelSidebar({
   activeModuleId,
   onSelect,
 }: {
@@ -73,18 +75,10 @@ function ErpModuleNav({
 }) {
   return (
     <nav
-      className="rounded-xl border border-corporate-border bg-corporate-surface shadow-card"
-      aria-label="Serialized ERP workflow modules"
+      className="rounded-xl border border-corporate-border bg-corporate-surface p-2 shadow-card"
+      aria-label="Master Panel modules"
     >
-      <div className="border-b border-corporate-border px-4 py-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-corporate-brand">
-          ERP Workflow Track
-        </p>
-        <p className="mt-0.5 text-sm text-corporate-muted">
-          Serialized modules 1–20 (Employee Management stays active above)
-        </p>
-      </div>
-      <ol className="divide-y divide-corporate-border">
+      <ul className="space-y-1">
         {MASTER_PANEL_MODULES.map((module) => {
           const Icon = module.icon;
           const isActive = module.id === activeModuleId;
@@ -95,50 +89,21 @@ function ErpModuleNav({
                 type="button"
                 onClick={() => onSelect(module.id)}
                 className={cn(
-                  "flex w-full items-start gap-3 px-4 py-3 text-left transition-colors",
+                  "flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors",
                   isActive
-                    ? "bg-corporate-brand-light/70"
-                    : "hover:bg-corporate-bg/70"
+                    ? "bg-corporate-brand text-white"
+                    : "text-corporate-text hover:bg-corporate-bg"
                 )}
                 aria-current={isActive ? "page" : undefined}
+                title={module.title}
               >
-                <span
-                  className={cn(
-                    "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
-                    isActive
-                      ? "bg-corporate-brand text-white"
-                      : "bg-corporate-bg text-corporate-muted"
-                  )}
-                >
-                  {module.serial}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <Icon
-                      className={cn(
-                        "h-4 w-4 shrink-0",
-                        isActive ? "text-corporate-brand" : "text-corporate-muted"
-                      )}
-                      aria-hidden
-                    />
-                    <span
-                      className={cn(
-                        "text-sm font-medium",
-                        isActive ? "text-corporate-brand" : "text-corporate-text"
-                      )}
-                    >
-                      {module.title}
-                    </span>
-                  </span>
-                  <span className="mt-0.5 block text-xs text-corporate-muted">
-                    {module.subtitle}
-                  </span>
-                </span>
+                <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                <span>{module.navLabel}</span>
               </button>
             </li>
           );
         })}
-      </ol>
+      </ul>
     </nav>
   );
 }
@@ -157,84 +122,50 @@ function MasterPanelContent() {
 
   const handleModuleSelect = useCallback((id: MasterPanelModuleId) => {
     setActiveModuleId(id);
-    if (id === "employee-management") {
-      document
-        .getElementById("employee-management-section")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
   }, []);
 
-  const renderErpModulePreview = () => {
-    if (activeModule.id === "employee-management") {
-      return (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
-          <p className="font-semibold">Module 1 — Employee Management is active</p>
-          <p className="mt-1">
-            The full Employee Management workspace (search, bio-data, forms, and
-            attendance delete protection) is running in the section above.
-          </p>
-        </div>
-      );
-    }
-
+  const renderModuleWorkspace = () => {
     try {
-      return <ModulePlaceholder module={activeModule} />;
+      switch (activeModule.id) {
+        case "employee-management":
+          return <EmployeeManagementPanel />;
+        case "godowns-locations":
+          return <GodownManagementPanel />;
+        case "overtime-tracker":
+          return <OvertimeTrackerPanel />;
+        default:
+          return <ModulePlaceholder module={activeModule} />;
+      }
     } catch (error) {
-      console.error(`ERP module preview failed (${activeModule.id}):`, error);
+      console.error(`Module workspace failed (${activeModule.id}):`, error);
       return (
         <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
-          Unable to preview {activeModule.title}. Please select another module.
+          Unable to load {activeModule.title}. Please try another module.
         </div>
       );
     }
   };
 
   return (
-    <div className="space-y-8">
-      {/* PRIMARY — fully restored Employee Management (always visible) */}
+    <div className="grid gap-5 xl:grid-cols-[220px_1fr]">
+      <MasterPanelSidebar
+        activeModuleId={activeModule.id}
+        onSelect={handleModuleSelect}
+      />
       <section
-        id="employee-management-section"
-        className="space-y-4"
-        aria-label="Employee Management"
+        className="min-w-0 space-y-4"
+        aria-label={`${activeModule.title} workspace`}
       >
         <div className="rounded-xl border border-corporate-border bg-corporate-surface px-4 py-3 shadow-card sm:px-5">
           <p className="text-xs font-semibold uppercase tracking-wide text-corporate-brand">
-            Module 1 — Active Workspace
+            Module {activeModule.serial}
           </p>
           <h2 className="mt-1 text-lg font-semibold text-corporate-text">
-            Employee Management
+            {activeModule.title}
           </h2>
-          <p className="text-sm text-corporate-muted">
-            Add Employee / Assign Godown — search, bio-data, forms, attendance
-            protection
-          </p>
+          <p className="text-sm text-corporate-muted">{activeModule.subtitle}</p>
         </div>
-        <EmployeeManagementPanel />
-      </section>
-
-      {/* APPENDED — serialized ERP workflow navigation & module previews */}
-      <section className="space-y-4" aria-label="ERP workflow track">
-        <div className="rounded-xl border border-corporate-border bg-corporate-surface px-4 py-3 shadow-card sm:px-5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-corporate-brand">
-            CRM & ERP Serialized Track
-          </p>
-          <h2 className="mt-1 text-lg font-semibold text-corporate-text">
-            Enterprise Module Navigation
-          </h2>
-          <p className="text-sm text-corporate-muted">
-            Select any module below — Employee Management remains untouched above
-          </p>
-        </div>
-
-        <div className="grid gap-5 xl:grid-cols-[320px_1fr]">
-          <ErpModuleNav
-            activeModuleId={activeModule.id}
-            onSelect={handleModuleSelect}
-          />
-          <div className="min-w-0" aria-label={`${activeModule.title} preview`}>
-            {renderErpModulePreview()}
-          </div>
-        </div>
+        {renderModuleWorkspace()}
       </section>
     </div>
   );

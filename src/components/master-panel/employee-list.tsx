@@ -117,13 +117,13 @@ export default function EmployeeList({
       <div className="flex flex-col gap-4 rounded-xl border border-corporate-border bg-corporate-surface p-4 shadow-card sm:flex-row sm:items-center sm:justify-between sm:p-5">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-corporate-brand">
-            Employee Management
+            Employee
           </p>
           <h2 className="mt-1 text-lg font-semibold text-corporate-text">
             Employee List
           </h2>
           <p className="mt-1 text-sm text-corporate-muted">
-            Search by first or last name — view bio-data or edit inline.
+            Saved labor records — search, view bio-data, edit, or add new.
           </p>
           <div className="mt-2">
             <SupabaseConnectedBadge />

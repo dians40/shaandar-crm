@@ -15,6 +15,15 @@ export function statutoryStatusFromEnabled(
   return enabled ? "Active" : "Non-Active";
 }
 
+/** Prefer text column; fall back to legacy boolean when migrating older rows. */
+export function parseStatutoryStatusFromDb(
+  status: string | null | undefined,
+  legacyEnabled?: boolean | null
+): StatutoryStatus {
+  if (status === "Active" || status === "Non-Active") return status;
+  return statutoryStatusFromEnabled(legacyEnabled);
+}
+
 export function formatStatutoryStatusLabel(
   status: StatutoryStatus | "" | boolean | null | undefined
 ): string {

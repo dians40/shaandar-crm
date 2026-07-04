@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "check:supabase": "node scripts/check-supabase-connection.mjs",
+    "migrate:employees": "node scripts/apply-employee-schema-migration.mjs",
     "setup:supabase": "powershell -ExecutionPolicy Bypass -File scripts/setup-supabase-env.ps1"
   },
   "dependencies": {
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.16.0",
@@ -30,5 +32,8 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.16",
     "typescript": "^5.7.2"
+  },
+  "optionalDependencies": {
+    "pg": "^8.22.0"
   }
 }

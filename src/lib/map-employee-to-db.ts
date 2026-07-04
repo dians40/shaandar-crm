@@ -5,18 +5,14 @@ import {
   combineEmployeeName,
   splitFullName,
 } from "@/lib/employee-name-utils";
+import { combineAssignedFromGroup } from "@/lib/employee-assigned-from";
+import {
+  parseStatutoryStatusFromDb,
+} from "@/lib/statutory-status";
 import {
   calculateAllowances,
   calculateContractTotal,
 } from "@/lib/salary-breakdown";
-import {
-  combineAssignedFromGroup,
-  splitAssignedFromGroup,
-} from "@/lib/employee-assigned-from";
-import {
-  isStatutoryActive,
-  statutoryStatusFromEnabled,
-} from "@/lib/statutory-status";
 import {
   calculateVariableSalary,
   getEffectiveGrossSalary,
@@ -44,6 +40,17 @@ function cleanDocumentNumbers(numbers: DocumentNumbers): DocumentNumbers {
   };
 }
 
+function resolveAssignedFromGroup(row: {
+  assigned_from_group?: string | null;
+  assigned_firm?: string | null;
+  assigned_contractor?: string | null;
+}): string {
+  return (
+    row.assigned_from_group?.trim() ||
+    combineAssignedFromGroup(row.assigned_firm, row.assigned_contractor)
+  );
+}
+
 export function mapFormToEmployeeInsert(
   formData: EmployeeFormData,
   documentPaths: DocumentPaths = {}
@@ -67,10 +74,6 @@ export function mapFormToEmployeeInsert(
     formData.existingDocumentPaths.profilePhoto ??
     null;
 
-  const { assignedFirm, assignedContractor } = splitAssignedFromGroup(
-    basic.assignedFromGroup
-  );
-
   return {
     full_name: combineEmployeeName(basic.firstName, basic.lastName),
     father_name: basic.fatherName.trim() || null,
@@ -90,8 +93,7 @@ export function mapFormToEmployeeInsert(
     photo_url: photoUrl,
     employee_type: basic.employeeType,
     salary_basis: basic.salaryBasis || null,
-    assigned_firm: assignedFirm,
-    assigned_contractor: assignedContractor,
+    assigned_from_group: basic.assignedFromGroup.trim() || null,
     machine_assignment: work.machineAssignment.trim() || null,
     family_members: formData.familyMembers,
     document_paths: mergedPaths,
@@ -119,8 +121,8 @@ export function mapFormToEmployeeInsert(
     variable_salary_enabled: bank.variableSalaryEnabled,
     daily_rate: parseAmount(bank.dailyRate),
     worked_days: parseAmount(bank.workedDays),
-    esi_enabled: isStatutoryActive(bank.esiStatus),
-    pf_enabled: isStatutoryActive(bank.pfStatus),
+    esi_status: bank.esiStatus || null,
+    pf_status: bank.pfStatus || null,
     fooding_allowance: bank.foodingAllowance || null,
     contract_packing: {
       itemName: bank.contractPacking.itemName,
@@ -141,15 +143,17 @@ export function mapEmployeeRowToListItem(
   full_name: string;
   employee_type: string;
   mobile_number: string;
-  vehicle_number?: string | null;
   machine_assignment: string | null;
   fix_salary_amount?: number | null;
   basic_salary?: number | null;
   variable_salary_enabled?: boolean | null;
   daily_rate?: number | null;
   worked_days?: number | null;
+  assigned_from_group?: string | null;
   assigned_firm?: string | null;
   assigned_contractor?: string | null;
+  esi_status?: string | null;
+  pf_status?: string | null;
   esi_enabled?: boolean | null;
   pf_enabled?: boolean | null;
 },
@@ -178,12 +182,9 @@ export function mapEmployeeRowToListItem(
     dailyRate: row.daily_rate ?? null,
     workedDays: row.worked_days ?? null,
     effectiveSalary: effectiveSalary > 0 ? effectiveSalary : salaryBase ?? null,
-    assignedFromGroup: combineAssignedFromGroup(
-      row.assigned_firm,
-      row.assigned_contractor
-    ) || "—",
-    esiStatus: statutoryStatusFromEnabled(row.esi_enabled),
-    pfStatus: statutoryStatusFromEnabled(row.pf_enabled),
+    assignedFromGroup: resolveAssignedFromGroup(row) || "—",
+    esiStatus: parseStatutoryStatusFromDb(row.esi_status, row.esi_enabled),
+    pfStatus: parseStatutoryStatusFromDb(row.pf_status, row.pf_enabled),
     hasAttendanceRecords: options?.hasAttendanceRecords ?? false,
   };
 }
@@ -211,10 +212,7 @@ export function mapEmployeeRowToFormData(row: EmployeeRow): EmployeeFormData {
       referenceMobileNumber: row.reference_mobile ?? "",
       employeeType: row.employee_type as EmployeeFormData["basicInformation"]["employeeType"],
       salaryBasis: (row.salary_basis ?? "") as EmployeeFormData["basicInformation"]["salaryBasis"],
-      assignedFromGroup: combineAssignedFromGroup(
-        row.assigned_firm,
-        row.assigned_contractor
-      ),
+      assignedFromGroup: resolveAssignedFromGroup(row),
     },
     workAssignment: {
       machineAssignment: row.machine_assignment ?? "",
@@ -252,8 +250,8 @@ export function mapEmployeeRowToFormData(row: EmployeeRow): EmployeeFormData {
       variableSalaryEnabled: row.variable_salary_enabled ?? false,
       dailyRate: amountToString(row.daily_rate),
       workedDays: amountToString(row.worked_days),
-      esiStatus: statutoryStatusFromEnabled(row.esi_enabled),
-      pfStatus: statutoryStatusFromEnabled(row.pf_enabled),
+      esiStatus: parseStatutoryStatusFromDb(row.esi_status, row.esi_enabled),
+      pfStatus: parseStatutoryStatusFromDb(row.pf_status, row.pf_enabled),
       foodingAllowance: (row.fooding_allowance ?? "") as EmployeeFormData["bankAndSalary"]["foodingAllowance"],
       contractPacking: {
         itemName: row.contract_packing?.itemName ?? "",

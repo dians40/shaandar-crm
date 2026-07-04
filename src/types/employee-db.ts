@@ -47,8 +47,7 @@ export type EmployeeRow = {
   photo_url: string | null;
   employee_type: string;
   salary_basis: string | null;
-  assigned_firm: string | null;
-  assigned_contractor: string | null;
+  assigned_from_group: string | null;
   machine_assignment: string | null;
   family_members: FamilyMember[];
   document_paths: DocumentPaths;
@@ -67,8 +66,12 @@ export type EmployeeRow = {
   variable_salary_enabled: boolean;
   daily_rate: number | null;
   worked_days: number | null;
-  esi_enabled: boolean;
-  pf_enabled: boolean;
+  esi_status: string | null;
+  pf_status: string | null;
+  /** @deprecated Legacy boolean — kept for backfill reads only */
+  esi_enabled?: boolean;
+  /** @deprecated Legacy boolean — kept for backfill reads only */
+  pf_enabled?: boolean;
   fooding_allowance: string | null;
   contract_packing: ContractPackingDb;
   bonus_last_year: number | null;

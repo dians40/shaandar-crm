@@ -77,7 +77,7 @@ async function main() {
       console.log("SUCCESS: Connected to Supabase!");
       console.log("         employees table is reachable.");
 
-      const verifyUrl = `${url.replace(/\/$/, "")}/rest/v1/employees?select=vehicle_number,allowances,contract_packing,photo_url,police_station,reference_name&limit=0`;
+      const verifyUrl = `${url.replace(/\/$/, "")}/rest/v1/employees?select=assigned_from_group,esi_status,pf_status&limit=0`;
       const verifyRes = await fetch(verifyUrl, {
         headers: {
           apikey: serviceRoleKey,
@@ -89,12 +89,12 @@ async function main() {
         const verifyBody = await verifyRes.text();
         if (verifyBody.includes("column") || verifyRes.status === 400) {
           console.log("");
-          console.warn("WARNING: Migration 003 columns not found yet.");
-          console.warn("         Run 003_employee_extended_fields.sql in Supabase SQL Editor.");
-          console.warn("         File: supabase/migrations/003_employee_extended_fields.sql");
+          console.warn("WARNING: Migration 006 columns not found yet.");
+          console.warn("         Run: npm run migrate:employees");
+          console.warn("         Or paste supabase/migrations/006_employee_unified_assignment_status.sql in SQL Editor.");
         }
       } else {
-        console.log("         Migration 003 columns: OK");
+        console.log("         Migration 006 columns: OK");
       }
 
       console.log("\nNext: Submit Add Employee form, then verify in Supabase Table Editor.\n");

@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, LayoutGrid } from "lucide-react";
+import { LayoutGrid } from "lucide-react";
 import {
+  getGroupById,
   getGroupForModule,
   getMasterPanelModule,
   MASTER_PANEL_MODULE_GROUPS,
@@ -16,34 +17,24 @@ type MasterPanelManagerNavProps = {
   onSelect: (id: MasterPanelModuleId) => void;
 };
 
-type ExpandedGroups = Record<MasterPanelModuleGroupId, boolean>;
-
-const DEFAULT_EXPANDED: ExpandedGroups = {
-  administration: true,
-  transaction: false,
-};
-
 export default function MasterPanelManagerNav({
   activeModuleId,
   onSelect,
 }: MasterPanelManagerNavProps) {
   const activeModule = getMasterPanelModule(activeModuleId);
-  const [expandedGroups, setExpandedGroups] =
-    useState<ExpandedGroups>(DEFAULT_EXPANDED);
+  const moduleGroup = getGroupForModule(activeModuleId);
+  const [activeGroupId, setActiveGroupId] = useState<MasterPanelModuleGroupId>(
+    moduleGroup?.id ?? "administration"
+  );
 
   useEffect(() => {
-    const group = getGroupForModule(activeModuleId);
-    if (group?.id) {
-      setExpandedGroups((prev) => ({ ...prev, [group.id]: true }));
+    const nextGroup = getGroupForModule(activeModuleId);
+    if (nextGroup?.id) {
+      setActiveGroupId(nextGroup.id);
     }
   }, [activeModuleId]);
 
-  const toggleGroup = (groupId: MasterPanelModuleGroupId) => {
-    setExpandedGroups((prev) => ({
-      ...prev,
-      [groupId]: !prev[groupId],
-    }));
-  };
+  const activeGroup = getGroupById(activeGroupId) ?? MASTER_PANEL_MODULE_GROUPS[0];
 
   return (
     <nav
@@ -58,7 +49,7 @@ export default function MasterPanelManagerNav({
               ERP Modules
             </p>
             <p className="text-xs text-corporate-muted">
-              Expand a group to browse modules
+              Select a group, then pick a module
             </p>
           </div>
         </div>
@@ -69,74 +60,74 @@ export default function MasterPanelManagerNav({
         )}
       </div>
 
-      <div className="p-2">
-        {MASTER_PANEL_MODULE_GROUPS.map((group) => {
-          const isExpanded = expandedGroups[group.id] ?? false;
-
-          return (
-            <div key={group.id} className="mb-1">
+      <div className="p-4">
+        <div
+          className="mb-4 flex flex-col gap-2 sm:flex-row"
+          role="tablist"
+          aria-label="ERP module groups"
+        >
+          {MASTER_PANEL_MODULE_GROUPS.map((group) => {
+            const isActive = group.id === activeGroupId;
+            return (
               <button
+                key={group.id}
                 type="button"
-                aria-expanded={isExpanded}
-                aria-controls={`accordion-panel-${group.id}`}
-                onClick={() => toggleGroup(group.id)}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveGroupId(group.id)}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left transition-colors",
-                  isExpanded
-                    ? "bg-corporate-brand/10 text-corporate-brand"
-                    : "text-corporate-text hover:bg-corporate-bg"
+                  "flex-1 rounded-full border px-4 py-2.5 text-center text-sm font-semibold transition-colors",
+                  isActive
+                    ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
+                    : "border-corporate-border bg-corporate-bg text-corporate-text hover:border-corporate-brand/40 hover:bg-corporate-brand/5"
                 )}
               >
-                {isExpanded ? (
-                  <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />
-                ) : (
-                  <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
-                )}
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold">{group.label}</span>
-                  <span className="block text-xs font-normal text-corporate-muted">
-                    {group.description}
-                  </span>
+                <span className="block">{group.label}</span>
+                <span
+                  className={cn(
+                    "mt-0.5 block text-xs font-normal",
+                    isActive ? "text-white/85" : "text-corporate-muted"
+                  )}
+                >
+                  {group.description}
                 </span>
               </button>
+            );
+          })}
+        </div>
 
-              {isExpanded && (
-                <ul
-                  id={`accordion-panel-${group.id}`}
-                  className="mt-1 space-y-0.5 pb-2 pl-2"
-                  role="list"
+        <ul
+          className="flex flex-col gap-2"
+          role="list"
+          aria-label={`${activeGroup?.label ?? "Group"} modules`}
+        >
+          {(activeGroup?.moduleIds ?? []).map((moduleId) => {
+            const panelModule = getMasterPanelModule(moduleId);
+            if (!panelModule) return null;
+
+            const isActive = moduleId === activeModuleId;
+            const Icon = panelModule.icon;
+
+            return (
+              <li key={moduleId}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(moduleId)}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-full border px-4 py-2.5 text-left text-sm font-medium transition-all",
+                    isActive
+                      ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
+                      : "border-corporate-border bg-white text-corporate-text hover:border-corporate-brand/40 hover:bg-corporate-brand/5"
+                  )}
                 >
-                  {(group.moduleIds ?? []).map((moduleId) => {
-                    const panelModule = getMasterPanelModule(moduleId);
-                    if (!panelModule) return null;
-
-                    const isActive = moduleId === activeModuleId;
-                    const Icon = panelModule.icon;
-
-                    return (
-                      <li key={moduleId}>
-                        <button
-                          type="button"
-                          onClick={() => onSelect(moduleId)}
-                          aria-current={isActive ? "page" : undefined}
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-lg py-2 pl-6 pr-3 text-left text-sm transition-colors",
-                            isActive
-                              ? "bg-corporate-brand font-medium text-white"
-                              : "text-corporate-text hover:bg-corporate-bg"
-                          )}
-                        >
-                          <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                          <span className="truncate">{panelModule.navLabel}</span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          );
-        })}
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="truncate">{panelModule.navLabel}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </nav>
   );

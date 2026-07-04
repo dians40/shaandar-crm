@@ -7,7 +7,9 @@ import { formatUnitLabel } from "@/constants/units";
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
 import { useItemGroups } from "@/hooks/use-item-groups";
 import { useItems } from "@/hooks/use-items";
+import { useUnitConversions } from "@/hooks/use-unit-conversions";
 import { useUnits } from "@/hooks/use-units";
+import { conversionMatchesItemUnits } from "@/lib/item-unit-conversion";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
 import { selectMasterPanelEntity } from "@/lib/master-panel-entity-bridge";
 import {
@@ -16,6 +18,8 @@ import {
   validateItemForm,
   type ItemRecord,
 } from "@/types/item";
+import { formatChainProductFormula } from "@/types/unit-conversion";
+import ItemUnitMappingSection from "./item-unit-mapping-section";
 import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
@@ -29,6 +33,7 @@ export default function ItemsManagementPanel() {
   const { checkUsedInTransactions } = useMasterDeletionGuard();
   const { groupSelectOptions, isReady: groupsReady } = useItemGroups();
   const { units, unitOptions, isReady: unitsReady } = useUnits();
+  const { conversions, isReady: conversionsReady } = useUnitConversions();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_ITEM_FORM);
@@ -40,6 +45,34 @@ export default function ItemsManagementPanel() {
     () => items.find((row) => row.id === viewingId) ?? null,
     [items, viewingId]
   );
+
+  const unitNameById = useMemo(
+    () => Object.fromEntries(units.map((unit) => [unit.id, unit.name])),
+    [units]
+  );
+
+  const resolveLinkedConversionLabel = (conversionId: string) => {
+    if (!conversionId) return "—";
+    const conversion = conversions.find((row) => row.id === conversionId);
+    if (!conversion) return "—";
+    return formatChainProductFormula(conversion, unitNameById);
+  };
+
+  const reconcileConversionId = (
+    primaryUnitId: string,
+    alternateUnitId: string,
+    currentConversionId: string
+  ) => {
+    if (!currentConversionId) return "";
+    const conversion = conversions.find((row) => row.id === currentConversionId);
+    if (
+      conversion &&
+      conversionMatchesItemUnits(conversion, primaryUnitId, alternateUnitId || null)
+    ) {
+      return currentConversionId;
+    }
+    return "";
+  };
 
   const unitDropdownOptions = useMemo(
     () =>
@@ -101,6 +134,7 @@ export default function ItemsManagementPanel() {
       primaryUnitName: record.primaryUnitName,
       alternateUnitId: record.alternateUnitId,
       alternateUnitName: record.alternateUnitName,
+      unitConversionId: record.unitConversionId,
       openingStockQuantity: record.openingStockQuantity,
       openingStockValue: record.openingStockValue,
       purchaseRate: record.purchaseRate,
@@ -122,11 +156,15 @@ export default function ItemsManagementPanel() {
 
   const handlePrimaryUnitChange = (unitId: string) => {
     const unit = units.find((row) => row.id === unitId);
-    setForm((prev) => ({
-      ...prev,
-      primaryUnitId: unitId,
-      primaryUnitName: unit?.name ?? "",
-    }));
+    setForm((prev) => {
+      const alternateUnitId = prev.alternateUnitId;
+      return {
+        ...prev,
+        primaryUnitId: unitId,
+        primaryUnitName: unit?.name ?? "",
+        unitConversionId: reconcileConversionId(unitId, alternateUnitId, prev.unitConversionId),
+      };
+    });
   };
 
   const handleAlternateUnitChange = (unitId: string) => {
@@ -135,6 +173,11 @@ export default function ItemsManagementPanel() {
         ...prev,
         alternateUnitId: "",
         alternateUnitName: "",
+        unitConversionId: reconcileConversionId(
+          prev.primaryUnitId,
+          "",
+          prev.unitConversionId
+        ),
       }));
       return;
     }
@@ -143,6 +186,18 @@ export default function ItemsManagementPanel() {
       ...prev,
       alternateUnitId: unitId,
       alternateUnitName: unit?.name ?? "",
+      unitConversionId: reconcileConversionId(
+        prev.primaryUnitId,
+        unitId,
+        prev.unitConversionId
+      ),
+    }));
+  };
+
+  const handleConversionChange = (conversionId: string) => {
+    setForm((prev) => ({
+      ...prev,
+      unitConversionId: conversionId,
     }));
   };
 
@@ -202,7 +257,7 @@ export default function ItemsManagementPanel() {
     />
   );
 
-  if (!isReady || !groupsReady || !unitsReady) {
+  if (!isReady || !groupsReady || !unitsReady || !conversionsReady) {
     return (
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading items master...
@@ -220,7 +275,11 @@ export default function ItemsManagementPanel() {
           fields={[
             { label: "Item Group", value: viewingRecord.itemGroupName },
             { label: "Primary Unit", value: viewingRecord.primaryUnitName },
-            { label: "Alternate Unit", value: viewingRecord.alternateUnitName },
+            { label: "Alternate Unit", value: viewingRecord.alternateUnitName || "—" },
+            {
+              label: "Conversion Formula",
+              value: resolveLinkedConversionLabel(viewingRecord.unitConversionId),
+            },
             { label: "Opening Stock Qty", value: viewingRecord.openingStockQuantity },
             {
               label: "Opening Stock Value",
@@ -288,21 +347,24 @@ export default function ItemsManagementPanel() {
               options={groupSelectOptions}
               onChange={(e) => handleItemGroupChange(e.target.value)}
             />
-            <SelectInput
-              label="Primary Unit"
-              required
-              value={form.primaryUnitId}
-              placeholder="Select primary unit"
-              options={unitDropdownOptions.length ? unitDropdownOptions : unitOptions}
-              onChange={(e) => handlePrimaryUnitChange(e.target.value)}
-              hint="From pre-seeded units: Bag, Box, Pcs, KG, etc."
-            />
-            <SelectInput
-              label="Alternate Unit (Optional)"
-              value={form.alternateUnitId}
-              options={alternateUnitOptions}
-              onChange={(e) => handleAlternateUnitChange(e.target.value)}
-            />
+          </div>
+
+          <ItemUnitMappingSection
+            primaryUnitId={form.primaryUnitId}
+            alternateUnitId={form.alternateUnitId}
+            unitConversionId={form.unitConversionId}
+            unitDropdownOptions={
+              unitDropdownOptions.length ? unitDropdownOptions : unitOptions
+            }
+            alternateUnitOptions={alternateUnitOptions}
+            conversions={conversions}
+            unitNameById={unitNameById}
+            onPrimaryUnitChange={handlePrimaryUnitChange}
+            onAlternateUnitChange={handleAlternateUnitChange}
+            onConversionChange={handleConversionChange}
+          />
+
+          <div className="grid gap-4 sm:grid-cols-2">
             <TextInput
               label="Opening Stock Quantity"
               type="number"

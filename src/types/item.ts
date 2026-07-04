@@ -11,6 +11,8 @@ export type ItemRecord = {
   primaryUnitName: string;
   alternateUnitId: string;
   alternateUnitName: string;
+  /** Linked Unit Conversion Master formula id (optional). */
+  unitConversionId: string;
   openingStockQuantity: number;
   openingStockValue: number;
   purchaseRate: number;
@@ -29,6 +31,7 @@ export const EMPTY_ITEM_FORM: Omit<ItemRecord, "id" | "createdAt" | "updatedAt">
   primaryUnitName: "",
   alternateUnitId: "",
   alternateUnitName: "",
+  unitConversionId: "",
   openingStockQuantity: 0,
   openingStockValue: 0,
   purchaseRate: 0,
@@ -49,6 +52,7 @@ export function normalizeItemRecord(
     primaryUnitName: row.primaryUnitName ?? "",
     alternateUnitId: row.alternateUnitId ?? "",
     alternateUnitName: row.alternateUnitName ?? "",
+    unitConversionId: row.unitConversionId ?? "",
     openingStockQuantity: Number(row.openingStockQuantity) || 0,
     openingStockValue: Number(row.openingStockValue) || 0,
     purchaseRate: Number(row.purchaseRate) || 0,

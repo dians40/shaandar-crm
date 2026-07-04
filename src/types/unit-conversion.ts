@@ -70,6 +70,7 @@ function hasPositiveMultiplier(value: number | null | undefined): value is numbe
 }
 
 const CHAIN_ARROW = " ➔ ";
+const PRODUCT_FORMULA_SEPARATOR = " × ";
 
 export type ConversionChainStep = {
   multiplier: number | null;
@@ -325,6 +326,25 @@ export function formatChainShort(
   }
 
   return segments.join(CHAIN_ARROW);
+}
+
+/** Beautified product formula for item master (e.g. 1 Carton × 120 Packets × 70 Pieces). */
+export function formatChainProductFormula(
+  record: UnitConversionRecord,
+  unitNameById: Record<string, string> = {}
+): string {
+  const chain = resolveConversionDisplay(record, unitNameById);
+  const segments: string[] = [`1 ${chain.baseUnitName}`];
+
+  for (const step of chain.steps) {
+    if (step.multiplier != null) {
+      segments.push(`${step.multiplier} ${step.unit}`);
+    } else {
+      segments.push(step.unit);
+    }
+  }
+
+  return segments.join(PRODUCT_FORMULA_SEPARATOR);
 }
 
 export function formatTotalBaseUnits(

@@ -39,8 +39,8 @@ export default function MasterPanelView() {
           </button>
         </div>
       ) : (
-        /* यहाँ हम EmployeeList की मांग के अनुसार खाली लिस्ट और ऑन-ऐड फंक्शन पास कर रहे हैं */
-        <EmployeeList employees={[]} onAdd={() => setView("add")} />
+        /* यहाँ हम एरे को explicit type 'any[]' दे रहे हैं ताकि एरर न आए और onAdd हटा दिया है */
+        <EmployeeList employees={[] as any[]} />
       )}
     </div>
   );

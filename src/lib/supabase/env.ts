@@ -13,16 +13,35 @@ export function normalizeEnvValue(value: string | undefined): string {
   return cleaned;
 }
 
-/** Normalize Supabase project URL (add https, remove trailing slash). */
+/** Normalize Supabase project URL (add https, domain suffix, remove trailing slash). */
 export function normalizeSupabaseUrl(raw: string | undefined): string {
   let url = normalizeEnvValue(raw);
   if (!url) return "";
+
+  // Bare project ref pasted without domain, e.g. "kmybydpbfdguavnzfltp"
+  if (/^[a-z0-9-]+$/i.test(url)) {
+    return `https://${url}.supabase.co`;
+  }
 
   if (!/^https?:\/\//i.test(url)) {
     url = `https://${url}`;
   }
 
-  return url.replace(/\/+$/, "");
+  url = url.replace(/\/+$/, "");
+
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+
+    // Common Vercel paste mistake: https://PROJECT_REF (no .supabase.co)
+    if (host && !host.includes(".") && /^[a-z0-9-]+$/i.test(host)) {
+      return `https://${host}.supabase.co`;
+    }
+  } catch {
+    return "";
+  }
+
+  return url;
 }
 
 export function isValidSupabaseProjectUrl(url: string): boolean {

@@ -99,7 +99,17 @@ export default function EmployeeList({
             <SupabaseConnectedBadge />
           </div>
         </div>
-              </div>
+        <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={onAddNew}
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-corporate-brand px-4 py-2 text-sm font-medium text-white hover:bg-corporate-brand/90"
+          >
+            <Plus className="h-4 w-4" />
+            Add Employee
+          </button>
+        </div>
+      </div>
 
       {(error || actionError) && (
         <div

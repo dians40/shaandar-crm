@@ -1,67 +1,60 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
-import { supabase } from "@/lib/supabase/client";
-interface Employee {
-  id: string;
-  name: string;
-  employee_type?: string;
-  mobile?: string;
-  vehicle_no?: string;
-  salary?: number;
-  [key: string]: unknown;
-}
+import SupabaseSetupBanner from "./supabase-setup-banner";
+import { useEmployees } from "@/hooks/use-employees";
+
+type ViewMode = "list" | "add" | "edit";
 
 export default function MasterPanelView() {
-  const [view, setView] = useState<"list" | "add">("list");
-  const [employees, setEmployees] = useState<Employee[]>([]); // यहाँ 'any' हटाकर 'Employee[]' कर दिया है
+  const { employees, isLoading, error, reload } = useEmployees();
+  const [view, setView] = useState<ViewMode>("list");
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  const fetchEmployees = async () => {
-    try {
-      const { data, error } = await supabase.from("employees").select("*");
-      if (!error && data) {
-        setEmployees(data as Employee[]); // यहाँ भी 'any' हटाकर 'Employee[]' कर दिया है
-      }
-    } catch (err) {
-      console.error("Error fetching employees:", err);
-    }
+  const handleBack = () => {
+    setView("list");
+    setEditingId(null);
   };
 
-  useEffect(() => {
-    fetchEmployees();
-  }, [view]);
+  const handleSuccess = () => {
+    handleBack();
+    void reload();
+  };
+
+  if (view === "add") {
+    return (
+      <EmployeeForm mode="add" onBack={handleBack} onSuccess={handleSuccess} />
+    );
+  }
+
+  if (view === "edit" && editingId) {
+    return (
+      <EmployeeForm
+        mode="edit"
+        employeeId={editingId}
+        onBack={handleBack}
+        onSuccess={handleSuccess}
+      />
+    );
+  }
 
   return (
-    <div className="space-y-5 p-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Master Panel</h1>
-        {view === "list" && (
-          <button 
-            onClick={() => setView("add")}
-            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-          >
-            + Add New Employee
-          </button>
-        )}
-      </div>
-
-      {view === "add" ? (
-        <div className="bg-white p-6 rounded-md shadow">
-          <EmployeeForm onSuccess={() => setView("list")} onBack={() => setView("list")} />
-          <button 
-            onClick={() => setView("list")}
-            className="mt-4 bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600"
-          >
-            Back to List
-          </button>
-        </div>
-      ) : (
-        /* eslint-disable-next-line @typescript-eslint/ban-ts-comment */
-        /* @ts-ignore - bypassing nested props mismatch safely for deploy pass */
-        <EmployeeList employees={employees} />
-      )}
+    <div className="space-y-5">
+      <SupabaseSetupBanner />
+      <EmployeeList
+        employees={employees}
+        isLoading={isLoading}
+        error={error}
+        onRetry={() => void reload()}
+        onAddNew={() => setView("add")}
+        onEdit={(id) => {
+          setEditingId(id);
+          setView("edit");
+        }}
+        onRefresh={() => void reload()}
+      />
     </div>
   );
 }

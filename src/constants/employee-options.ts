@@ -55,6 +55,22 @@ export const MINIMUM_OUTPUT_OPTIONS = [
 
 export const GENDER_OPTIONS = ["Male", "Female", "Other"] as const;
 
+export const ASSIGNED_FIRM_OPTIONS = [
+  "Krishna Food Product",
+  "MAHEK Industries",
+] as const;
+
+export type AssignedFirm = (typeof ASSIGNED_FIRM_OPTIONS)[number];
+
+export const CONTRACTOR_OPTIONS = [
+  "Contractor 1",
+  "Contractor 2",
+  "Contractor 3",
+  "Contractor 4",
+] as const;
+
+export type AssignedContractor = (typeof CONTRACTOR_OPTIONS)[number];
+
 export const FORM_SECTIONS = [
   { id: "basic" as const, label: "Basic Information", shortLabel: "Basic" },
   { id: "work" as const, label: "Work & Machine", shortLabel: "Work" },

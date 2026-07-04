@@ -6,7 +6,8 @@ export type BasicInformationField =
   | "mobileNumber"
   | "dateOfBirth"
   | "employeeType"
-  | "gender";
+  | "gender"
+  | "assignedFirm";
 
 export type BasicInformationErrors = Partial<
   Record<BasicInformationField, string>
@@ -35,6 +36,10 @@ export function validateBasicInformation(
 
   if (!data.employeeType) {
     errors.employeeType = "Employee type is required.";
+  }
+
+  if (!data.assignedFirm) {
+    errors.assignedFirm = "Assigned firm / company is required.";
   }
 
   if (!data.mobileNumber.trim()) {

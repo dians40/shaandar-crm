@@ -7,13 +7,22 @@ import {
   FileInputField,
 } from "@/components/forms/form-fields";
 import {
+  ASSIGNED_FIRM_OPTIONS,
+  CONTRACTOR_OPTIONS,
   EMPLOYEE_TYPES,
   GENDER_OPTIONS,
   SALARY_BASIS_BY_TYPE,
 } from "@/constants/employee-options";
 import { calculateAgeFromDob, DOCUMENT_LABELS } from "@/lib/employee-form-utils";
 import type { BasicInformationErrors } from "@/lib/validate-employee-form";
-import type { BasicInformation, EmployeeType, Gender, SalaryBasis } from "@/types/employee-form";
+import type {
+  AssignedContractor,
+  AssignedFirm,
+  BasicInformation,
+  EmployeeType,
+  Gender,
+  SalaryBasis,
+} from "@/types/employee-form";
 
 type Props = {
   data: BasicInformation;
@@ -277,6 +286,34 @@ export default function BasicInformationSection({
           Employment Classification
         </h3>
         <div className="grid gap-5 sm:grid-cols-2">
+          <SelectInput
+            label="Assigned Firm / Company"
+            name="assignedFirm"
+            required
+            value={data.assignedFirm}
+            error={errors.assignedFirm}
+            onChange={(e) =>
+              updateField("assignedFirm", e.target.value as AssignedFirm | "")
+            }
+            placeholder="Select firm / company"
+            options={ASSIGNED_FIRM_OPTIONS.map((firm) => ({
+              value: firm,
+              label: firm,
+            }))}
+          />
+          <SelectInput
+            label="Assigned Contractor"
+            name="assignedContractor"
+            value={data.assignedContractor}
+            onChange={(e) =>
+              updateField("assignedContractor", e.target.value as AssignedContractor | "")
+            }
+            placeholder="Select contractor (optional)"
+            options={CONTRACTOR_OPTIONS.map((contractor) => ({
+              value: contractor,
+              label: contractor,
+            }))}
+          />
           <SelectInput
             label="Employee Type"
             name="employeeType"

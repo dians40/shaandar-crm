@@ -7,6 +7,14 @@ export type SalaryBasis =
   | "Monthly"
   | "Contract-based";
 
+export type AssignedFirm = "Krishna Food Product" | "MAHEK Industries";
+
+export type AssignedContractor =
+  | "Contractor 1"
+  | "Contractor 2"
+  | "Contractor 3"
+  | "Contractor 4";
+
 export type FoodingAllowance =
   | "Daily Food Provided by Company"
   | "Self-Managed / Eaten by Self";
@@ -79,6 +87,8 @@ export type BasicInformation = {
   referenceMobileNumber: string;
   employeeType: EmployeeType | "";
   salaryBasis: SalaryBasis | "";
+  assignedFirm: AssignedFirm | "";
+  assignedContractor: AssignedContractor | "";
 };
 
 export type WorkAssignment = {
@@ -174,6 +184,8 @@ export const INITIAL_EMPLOYEE_FORM: EmployeeFormData = {
     referenceMobileNumber: "",
     employeeType: "",
     salaryBasis: "",
+    assignedFirm: "",
+    assignedContractor: "",
   },
   workAssignment: {
     machineAssignment: "",

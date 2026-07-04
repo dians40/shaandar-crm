@@ -213,6 +213,12 @@ export default function EmployeeBioDataCard({
               }
             />
             <DetailRow label="Employee Type" value={basic.employeeType} />
+            <DetailRow label="Assigned Firm / Company" value={basic.assignedFirm} />
+            <DetailRow label="Assigned Contractor" value={basic.assignedContractor} />
+            <DetailRow
+              label="ESI Deduction"
+              value={employee.bankAndSalary.esiEnabled ? "Active" : "Inactive"}
+            />
             <DetailRow
               label="Machine Assignment"
               value={employee.workAssignment.machineAssignment}

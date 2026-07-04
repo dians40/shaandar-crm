@@ -47,6 +47,8 @@ export type EmployeeRow = {
   photo_url: string | null;
   employee_type: string;
   salary_basis: string | null;
+  assigned_firm: string | null;
+  assigned_contractor: string | null;
   machine_assignment: string | null;
   family_members: FamilyMember[];
   document_paths: DocumentPaths;

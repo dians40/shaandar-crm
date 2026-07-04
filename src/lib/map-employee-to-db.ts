@@ -78,6 +78,8 @@ export function mapFormToEmployeeInsert(
     photo_url: photoUrl,
     employee_type: basic.employeeType,
     salary_basis: basic.salaryBasis || null,
+    assigned_firm: basic.assignedFirm || null,
+    assigned_contractor: basic.assignedContractor || null,
     machine_assignment: work.machineAssignment.trim() || null,
     family_members: formData.familyMembers,
     document_paths: mergedPaths,
@@ -134,6 +136,9 @@ export function mapEmployeeRowToListItem(
   variable_salary_enabled?: boolean | null;
   daily_rate?: number | null;
   worked_days?: number | null;
+  assigned_firm?: string | null;
+  assigned_contractor?: string | null;
+  esi_enabled?: boolean | null;
 },
   options?: { hasAttendanceRecords?: boolean }
 ): EmployeeListItem {
@@ -161,6 +166,9 @@ export function mapEmployeeRowToListItem(
     dailyRate: row.daily_rate ?? null,
     workedDays: row.worked_days ?? null,
     effectiveSalary: effectiveSalary > 0 ? effectiveSalary : salaryBase ?? null,
+    assignedFirm: row.assigned_firm?.trim() || "—",
+    assignedContractor: row.assigned_contractor?.trim() || "—",
+    esiEnabled: Boolean(row.esi_enabled),
     hasAttendanceRecords: options?.hasAttendanceRecords ?? false,
   };
 }
@@ -189,6 +197,8 @@ export function mapEmployeeRowToFormData(row: EmployeeRow): EmployeeFormData {
       referenceMobileNumber: row.reference_mobile ?? "",
       employeeType: row.employee_type as EmployeeFormData["basicInformation"]["employeeType"],
       salaryBasis: (row.salary_basis ?? "") as EmployeeFormData["basicInformation"]["salaryBasis"],
+      assignedFirm: (row.assigned_firm ?? "") as EmployeeFormData["basicInformation"]["assignedFirm"],
+      assignedContractor: (row.assigned_contractor ?? "") as EmployeeFormData["basicInformation"]["assignedContractor"],
     },
     workAssignment: {
       machineAssignment: row.machine_assignment ?? "",

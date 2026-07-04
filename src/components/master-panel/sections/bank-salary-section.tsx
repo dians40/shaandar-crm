@@ -261,8 +261,8 @@ export default function BankSalarySection({ data, salaryBasis = "", onChange }: 
         </h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <ToggleInput
-            label="ESI Enable"
-            description="ESI deduction on Basic + all allowances"
+            label="Enable ESI Deduction"
+            description="When enabled, ESI is deducted from payroll; when disabled, ESI evaluates to 0"
             checked={data.esiEnabled}
             onChange={(checked) => updateField("esiEnabled", checked)}
           />

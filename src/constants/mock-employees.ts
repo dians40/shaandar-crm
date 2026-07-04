@@ -16,6 +16,9 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     dailyRate: null,
     workedDays: null,
     effectiveSalary: 25000,
+    assignedFirm: "Krishna Food Product",
+    assignedContractor: "Contractor 1",
+    esiEnabled: true,
     hasAttendanceRecords: false,
   },
   {
@@ -31,6 +34,9 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     dailyRate: 800,
     workedDays: 22,
     effectiveSalary: 17600,
+    assignedFirm: "MAHEK Industries",
+    assignedContractor: "Contractor 2",
+    esiEnabled: false,
     hasAttendanceRecords: true,
   },
   {
@@ -46,6 +52,9 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     dailyRate: null,
     workedDays: null,
     effectiveSalary: 18000,
+    assignedFirm: "Krishna Food Product",
+    assignedContractor: "Contractor 3",
+    esiEnabled: true,
     hasAttendanceRecords: false,
   },
 ];

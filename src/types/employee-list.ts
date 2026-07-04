@@ -14,5 +14,8 @@ export type EmployeeListItem = {
   dailyRate: number | null;
   workedDays: number | null;
   effectiveSalary: number | null;
+  assignedFirm: string;
+  assignedContractor: string;
+  esiEnabled: boolean;
   hasAttendanceRecords: boolean;
 };

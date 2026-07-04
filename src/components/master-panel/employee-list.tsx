@@ -61,6 +61,8 @@ export default function EmployeeList({
           employee.employeeType,
           employee.vehicleNumber,
           employee.machineAssignment,
+          employee.assignedFirm,
+          employee.assignedContractor,
         ])
       ),
     [employees, searchQuery]
@@ -204,6 +206,15 @@ export default function EmployeeList({
                   Machine
                 </th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
+                  Assigned Firm
+                </th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
+                  Contractor
+                </th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
+                  ESI Status
+                </th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
                   Salary (Editable)
                 </th>
                 <th className="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-wide text-corporate-muted">
@@ -214,14 +225,14 @@ export default function EmployeeList({
             <tbody className="divide-y divide-corporate-border">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center">
+                  <td colSpan={10} className="px-5 py-12 text-center">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin text-corporate-brand" />
                     <p className="mt-3 text-sm text-corporate-muted">Loading employees...</p>
                   </td>
                 </tr>
               ) : filteredEmployees.length === 0 && !error ? (
                 <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center">
+                  <td colSpan={10} className="px-5 py-12 text-center">
                     <Users className="mx-auto h-8 w-8 text-corporate-muted/60" />
                     <p className="mt-3 text-sm font-medium text-corporate-text">
                       {searchQuery.trim()
@@ -263,6 +274,23 @@ export default function EmployeeList({
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-muted">
                         {employee.machineAssignment}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-text">
+                        {employee.assignedFirm}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-muted">
+                        {employee.assignedContractor}
+                      </td>
+                      <td className="whitespace-nowrap px-5 py-4">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                            employee.esiEnabled
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-corporate-bg text-corporate-muted"
+                          }`}
+                        >
+                          {employee.esiEnabled ? "Active" : "Inactive"}
+                        </span>
                       </td>
                       <td className="px-5 py-4" onClick={stopMasterListRowClick}>
                         <div className="flex min-w-[160px] flex-col gap-1">

@@ -5,7 +5,6 @@ import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
 import { supabase } from "@/lib/supabase/client"; 
 
-// एम्प्लोयी का सही स्ट्रक्चर (Type) सेट कर रहे हैं ताकि TypeScript एरर न दे
 interface Employee {
   id: string;
   name: string;
@@ -18,12 +17,16 @@ interface Employee {
 
 export default function MasterPanelView() {
   const [view, setView] = useState<"list" | "add">("list");
-  const [employees, setEmployees] = useState<Employee[]>([]); // यहाँ से 'any' हटा दिया गया है
+  const [employees, setEmployees] = useState<Employee[]>([]);
 
   const fetchEmployees = async () => {
-    const { data, error } = await supabase.from("employees").select("*");
-    if (!error && data) {
-      setEmployees(data as Employee[]);
+    try {
+      const { data, error } = await supabase.from("employees").select("*");
+      if (!error && data) {
+        setEmployees(data as Employee[]);
+      }
+    } catch (err) {
+      console.error("Error fetching employees:", err);
     }
   };
 
@@ -56,7 +59,6 @@ export default function MasterPanelView() {
           </button>
         </div>
       ) : (
-        /* @ts-expect-error - bypassing strict nested employee item type mismatch safely */
         <EmployeeList employees={employees} />
       )}
     </div>

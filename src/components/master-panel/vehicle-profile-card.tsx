@@ -64,12 +64,15 @@ export default function VehicleProfileCard({
     <div className="space-y-5 rounded-xl border border-corporate-border bg-gradient-to-br from-corporate-surface to-corporate-bg/60 p-5 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-corporate-border pb-4">
         <div>
-          <h2 className="text-xl font-bold text-corporate-text">{record.vehicleName}</h2>
+          <h2 className="text-xl font-bold text-corporate-text">{record.registrationNumber}</h2>
           <p className="mt-1 text-sm text-corporate-muted">
-            {record.registrationNumber} · {record.model || "Model not set"}
+            {record.model || "Model not set"}
+          </p>
+          <p className="mt-2 text-sm text-corporate-text">
+            Driver: {record.driverName || "—"} (joined {record.driverJoiningDate || "—"})
           </p>
           {record.ownerDetails && (
-            <p className="mt-2 text-sm text-corporate-text">
+            <p className="mt-1 text-sm text-corporate-text">
               Owner: {record.ownerDetails}
             </p>
           )}
@@ -95,6 +98,24 @@ export default function VehicleProfileCard({
           )}
         </div>
       </div>
+
+      {record.driverHistory.length > 0 && (
+        <div>
+          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-corporate-muted">
+            Driver History
+          </h3>
+          <div className="space-y-2">
+            {record.driverHistory.map((entry) => (
+              <div
+                key={entry.id}
+                className="rounded-lg border border-corporate-border bg-white px-3 py-2 text-sm"
+              >
+                {entry.driverName} — joined {entry.joiningDate || "—"}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div>
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-corporate-muted">
@@ -124,6 +145,11 @@ export default function VehicleProfileCard({
                 <p className="mt-2 text-xs text-corporate-muted">
                   Expiry: {block.expiryDate || "—"}
                 </p>
+                {block.expiryAlert && (
+                  <p className="mt-1 text-xs text-corporate-brand">
+                    Alert: {block.expiryAlert}
+                  </p>
+                )}
                 {block.fileName && (
                   <p className="mt-1 truncate text-xs text-corporate-brand">
                     File: {block.fileName}

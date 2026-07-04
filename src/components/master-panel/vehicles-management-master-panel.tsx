@@ -9,6 +9,7 @@ import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/lis
 import {
   EMPTY_VEHICLE_MASTER_FORM,
   VEHICLE_DOCUMENT_LABELS,
+  createDriverHistoryEntry,
   validateVehicleMasterForm,
   type VehicleDocumentKey,
   type VehicleMasterFormState,
@@ -42,6 +43,10 @@ export default function VehiclesManagementMasterPanel() {
   const { checkUsedInTransactions } = useMasterDeletionGuard();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [previousDriver, setPreviousDriver] = useState<{
+    name: string;
+    joiningDate: string;
+  } | null>(null);
   const [form, setForm] = useState<VehicleMasterFormState>(EMPTY_VEHICLE_MASTER_FORM);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -55,8 +60,8 @@ export default function VehiclesManagementMasterPanel() {
   const filtered = useMemo(
     () =>
       vehicles.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.vehicleName, [
-          row.registrationNumber,
+        matchesUniversalNameSearch(searchQuery, row.registrationNumber, [
+          row.driverName,
           row.model,
           row.ownerDetails,
         ])
@@ -67,16 +72,23 @@ export default function VehiclesManagementMasterPanel() {
   const resetForm = () => {
     setForm(EMPTY_VEHICLE_MASTER_FORM);
     setEditingId(null);
+    setPreviousDriver(null);
     setError(null);
   };
 
   const openEdit = (record: VehicleMasterRecord) => {
     setEditingId(record.id);
+    setPreviousDriver({
+      name: record.driverName,
+      joiningDate: record.driverJoiningDate,
+    });
     setForm({
-      vehicleName: record.vehicleName,
       registrationNumber: record.registrationNumber,
       model: record.model,
       ownerDetails: record.ownerDetails,
+      driverName: record.driverName,
+      driverJoiningDate: record.driverJoiningDate,
+      driverHistory: record.driverHistory,
       documents: record.documents,
     });
     setView("edit");
@@ -88,10 +100,28 @@ export default function VehiclesManagementMasterPanel() {
       setError(validationError);
       return;
     }
+
+    let payload: VehicleMasterFormState = { ...form };
+
+    if (
+      view === "edit" &&
+      previousDriver &&
+      (previousDriver.name !== form.driverName.trim() ||
+        previousDriver.joiningDate !== form.driverJoiningDate)
+    ) {
+      payload = {
+        ...payload,
+        driverHistory: [
+          createDriverHistoryEntry(previousDriver.name, previousDriver.joiningDate),
+          ...form.driverHistory,
+        ],
+      };
+    }
+
     if (view === "edit" && editingId) {
-      updateVehicle(editingId, form);
+      updateVehicle(editingId, payload);
     } else {
-      addVehicle(form);
+      addVehicle(payload);
     }
     resetForm();
     setView("list");
@@ -147,7 +177,7 @@ export default function VehiclesManagementMasterPanel() {
               {view === "add" ? "Add Vehicle" : "Edit Vehicle"}
             </h2>
             <p className="text-sm text-corporate-muted">
-              Compliance tracker — permits, tax, insurance, and document uploads.
+              Compliance tracker — permits, tax, insurance, driver details, and document uploads.
             </p>
           </div>
           {error && (
@@ -157,16 +187,12 @@ export default function VehiclesManagementMasterPanel() {
           )}
           <div className="grid gap-4 sm:grid-cols-2">
             <TextInput
-              label="Vehicle Name"
-              required
-              value={form.vehicleName}
-              onChange={(e) => setForm((p) => ({ ...p, vehicleName: e.target.value }))}
-            />
-            <TextInput
               label="Registration Number"
               required
               value={form.registrationNumber}
-              onChange={(e) => setForm((p) => ({ ...p, registrationNumber: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, registrationNumber: e.target.value.toUpperCase() }))
+              }
             />
             <TextInput
               label="Model"
@@ -179,9 +205,46 @@ export default function VehiclesManagementMasterPanel() {
               onChange={(e) => setForm((p) => ({ ...p, ownerDetails: e.target.value }))}
             />
           </div>
+
+          <div className="space-y-4 rounded-lg border border-corporate-border bg-corporate-bg/40 p-4">
+            <h3 className="text-sm font-semibold text-corporate-text">Driver & Joining Details</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextInput
+                label="Driver Name"
+                required
+                value={form.driverName}
+                onChange={(e) => setForm((p) => ({ ...p, driverName: e.target.value }))}
+              />
+              <TextInput
+                label="Driver Joining Date"
+                type="date"
+                required
+                value={form.driverJoiningDate}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, driverJoiningDate: e.target.value }))
+                }
+              />
+            </div>
+            {form.driverHistory.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-corporate-muted">
+                  Previous Drivers
+                </p>
+                {form.driverHistory.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="rounded-md border border-corporate-border bg-white px-3 py-2 text-sm text-corporate-text"
+                  >
+                    {entry.driverName} — joined {entry.joiningDate || "—"}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="space-y-3">
             <h3 className="text-sm font-semibold text-corporate-text">
-              Document Expiry & Attachments
+              Document Expiry, Alerts & Attachments
             </h3>
             {DOCUMENT_KEYS.map((key) => (
               <VehicleDocumentRow
@@ -234,8 +297,8 @@ export default function VehiclesManagementMasterPanel() {
         <UniversalMasterListTable>
           <thead className={MASTER_LIST_HEAD_CLASS}>
             <tr>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Vehicle</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Registration</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Driver</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Model</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Compliance</th>
               <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
@@ -253,10 +316,10 @@ export default function VehiclesManagementMasterPanel() {
               filtered.map((row) => (
                 <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
                   <UniversalMasterListNameCell
-                    name={row.vehicleName}
+                    name={row.registrationNumber}
                     onEdit={() => openEdit(row)}
                   />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.registrationNumber}</td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.driverName || "—"}</td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.model || "—"}</td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>
                     {getVehicleRenewalSummary(row)}
@@ -271,10 +334,14 @@ export default function VehiclesManagementMasterPanel() {
                       extra={
                         <MasterRemoveOrProtected
                           canRemove={
-                            !checkUsedInTransactions("vehicle", row.id, row.vehicleName)
+                            !checkUsedInTransactions("vehicle", row.id, row.registrationNumber)
                           }
                           onRemove={() => {
-                            if (!window.confirm(`Remove vehicle "${row.vehicleName}"?`)) return;
+                            if (
+                              !window.confirm(`Remove vehicle "${row.registrationNumber}"?`)
+                            ) {
+                              return;
+                            }
                             removeVehicle(row.id);
                           }}
                         />

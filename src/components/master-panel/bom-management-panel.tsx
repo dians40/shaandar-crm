@@ -1,23 +1,29 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Layers, Plus, Trash2 } from "lucide-react";
+import { Layers, Lock, Plus, Trash2 } from "lucide-react";
 import { SelectInput, TextInput, ToggleInput } from "@/components/forms/form-fields";
 import { formatUnitLabel } from "@/constants/units";
 import { useBomRecords } from "@/hooks/use-bom-records";
 import { useItems } from "@/hooks/use-items";
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
+import { useUnitConversions } from "@/hooks/use-unit-conversions";
 import { useUnits } from "@/hooks/use-units";
+import { buildAlternateFormulaOptions } from "@/lib/item-unit-conversion";
 import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
 import {
-  EMPTY_BOM_BYPRODUCT_LINE,
   EMPTY_BOM_FORM,
   EMPTY_BOM_RAW_LINE,
+  EMPTY_BOM_UNIT_EXPENSE_LINE,
+  computeTotalUnitExpense,
+  ensureTrailingByProductRow,
+  lockRawMaterialLines,
   validateBomForm,
   type BomByProductLine,
   type BomFormState,
   type BomRawMaterialLine,
   type BomRecord,
+  type BomUnitExpenseLine,
 } from "@/types/bom";
 import MasterRemoveOrProtected from "./master-remove-or-protected";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
@@ -41,6 +47,7 @@ export default function BomManagementPanel() {
   const { boms, isReady, addBom, updateBom, removeBom } = useBomRecords();
   const { items, isReady: itemsReady } = useItems();
   const { units, isReady: unitsReady } = useUnits();
+  const { conversions, isReady: conversionsReady } = useUnitConversions();
   const { checkUsedInTransactions } = useMasterDeletionGuard();
   const [view, setView] = useState<ViewMode>("list");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -54,6 +61,11 @@ export default function BomManagementPanel() {
     [boms, viewingId]
   );
 
+  const unitNameById = useMemo(
+    () => Object.fromEntries(units.map((unit) => [unit.id, unit.name])),
+    [units]
+  );
+
   const itemOptions = useMemo(
     () => items.map((item) => ({ value: item.id, label: item.itemName })),
     [items]
@@ -62,6 +74,31 @@ export default function BomManagementPanel() {
   const unitOptions = useMemo(
     () => units.map((unit) => ({ value: unit.id, label: formatUnitLabel(unit) })),
     [units]
+  );
+
+  const selectedOutputItem = useMemo(
+    () => items.find((item) => item.id === form.outputItemId),
+    [items, form.outputItemId]
+  );
+
+  const outputConversionOptions = useMemo(() => {
+    if (!selectedOutputItem?.primaryUnitId) {
+      return conversions.map((conversion) => ({
+        value: conversion.id,
+        label: buildAlternateFormulaOptions([conversion], conversion.baseUnitId, unitNameById)[0]
+          ?.label ?? conversion.id,
+      }));
+    }
+    return buildAlternateFormulaOptions(
+      conversions,
+      selectedOutputItem.primaryUnitId,
+      unitNameById
+    );
+  }, [conversions, selectedOutputItem, unitNameById]);
+
+  const totalUnitExpense = useMemo(
+    () => computeTotalUnitExpense(form.unitExpenses),
+    [form.unitExpenses]
   );
 
   const filtered = useMemo(
@@ -91,9 +128,14 @@ export default function BomManagementPanel() {
       outputQuantity: record.outputQuantity,
       outputUnitId: record.outputUnitId,
       outputUnitName: record.outputUnitName,
+      outputUnitConversionId: record.outputUnitConversionId,
       unitExpense: record.unitExpense,
+      unitExpenses:
+        record.unitExpenses.length > 0
+          ? record.unitExpenses
+          : [EMPTY_BOM_UNIT_EXPENSE_LINE()],
       rawMaterials: record.rawMaterials,
-      byProducts: record.byProducts,
+      byProducts: ensureTrailingByProductRow(record.byProducts),
     });
     setView("edit");
   };
@@ -104,8 +146,18 @@ export default function BomManagementPanel() {
       ...prev,
       outputItemId: itemId,
       outputItemName: item?.itemName ?? "",
-      outputUnitId: item?.primaryUnitId ?? prev.outputUnitId,
-      outputUnitName: item?.primaryUnitName ?? prev.outputUnitName,
+      outputUnitId: item?.primaryUnitId ?? "",
+      outputUnitName: item?.primaryUnitName ?? "",
+      outputUnitConversionId: "",
+    }));
+  };
+
+  const handleOutputConversionChange = (conversionId: string) => {
+    const option = outputConversionOptions.find((row) => row.value === conversionId);
+    setForm((prev) => ({
+      ...prev,
+      outputUnitConversionId: conversionId,
+      outputUnitName: option?.label ?? prev.outputUnitName,
     }));
   };
 
@@ -113,30 +165,51 @@ export default function BomManagementPanel() {
     setForm((prev) => ({
       ...prev,
       rawMaterials: prev.rawMaterials.map((row) =>
-        row.id === id ? { ...row, ...patch } : row
+        row.id === id && !row.locked ? { ...row, ...patch } : row
       ),
     }));
   };
 
   const updateByProductLine = (id: string, patch: Partial<BomByProductLine>) => {
+    setForm((prev) => {
+      const nextLines = prev.byProducts.map((row) =>
+        row.id === id ? { ...row, ...patch } : row
+      );
+      return {
+        ...prev,
+        byProducts: ensureTrailingByProductRow(nextLines),
+      };
+    });
+  };
+
+  const updateExpenseLine = (id: string, patch: Partial<BomUnitExpenseLine>) => {
     setForm((prev) => ({
       ...prev,
-      byProducts: prev.byProducts.map((row) =>
+      unitExpenses: prev.unitExpenses.map((row) =>
         row.id === id ? { ...row, ...patch } : row
       ),
     }));
   };
 
   const handleSave = () => {
-    const validationError = validateBomForm(form);
+    const payload: BomFormState = {
+      ...form,
+      rawMaterials: lockRawMaterialLines(form.rawMaterials),
+      unitExpense: computeTotalUnitExpense(form.unitExpenses),
+      byProducts: form.byProducts.filter(
+        (line) => line.itemId.trim() || line.quantity > 0
+      ),
+    };
+
+    const validationError = validateBomForm(payload);
     if (validationError) {
       setError(validationError);
       return;
     }
     if (view === "edit" && editingId) {
-      updateBom(editingId, form);
+      updateBom(editingId, payload);
     } else {
-      addBom(form);
+      addBom(payload);
     }
     resetForm();
     setView("list");
@@ -158,7 +231,7 @@ export default function BomManagementPanel() {
     />
   );
 
-  if (!isReady || !itemsReady || !unitsReady) {
+  if (!isReady || !itemsReady || !unitsReady || !conversionsReady) {
     return (
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading BOM / Productions...
@@ -179,7 +252,7 @@ export default function BomManagementPanel() {
               value: `${viewingRecord.outputQuantity} ${viewingRecord.outputUnitName}`,
             },
             {
-              label: "Unit Expense",
+              label: "Total Unit Expenses",
               value: `₹${viewingRecord.unitExpense.toLocaleString("en-IN")} (costing only)`,
             },
             { label: "Raw Materials", value: viewingRecord.rawMaterials.length },
@@ -244,29 +317,97 @@ export default function BomManagementPanel() {
             <SelectInput
               label="Output Unit"
               required
-              value={form.outputUnitId}
-              options={unitOptions}
+              value={form.outputUnitConversionId || form.outputUnitId}
+              placeholder={
+                selectedOutputItem
+                  ? "Select conversion formula"
+                  : "Select item first"
+              }
+              options={
+                outputConversionOptions.length > 0
+                  ? outputConversionOptions
+                  : unitOptions
+              }
               onChange={(e) => {
+                const isConversion = outputConversionOptions.some(
+                  (option) => option.value === e.target.value
+                );
+                if (isConversion) {
+                  handleOutputConversionChange(e.target.value);
+                  return;
+                }
                 const unit = units.find((row) => row.id === e.target.value);
                 setForm((p) => ({
                   ...p,
+                  outputUnitConversionId: "",
                   outputUnitId: e.target.value,
                   outputUnitName: unit?.name ?? "",
                 }));
               }}
             />
           </div>
-          <TextInput
-            label="Unit Expense"
-            type="number"
-            min="0"
-            step="0.01"
-            value={String(form.unitExpense)}
-            onChange={(e) =>
-              setForm((p) => ({ ...p, unitExpense: Number(e.target.value) || 0 }))
-            }
-            hint="Used for costing calculations only — does not affect general ledger."
-          />
+
+          <div className="space-y-3 rounded-lg border border-corporate-border p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-corporate-text">Unit Expenses</h3>
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((p) => ({
+                    ...p,
+                    unitExpenses: [...p.unitExpenses, EMPTY_BOM_UNIT_EXPENSE_LINE()],
+                  }))
+                }
+                className="inline-flex items-center gap-1 rounded-full border border-corporate-brand px-3 py-1 text-xs font-medium text-corporate-brand"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add Expense Row
+              </button>
+            </div>
+            {form.unitExpenses.map((line) => (
+              <div key={line.id} className="grid gap-2 rounded-md bg-corporate-bg/50 p-3 sm:grid-cols-3">
+                <TextInput
+                  label="Expense Name"
+                  placeholder="e.g. Labor, Electricity, Fuel"
+                  value={line.label}
+                  onChange={(e) => updateExpenseLine(line.id, { label: e.target.value })}
+                />
+                <TextInput
+                  label="Amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={String(line.amount)}
+                  onChange={(e) =>
+                    updateExpenseLine(line.id, {
+                      amount: Number(e.target.value) || 0,
+                    })
+                  }
+                />
+                <div className="flex items-end">
+                  {form.unitExpenses.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((p) => ({
+                          ...p,
+                          unitExpenses: p.unitExpenses.filter((row) => row.id !== line.id),
+                        }))
+                      }
+                      className="inline-flex items-center gap-1 text-xs text-red-600"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <p className="text-sm font-medium text-corporate-text">
+              Total Unit Expense: ₹{totalUnitExpense.toLocaleString("en-IN")}{" "}
+              <span className="text-xs font-normal text-corporate-muted">
+                (costing only — does not affect general ledger)
+              </span>
+            </p>
+          </div>
 
           <div className="space-y-3 rounded-lg border border-corporate-border p-4">
             <div className="flex items-center justify-between">
@@ -288,82 +429,100 @@ export default function BomManagementPanel() {
               <p className="text-xs text-corporate-muted">No raw material rows yet.</p>
             ) : (
               form.rawMaterials.map((line) => (
-                <div key={line.id} className="grid gap-2 rounded-md bg-corporate-bg/50 p-3 sm:grid-cols-4">
-                  <SelectInput
-                    label="Raw Item"
-                    value={line.itemId}
-                    options={itemOptions}
-                    onChange={(e) => {
-                      const item = items.find((row) => row.id === e.target.value);
-                      updateRawLine(line.id, {
-                        itemId: e.target.value,
-                        itemName: item?.itemName ?? "",
-                        unitId: item?.primaryUnitId ?? "",
-                        unitName: item?.primaryUnitName ?? "",
-                      });
-                    }}
-                  />
-                  <TextInput
-                    label="Qty Consumed"
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={String(line.quantity)}
-                    onChange={(e) =>
-                      updateRawLine(line.id, { quantity: Number(e.target.value) || 0 })
-                    }
-                  />
-                  <SelectInput
-                    label="Unit"
-                    value={line.unitId}
-                    options={unitOptions}
-                    onChange={(e) => {
-                      const unit = units.find((row) => row.id === e.target.value);
-                      updateRawLine(line.id, {
-                        unitId: e.target.value,
-                        unitName: unit?.name ?? "",
-                      });
-                    }}
-                  />
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setForm((p) => ({
-                          ...p,
-                          rawMaterials: p.rawMaterials.filter((row) => row.id !== line.id),
-                        }))
-                      }
-                      className="inline-flex items-center gap-1 text-xs text-red-600"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" /> Remove
-                    </button>
-                  </div>
+                <div
+                  key={line.id}
+                  className={`grid gap-2 rounded-md p-3 sm:grid-cols-4 ${
+                    line.locked ? "border border-amber-200 bg-amber-50/40" : "bg-corporate-bg/50"
+                  }`}
+                >
+                  {line.locked ? (
+                    <>
+                      <div>
+                        <p className="text-xs text-corporate-muted">Raw Item</p>
+                        <p className="text-sm font-medium text-corporate-text">{line.itemName}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-corporate-muted">Qty Consumed</p>
+                        <p className="text-sm text-corporate-text">{line.quantity}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-corporate-muted">Unit</p>
+                        <p className="text-sm text-corporate-text">{line.unitName}</p>
+                      </div>
+                      <div className="flex items-end">
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700">
+                          <Lock className="h-3.5 w-3.5" /> Fixed
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <SelectInput
+                        label="Raw Item"
+                        value={line.itemId}
+                        options={itemOptions}
+                        onChange={(e) => {
+                          const item = items.find((row) => row.id === e.target.value);
+                          updateRawLine(line.id, {
+                            itemId: e.target.value,
+                            itemName: item?.itemName ?? "",
+                            unitId: item?.primaryUnitId ?? "",
+                            unitName: item?.primaryUnitName ?? "",
+                          });
+                        }}
+                      />
+                      <TextInput
+                        label="Qty Consumed"
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={String(line.quantity)}
+                        onChange={(e) =>
+                          updateRawLine(line.id, { quantity: Number(e.target.value) || 0 })
+                        }
+                      />
+                      <SelectInput
+                        label="Unit"
+                        value={line.unitId}
+                        options={unitOptions}
+                        onChange={(e) => {
+                          const unit = units.find((row) => row.id === e.target.value);
+                          updateRawLine(line.id, {
+                            unitId: e.target.value,
+                            unitName: unit?.name ?? "",
+                          });
+                        }}
+                      />
+                      <div className="flex items-end">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm((p) => ({
+                              ...p,
+                              rawMaterials: p.rawMaterials.filter((row) => row.id !== line.id),
+                            }))
+                          }
+                          className="inline-flex items-center gap-1 text-xs text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Remove
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))
             )}
           </div>
 
           <div className="space-y-3 rounded-lg border border-corporate-border p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-corporate-text">By-Products</h3>
-              <button
-                type="button"
-                onClick={() =>
-                  setForm((p) => ({
-                    ...p,
-                    byProducts: [...p.byProducts, EMPTY_BOM_BYPRODUCT_LINE()],
-                  }))
-                }
-                className="inline-flex items-center gap-1 text-xs font-medium text-corporate-brand"
-              >
-                <Plus className="h-3.5 w-3.5" /> Add Row
-              </button>
-            </div>
-            {form.byProducts.length === 0 ? (
-              <p className="text-xs text-corporate-muted">No by-product rows yet.</p>
-            ) : (
-              form.byProducts.map((line) => (
+            <h3 className="text-sm font-semibold text-corporate-text">By-Products</h3>
+            {form.byProducts.map((line, index) => {
+              const isTrailingEmpty =
+                index === form.byProducts.length - 1 &&
+                !line.itemId &&
+                line.quantity <= 0;
+
+              return (
                 <div key={line.id} className="space-y-2 rounded-md bg-corporate-bg/50 p-3">
                   <div className="grid gap-2 sm:grid-cols-4">
                     <SelectInput
@@ -405,43 +564,53 @@ export default function BomManagementPanel() {
                       }}
                     />
                     <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setForm((p) => ({
-                            ...p,
-                            byProducts: p.byProducts.filter((row) => row.id !== line.id),
-                          }))
-                        }
-                        className="inline-flex items-center gap-1 text-xs text-red-600"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" /> Remove
-                      </button>
+                      {!isTrailingEmpty && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm((p) => ({
+                              ...p,
+                              byProducts: ensureTrailingByProductRow(
+                                p.byProducts.filter((row) => row.id !== line.id)
+                              ),
+                            }))
+                          }
+                          className="inline-flex items-center gap-1 text-xs text-red-600"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> Remove
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <ToggleInput
-                    label="Show Value"
-                    description="Enable to capture by-product recovery value"
-                    checked={line.showValue}
-                    onChange={(checked) => updateByProductLine(line.id, { showValue: checked })}
-                  />
-                  {line.showValue && (
-                    <TextInput
-                      label="By-Product Value / Rate"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={String(line.valueRate)}
-                      onChange={(e) =>
-                        updateByProductLine(line.id, {
-                          valueRate: Number(e.target.value) || 0,
-                        })
-                      }
-                    />
+                  {line.itemId && (
+                    <>
+                      <ToggleInput
+                        label="Show Value"
+                        description="Enable to capture by-product recovery value"
+                        checked={line.showValue}
+                        onChange={(checked) =>
+                          updateByProductLine(line.id, { showValue: checked })
+                        }
+                      />
+                      {line.showValue && (
+                        <TextInput
+                          label="By-Product Value / Rate"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={String(line.valueRate)}
+                          onChange={(e) =>
+                            updateByProductLine(line.id, {
+                              valueRate: Number(e.target.value) || 0,
+                            })
+                          }
+                        />
+                      )}
+                    </>
                   )}
                 </div>
-              ))
-            )}
+              );
+            })}
           </div>
 
           <div className="flex gap-2">

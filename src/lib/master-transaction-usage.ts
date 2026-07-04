@@ -16,7 +16,8 @@ export type MasterEntityType =
   | "bill-of-sundry"
   | "bom"
   | "salary-component"
-  | "vehicle";
+  | "vehicle"
+  | "employee-group";
 
 type UsageContext = {
   overtimeRecords?: OvertimeRecord[];
@@ -157,6 +158,7 @@ export function isUsedInTransactions(
     case "bom":
     case "salary-component":
     case "vehicle":
+    case "employee-group":
     default:
       return false;
   }

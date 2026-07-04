@@ -5,25 +5,50 @@ export type VehicleDocumentKey =
   | "driverLicense"
   | "allIndiaPermit"
   | "roadTaxReceipt"
-  | "gprLicense";
+  | "gprLicenseCertificate"
+  | "nationalPermit";
+
+export type VehicleExpiryAlert =
+  | "Notify 24 Hours Before"
+  | "Notify 15 Days Before"
+  | "Notify 20 Days Before"
+  | "";
+
+export const VEHICLE_EXPIRY_ALERT_OPTIONS: VehicleExpiryAlert[] = [
+  "Notify 24 Hours Before",
+  "Notify 15 Days Before",
+  "Notify 20 Days Before",
+];
 
 export type VehicleDocumentBlock = {
   expiryDate: string;
   fileName: string | null;
+  expiryAlert: VehicleExpiryAlert;
+};
+
+export type VehicleDriverEntry = {
+  id: string;
+  driverName: string;
+  joiningDate: string;
 };
 
 export type VehicleMasterRecord = {
   id: string;
-  vehicleName: string;
   registrationNumber: string;
   model: string;
   ownerDetails: string;
+  driverName: string;
+  driverJoiningDate: string;
+  driverHistory: VehicleDriverEntry[];
   documents: Record<VehicleDocumentKey, VehicleDocumentBlock>;
   createdAt: string;
   updatedAt: string;
 };
 
-export type VehicleMasterFormState = Omit<VehicleMasterRecord, "id" | "createdAt" | "updatedAt">;
+export type VehicleMasterFormState = Omit<
+  VehicleMasterRecord,
+  "id" | "createdAt" | "updatedAt"
+>;
 
 export const VEHICLE_DOCUMENT_LABELS: Record<VehicleDocumentKey, string> = {
   pollutionCertificate: "Pollution Certificate",
@@ -32,58 +57,102 @@ export const VEHICLE_DOCUMENT_LABELS: Record<VehicleDocumentKey, string> = {
   driverLicense: "Linked Driver License Details",
   allIndiaPermit: "All India Permit",
   roadTaxReceipt: "Road Tax Receipt",
-  gprLicense: "GPR License / National Goods Permit",
+  gprLicenseCertificate: "GPR License Certificate",
+  nationalPermit: "National Permit",
 };
+
+function emptyDocumentBlock(): VehicleDocumentBlock {
+  return { expiryDate: "", fileName: null, expiryAlert: "" };
+}
 
 export function emptyVehicleDocuments(): Record<VehicleDocumentKey, VehicleDocumentBlock> {
   return {
-    pollutionCertificate: { expiryDate: "", fileName: null },
-    vehicleInsurance: { expiryDate: "", fileName: null },
-    fitnessPermit: { expiryDate: "", fileName: null },
-    driverLicense: { expiryDate: "", fileName: null },
-    allIndiaPermit: { expiryDate: "", fileName: null },
-    roadTaxReceipt: { expiryDate: "", fileName: null },
-    gprLicense: { expiryDate: "", fileName: null },
+    pollutionCertificate: emptyDocumentBlock(),
+    vehicleInsurance: emptyDocumentBlock(),
+    fitnessPermit: emptyDocumentBlock(),
+    driverLicense: emptyDocumentBlock(),
+    allIndiaPermit: emptyDocumentBlock(),
+    roadTaxReceipt: emptyDocumentBlock(),
+    gprLicenseCertificate: emptyDocumentBlock(),
+    nationalPermit: emptyDocumentBlock(),
   };
 }
 
 export const EMPTY_VEHICLE_MASTER_FORM: VehicleMasterFormState = {
-  vehicleName: "",
   registrationNumber: "",
   model: "",
   ownerDetails: "",
+  driverName: "",
+  driverJoiningDate: "",
+  driverHistory: [],
   documents: emptyVehicleDocuments(),
 };
 
+function mergeDocumentBlock(
+  defaults: VehicleDocumentBlock,
+  incoming?: Partial<VehicleDocumentBlock>
+): VehicleDocumentBlock {
+  return {
+    expiryDate: incoming?.expiryDate ?? defaults.expiryDate,
+    fileName: incoming?.fileName ?? defaults.fileName,
+    expiryAlert: incoming?.expiryAlert ?? defaults.expiryAlert,
+  };
+}
+
+/** Migrate legacy records that used vehicleName or combined gprLicense key. */
 export function normalizeVehicleMasterRecord(
-  row: Partial<VehicleMasterRecord> & Pick<VehicleMasterRecord, "id">
+  row: Partial<VehicleMasterRecord> & Pick<VehicleMasterRecord, "id"> & {
+    vehicleName?: string;
+    documents?: Partial<Record<string, VehicleDocumentBlock>>;
+  }
 ): VehicleMasterRecord {
   const defaults = emptyVehicleDocuments();
-  const docs = row.documents ?? defaults;
+  const legacyDocs = (row.documents ?? {}) as Partial<
+    Record<VehicleDocumentKey | "gprLicense", VehicleDocumentBlock>
+  >;
+  const legacyGpr = legacyDocs.gprLicense;
+
+  const documents = {
+    pollutionCertificate: mergeDocumentBlock(
+      defaults.pollutionCertificate,
+      legacyDocs.pollutionCertificate
+    ),
+    vehicleInsurance: mergeDocumentBlock(
+      defaults.vehicleInsurance,
+      legacyDocs.vehicleInsurance
+    ),
+    fitnessPermit: mergeDocumentBlock(defaults.fitnessPermit, legacyDocs.fitnessPermit),
+    driverLicense: mergeDocumentBlock(defaults.driverLicense, legacyDocs.driverLicense),
+    allIndiaPermit: mergeDocumentBlock(defaults.allIndiaPermit, legacyDocs.allIndiaPermit),
+    roadTaxReceipt: mergeDocumentBlock(defaults.roadTaxReceipt, legacyDocs.roadTaxReceipt),
+    gprLicenseCertificate: mergeDocumentBlock(
+      defaults.gprLicenseCertificate,
+      legacyDocs.gprLicenseCertificate ?? legacyGpr
+    ),
+    nationalPermit: mergeDocumentBlock(
+      defaults.nationalPermit,
+      legacyDocs.nationalPermit
+    ),
+  };
 
   return {
     id: row.id,
-    vehicleName: row.vehicleName ?? "",
-    registrationNumber: row.registrationNumber ?? "",
+    registrationNumber: row.registrationNumber ?? row.vehicleName ?? "",
     model: row.model ?? "",
     ownerDetails: row.ownerDetails ?? "",
-    documents: {
-      pollutionCertificate: { ...defaults.pollutionCertificate, ...docs.pollutionCertificate },
-      vehicleInsurance: { ...defaults.vehicleInsurance, ...docs.vehicleInsurance },
-      fitnessPermit: { ...defaults.fitnessPermit, ...docs.fitnessPermit },
-      driverLicense: { ...defaults.driverLicense, ...docs.driverLicense },
-      allIndiaPermit: { ...defaults.allIndiaPermit, ...docs.allIndiaPermit },
-      roadTaxReceipt: { ...defaults.roadTaxReceipt, ...docs.roadTaxReceipt },
-      gprLicense: { ...defaults.gprLicense, ...docs.gprLicense },
-    },
+    driverName: row.driverName ?? "",
+    driverJoiningDate: row.driverJoiningDate ?? "",
+    driverHistory: Array.isArray(row.driverHistory) ? row.driverHistory : [],
+    documents,
     createdAt: row.createdAt ?? new Date().toISOString(),
     updatedAt: row.updatedAt ?? new Date().toISOString(),
   };
 }
 
 export function validateVehicleMasterForm(form: VehicleMasterFormState): string | null {
-  if (!form.vehicleName.trim()) return "Vehicle name is required.";
   if (!form.registrationNumber.trim()) return "Registration number is required.";
+  if (!form.driverName.trim()) return "Driver name is required.";
+  if (!form.driverJoiningDate.trim()) return "Driver joining date is required.";
   return null;
 }
 
@@ -100,4 +169,15 @@ export function getExpiryStatus(expiryDate: string): ExpiryStatus {
   const days = (expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24);
   if (days <= 30) return "expiring";
   return "valid";
+}
+
+export function createDriverHistoryEntry(
+  driverName: string,
+  joiningDate: string
+): VehicleDriverEntry {
+  return {
+    id: `driver-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    driverName,
+    joiningDate,
+  };
 }

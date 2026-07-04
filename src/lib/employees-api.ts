@@ -42,7 +42,7 @@ export async function fetchEmployees(): Promise<EmployeeListItem[]> {
   }
 
   const data = (await response.json()) as FetchEmployeesResponse;
-  return data.employees;
+  return Array.isArray(data?.employees) ? data.employees : [];
 }
 
 export async function fetchEmployee(id: string): Promise<EmployeeFormData> {

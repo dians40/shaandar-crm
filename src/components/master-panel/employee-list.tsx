@@ -26,7 +26,7 @@ type Props = {
 };
 
 export default function EmployeeList({
-  employees,
+  employees = [],
   isLoading = false,
   error = null,
   onRetry,

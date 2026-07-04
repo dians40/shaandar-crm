@@ -115,11 +115,13 @@ function MasterPanelContent() {
   };
 
   return (
-    <div className="space-y-4">
-      <MasterPanelManagerNav
-        activeModuleId={activeModuleId}
-        onSelect={handleModuleSelect}
-      />
+    <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
+      <aside className="min-w-0">
+        <MasterPanelManagerNav
+          activeModuleId={activeModuleId}
+          onSelect={handleModuleSelect}
+        />
+      </aside>
       <section
         className="min-w-0"
         aria-label={`${activeModule?.title ?? "Module"} workspace`}

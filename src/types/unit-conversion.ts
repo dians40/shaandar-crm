@@ -1,37 +1,34 @@
 export type UnitConversionRecord = {
   id: string;
+  /** Main unit — the only mandatory field. */
   baseUnitId: string;
   baseUnitName: string;
-  firstMultiplier: number;
-  intermediateUnitId: string;
-  intermediateUnitName: string;
-  secondMultiplier: number;
-  /** Optional third tier for 4-level chains (e.g. Pallet → Carton → Packet → Pieces). */
-  tertiaryUnitId: string;
-  tertiaryUnitName: string;
-  thirdMultiplier: number;
-  finalUnitId: string;
-  finalUnitName: string;
-  totalBaseUnits: number;
+  firstMultiplier: number | null;
+  intermediateUnitId: string | null;
+  intermediateUnitName: string | null;
+  secondMultiplier: number | null;
+  finalUnitId: string | null;
+  finalUnitName: string | null;
+  /** Product of provided multipliers; null when no multipliers are set. */
+  totalBaseUnits: number | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export const EMPTY_UNIT_CONVERSION_FORM: Omit<
+export type UnitConversionFormState = Omit<
   UnitConversionRecord,
   "id" | "totalBaseUnits" | "createdAt" | "updatedAt"
-> = {
+>;
+
+export const EMPTY_UNIT_CONVERSION_FORM: UnitConversionFormState = {
   baseUnitId: "",
   baseUnitName: "",
-  firstMultiplier: 1,
-  intermediateUnitId: "",
-  intermediateUnitName: "",
-  secondMultiplier: 1,
-  tertiaryUnitId: "",
-  tertiaryUnitName: "",
-  thirdMultiplier: 1,
-  finalUnitId: "",
-  finalUnitName: "",
+  firstMultiplier: null,
+  intermediateUnitId: null,
+  intermediateUnitName: null,
+  secondMultiplier: null,
+  finalUnitId: null,
+  finalUnitName: null,
 };
 
 type LegacyConversionRow = Partial<UnitConversionRecord> & {
@@ -40,34 +37,45 @@ type LegacyConversionRow = Partial<UnitConversionRecord> & {
   conversionFactor?: number;
   subUnitId?: string;
   subUnitName?: string;
+  tertiaryUnitId?: string;
+  tertiaryUnitName?: string;
+  thirdMultiplier?: number;
 };
 
+function toOptionalNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function toOptionalString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const str = String(value).trim();
+  return str || null;
+}
+
 export function computeTotalBaseUnits(
-  firstMultiplier: number,
-  secondMultiplier: number,
-  thirdMultiplier: number,
-  hasTertiaryTier: boolean
-): number {
-  const first = Number(firstMultiplier) || 0;
-  const second = Number(secondMultiplier) || 0;
-  const third = Number(thirdMultiplier) || 0;
+  firstMultiplier: number | null,
+  secondMultiplier: number | null
+): number | null {
+  const first = firstMultiplier ?? 0;
+  const second = secondMultiplier ?? 0;
 
-  if (hasTertiaryTier) {
-    return first * second * third;
-  }
-
-  return first * second;
+  if (first > 0 && second > 0) return first * second;
+  if (first > 0) return first;
+  if (second > 0) return second;
+  return null;
 }
 
 export function normalizeUnitConversionRecord(
   row: LegacyConversionRow & Pick<UnitConversionRecord, "id">
 ): UnitConversionRecord {
-  const hasNewShape = Boolean(row.baseUnitId || row.intermediateUnitId);
+  const hasNewShape = Boolean(row.baseUnitId || row.intermediateUnitId || row.finalUnitId);
 
   if (!hasNewShape && row.mainUnitId) {
-    const firstMultiplier = Number(row.conversionFactor) || 0;
-    const intermediateUnitId = row.subUnitId ?? "";
-    const intermediateUnitName = row.subUnitName ?? "";
+    const firstMultiplier = toOptionalNumber(row.conversionFactor);
+    const intermediateUnitId = toOptionalString(row.subUnitId);
+    const intermediateUnitName = toOptionalString(row.subUnitName);
     return {
       id: row.id,
       baseUnitId: row.mainUnitId,
@@ -75,107 +83,175 @@ export function normalizeUnitConversionRecord(
       firstMultiplier,
       intermediateUnitId,
       intermediateUnitName,
-      secondMultiplier: 1,
-      tertiaryUnitId: "",
-      tertiaryUnitName: "",
-      thirdMultiplier: 1,
+      secondMultiplier: null,
       finalUnitId: intermediateUnitId,
       finalUnitName: intermediateUnitName,
-      totalBaseUnits: firstMultiplier,
+      totalBaseUnits: computeTotalBaseUnits(firstMultiplier, null),
       createdAt: row.createdAt ?? new Date().toISOString(),
       updatedAt: row.updatedAt ?? new Date().toISOString(),
     };
   }
 
-  const hasTertiaryTier = Boolean(row.tertiaryUnitId?.trim());
-  const firstMultiplier = Number(row.firstMultiplier) || 0;
-  const secondMultiplier = Number(row.secondMultiplier) || 0;
-  const thirdMultiplier = Number(row.thirdMultiplier) || 0;
+  const firstMultiplier = toOptionalNumber(row.firstMultiplier);
+  let secondMultiplier = toOptionalNumber(row.secondMultiplier);
+  const intermediateUnitId = toOptionalString(row.intermediateUnitId);
+  const intermediateUnitName = toOptionalString(row.intermediateUnitName);
+  const finalUnitId = toOptionalString(row.finalUnitId);
+  const finalUnitName = toOptionalString(row.finalUnitName);
+
+  // Fold legacy 4-level chains into the flexible 3-tier model while preserving totals.
+  const legacyTertiary = toOptionalString(row.tertiaryUnitId);
+  const legacyThirdMult = toOptionalNumber(row.thirdMultiplier);
+  if (legacyTertiary && secondMultiplier && legacyThirdMult) {
+    secondMultiplier = secondMultiplier * legacyThirdMult;
+  }
 
   return {
     id: row.id,
     baseUnitId: row.baseUnitId ?? "",
     baseUnitName: row.baseUnitName ?? "",
     firstMultiplier,
-    intermediateUnitId: row.intermediateUnitId ?? "",
-    intermediateUnitName: row.intermediateUnitName ?? "",
+    intermediateUnitId,
+    intermediateUnitName,
     secondMultiplier,
-    tertiaryUnitId: row.tertiaryUnitId ?? "",
-    tertiaryUnitName: row.tertiaryUnitName ?? "",
-    thirdMultiplier,
-    finalUnitId: row.finalUnitId ?? "",
-    finalUnitName: row.finalUnitName ?? "",
-    totalBaseUnits: computeTotalBaseUnits(
-      firstMultiplier,
-      secondMultiplier,
-      thirdMultiplier,
-      hasTertiaryTier
-    ),
+    finalUnitId,
+    finalUnitName,
+    totalBaseUnits: computeTotalBaseUnits(firstMultiplier, secondMultiplier),
     createdAt: row.createdAt ?? new Date().toISOString(),
     updatedAt: row.updatedAt ?? new Date().toISOString(),
   };
 }
 
-export function validateUnitConversionForm(
-  form: Omit<UnitConversionRecord, "id" | "totalBaseUnits" | "createdAt" | "updatedAt">
-): string | null {
-  if (!form.baseUnitId || !form.intermediateUnitId || !form.finalUnitId) {
-    return "Base unit, intermediate unit, and final unit are required.";
+export function validateUnitConversionForm(form: UnitConversionFormState): string | null {
+  if (!form.baseUnitId?.trim()) {
+    return "Main unit is required.";
   }
 
   const unitIds = [
     form.baseUnitId,
     form.intermediateUnitId,
     form.finalUnitId,
-    form.tertiaryUnitId,
-  ].filter(Boolean);
+  ].filter((id): id is string => Boolean(id?.trim()));
 
   if (new Set(unitIds).size !== unitIds.length) {
     return "Each unit in the chain must be different.";
   }
 
-  if (!form.firstMultiplier || form.firstMultiplier <= 0) {
-    return "First multiplier must be greater than zero.";
+  if (form.firstMultiplier !== null && form.firstMultiplier <= 0) {
+    return "Multiplier 1 must be greater than zero when provided.";
   }
 
-  if (!form.secondMultiplier || form.secondMultiplier <= 0) {
-    return "Second multiplier must be greater than zero.";
-  }
-
-  const hasTertiaryTier = Boolean(form.tertiaryUnitId?.trim());
-  if (hasTertiaryTier && (!form.thirdMultiplier || form.thirdMultiplier <= 0)) {
-    return "Third multiplier must be greater than zero when a third-level unit is set.";
+  if (form.secondMultiplier !== null && form.secondMultiplier <= 0) {
+    return "Multiplier 2 must be greater than zero when provided.";
   }
 
   return null;
 }
 
-export function formatChainSummary(record: Pick<
-  UnitConversionRecord,
-  | "baseUnitName"
-  | "firstMultiplier"
-  | "intermediateUnitName"
-  | "secondMultiplier"
-  | "tertiaryUnitName"
-  | "thirdMultiplier"
-  | "finalUnitName"
-  | "totalBaseUnits"
-> & { tertiaryUnitId?: string }): string {
-  const hasTertiaryTier = Boolean(record.tertiaryUnitId?.trim() && record.tertiaryUnitName);
+export function formatChainSummary(record: UnitConversionRecord): string {
+  const parts: string[] = [`Main unit: ${record.baseUnitName}.`];
 
-  if (hasTertiaryTier) {
-    return `1 ${record.baseUnitName} contains ${record.firstMultiplier} ${record.intermediateUnitName}, each ${record.intermediateUnitName} contains ${record.secondMultiplier} ${record.tertiaryUnitName}, and each ${record.tertiaryUnitName} contains ${record.thirdMultiplier} ${record.finalUnitName}. Total Base Units = ${record.totalBaseUnits.toLocaleString("en-IN")} ${record.finalUnitName}.`;
+  if (record.firstMultiplier && record.firstMultiplier > 0) {
+    if (record.intermediateUnitName) {
+      parts.push(
+        `1 ${record.baseUnitName} = ${record.firstMultiplier} ${record.intermediateUnitName}.`
+      );
+    } else if (record.finalUnitName) {
+      parts.push(
+        `1 ${record.baseUnitName} = ${record.firstMultiplier} ${record.finalUnitName}.`
+      );
+    } else {
+      parts.push(`Multiplier 1: ${record.firstMultiplier}.`);
+    }
   }
 
-  return `1 ${record.baseUnitName} contains ${record.firstMultiplier} ${record.intermediateUnitName}, and each ${record.intermediateUnitName} contains ${record.secondMultiplier} ${record.finalUnitName}. Total Base Units = ${record.totalBaseUnits.toLocaleString("en-IN")} ${record.finalUnitName}.`;
+  if (
+    record.secondMultiplier &&
+    record.secondMultiplier > 0 &&
+    record.intermediateUnitName &&
+    record.finalUnitName
+  ) {
+    parts.push(
+      `Each ${record.intermediateUnitName} = ${record.secondMultiplier} ${record.finalUnitName}.`
+    );
+  } else if (
+    record.secondMultiplier &&
+    record.secondMultiplier > 0 &&
+    !record.intermediateUnitName &&
+    record.finalUnitName
+  ) {
+    parts.push(`Multiplier 2: ${record.secondMultiplier} ${record.finalUnitName}.`);
+  }
+
+  if (record.totalBaseUnits !== null && record.totalBaseUnits > 0) {
+    const targetUnit =
+      record.finalUnitName ?? record.intermediateUnitName ?? record.baseUnitName;
+    parts.push(
+      `Total = ${record.totalBaseUnits.toLocaleString("en-IN")} ${targetUnit}.`
+    );
+  }
+
+  return parts.join(" ");
 }
 
 export function formatChainShort(record: UnitConversionRecord): string {
-  const hasTertiaryTier = Boolean(record.tertiaryUnitId?.trim());
+  const segments: string[] = [`1 ${record.baseUnitName}`];
 
-  if (hasTertiaryTier) {
-    return `1 ${record.baseUnitName} → ${record.firstMultiplier} ${record.intermediateUnitName} → ${record.secondMultiplier} ${record.tertiaryUnitName} → ${record.thirdMultiplier} ${record.finalUnitName}`;
+  if (record.firstMultiplier && record.firstMultiplier > 0) {
+    const target = record.intermediateUnitName ?? record.finalUnitName ?? "?";
+    segments.push(`${record.firstMultiplier} ${target}`);
   }
 
-  return `1 ${record.baseUnitName} → ${record.firstMultiplier} ${record.intermediateUnitName} → ${record.secondMultiplier} ${record.finalUnitName}`;
+  if (
+    record.secondMultiplier &&
+    record.secondMultiplier > 0 &&
+    record.intermediateUnitName &&
+    record.finalUnitName
+  ) {
+    segments.push(`${record.secondMultiplier} ${record.finalUnitName}`);
+  }
+
+  return segments.join(" → ");
+}
+
+export function formatTotalBaseUnits(record: UnitConversionRecord): string {
+  if (record.totalBaseUnits === null || record.totalBaseUnits <= 0) {
+    return "—";
+  }
+
+  const unit =
+    record.finalUnitName ?? record.intermediateUnitName ?? record.baseUnitName;
+  return `${record.totalBaseUnits.toLocaleString("en-IN")} ${unit}`;
+}
+
+export function buildConversionPayload(
+  form: UnitConversionFormState
+): Omit<UnitConversionRecord, "id" | "createdAt" | "updatedAt"> {
+  const firstMultiplier = form.firstMultiplier;
+  const secondMultiplier = form.secondMultiplier;
+
+  return {
+    baseUnitId: form.baseUnitId,
+    baseUnitName: form.baseUnitName,
+    firstMultiplier,
+    intermediateUnitId: form.intermediateUnitId,
+    intermediateUnitName: form.intermediateUnitName,
+    secondMultiplier,
+    finalUnitId: form.finalUnitId,
+    finalUnitName: form.finalUnitName,
+    totalBaseUnits: computeTotalBaseUnits(firstMultiplier, secondMultiplier),
+  };
+}
+
+export function recordToFormState(record: UnitConversionRecord): UnitConversionFormState {
+  return {
+    baseUnitId: record.baseUnitId,
+    baseUnitName: record.baseUnitName,
+    firstMultiplier: record.firstMultiplier,
+    intermediateUnitId: record.intermediateUnitId,
+    intermediateUnitName: record.intermediateUnitName,
+    secondMultiplier: record.secondMultiplier,
+    finalUnitId: record.finalUnitId,
+    finalUnitName: record.finalUnitName,
+  };
 }

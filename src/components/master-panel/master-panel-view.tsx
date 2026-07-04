@@ -4,11 +4,8 @@ import { useState } from "react";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
 
-// 'any' शब्द को पूरी तरह हटाकर हमने सीधे EmployeeList से उसका सही टाइप निकाल लिया है
-type EmployeeListProps = ComponentPropsWithoutRef<typeof EmployeeList>;
-type CleanListItem = EmployeeListProps["employees"][number];
-
-import { ComponentPropsWithoutRef } from "react";
+// हमने सीधे उसी फ़ाइल से असली 'EmployeeListItem' टाइप को इम्पोर्ट कर लिया है
+import type { EmployeeListItem } from "./employee-list";
 
 type View = "list" | "add";
 
@@ -45,8 +42,8 @@ export default function MasterPanelView() {
           </button>
         </div>
       ) : (
-        /* बिना किसी 'any' नियम को तोड़े एकदम परफेक्ट एरे */
-        <EmployeeList employees={[] as CleanListItem[]} />
+        /* अब कंपाइलर को उसका असली और सटीक टाइप मिल चुका है */
+        <EmployeeList employees={[] as EmployeeListItem[]} />
       )}
     </div>
   );

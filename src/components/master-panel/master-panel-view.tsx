@@ -73,7 +73,7 @@ function MasterPanelContent() {
   const activeModule = useMemo(
     () =>
       getMasterPanelModule(activeModuleId) ??
-      getMasterPanelModule(DEFAULT_MASTER_PANEL_MODULE_ID)!,
+      getMasterPanelModule(DEFAULT_MASTER_PANEL_MODULE_ID),
     [activeModuleId]
   );
 
@@ -82,8 +82,17 @@ function MasterPanelContent() {
   }, []);
 
   const renderModuleWorkspace = () => {
+    const moduleId = activeModule?.id;
+    if (!moduleId) {
+      return (
+        <div className="rounded-xl border border-corporate-border bg-corporate-surface p-6 text-sm text-corporate-muted">
+          Select a module from Administration or Transaction to begin.
+        </div>
+      );
+    }
+
     try {
-      switch (activeModule.id) {
+      switch (moduleId) {
         case "employee-management":
           return <EmployeeManagementPanel />;
         case "godowns-locations":
@@ -91,13 +100,15 @@ function MasterPanelContent() {
         case "overtime-tracker":
           return <OvertimeTrackerPanel />;
         default:
-          return <ModulePlaceholder module={activeModule} />;
+          return activeModule ? (
+            <ModulePlaceholder module={activeModule} />
+          ) : null;
       }
     } catch (error) {
-      console.error(`Module workspace failed (${activeModule.id}):`, error);
+      console.error(`Module workspace failed (${moduleId}):`, error);
       return (
         <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
-          Unable to load {activeModule.title}. Please try another module.
+          Unable to load {activeModule?.title ?? "this module"}. Please try another module.
         </div>
       );
     }
@@ -106,19 +117,21 @@ function MasterPanelContent() {
   return (
     <div className="space-y-4">
       <MasterPanelManagerNav
-        activeModuleId={activeModule.id}
+        activeModuleId={activeModuleId}
         onSelect={handleModuleSelect}
       />
       <section
         className="min-w-0"
-        aria-label={`${activeModule.title} workspace`}
+        aria-label={`${activeModule?.title ?? "Module"} workspace`}
       >
-        <div className="mb-4 border-b border-corporate-border pb-3">
-          <h2 className="text-base font-semibold text-corporate-text">
-            {activeModule.title}
-          </h2>
-          <p className="text-sm text-corporate-muted">{activeModule.subtitle}</p>
-        </div>
+        {activeModule && (
+          <div className="mb-4 border-b border-corporate-border pb-3">
+            <h2 className="text-base font-semibold text-corporate-text">
+              {activeModule.title}
+            </h2>
+            <p className="text-sm text-corporate-muted">{activeModule.subtitle}</p>
+          </div>
+        )}
         {renderModuleWorkspace()}
       </section>
     </div>

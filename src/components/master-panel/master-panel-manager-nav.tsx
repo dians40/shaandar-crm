@@ -1,9 +1,13 @@
 "use client";
 
-import { ChevronDown, Settings2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, LayoutGrid } from "lucide-react";
 import {
+  getGroupById,
+  getGroupForModule,
   getMasterPanelModule,
   MASTER_PANEL_MODULE_GROUPS,
+  type MasterPanelModuleGroupId,
   type MasterPanelModuleId,
 } from "@/constants/master-panel-modules";
 import { cn } from "@/lib/utils";
@@ -13,33 +17,37 @@ type MasterPanelManagerNavProps = {
   onSelect: (id: MasterPanelModuleId) => void;
 };
 
-function findGroupForModule(moduleId: MasterPanelModuleId) {
-  return (
-    MASTER_PANEL_MODULE_GROUPS.find((group) =>
-      group.moduleIds.includes(moduleId)
-    ) ?? MASTER_PANEL_MODULE_GROUPS[0]
-  );
-}
-
 export default function MasterPanelManagerNav({
   activeModuleId,
   onSelect,
 }: MasterPanelManagerNavProps) {
   const activeModule = getMasterPanelModule(activeModuleId);
-  const activeGroup = findGroupForModule(activeModuleId);
+  const moduleGroup = getGroupForModule(activeModuleId);
+  const [viewGroupId, setViewGroupId] = useState<MasterPanelModuleGroupId>(
+    moduleGroup?.id ?? "administration"
+  );
+
+  useEffect(() => {
+    const nextGroup = getGroupForModule(activeModuleId);
+    if (nextGroup?.id) {
+      setViewGroupId(nextGroup.id);
+    }
+  }, [activeModuleId]);
+
+  const viewGroup = getGroupById(viewGroupId) ?? MASTER_PANEL_MODULE_GROUPS[0];
   const ActiveIcon = activeModule?.icon;
 
   return (
     <div className="space-y-3 rounded-xl border border-corporate-border bg-corporate-surface p-4 shadow-card">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Settings2 className="h-5 w-5 text-corporate-brand" aria-hidden />
+          <LayoutGrid className="h-5 w-5 text-corporate-brand" aria-hidden />
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-corporate-brand">
-              Manager Settings
+              ERP Navigation
             </p>
             <p className="text-sm text-corporate-muted">
-              Select a module — only its workspace loads below.
+              Two-group executive layout — only the selected module workspace loads.
             </p>
           </div>
         </div>
@@ -51,9 +59,44 @@ export default function MasterPanelManagerNav({
         )}
       </div>
 
+      <div
+        className="flex flex-wrap gap-2"
+        role="tablist"
+        aria-label="ERP module groups"
+      >
+        {MASTER_PANEL_MODULE_GROUPS.map((group) => {
+          const isActive = group.id === viewGroupId;
+          return (
+            <button
+              key={group.id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setViewGroupId(group.id)}
+              className={cn(
+                "rounded-lg px-4 py-2 text-left text-sm font-semibold transition-colors",
+                isActive
+                  ? "bg-corporate-brand text-white"
+                  : "bg-corporate-bg text-corporate-text hover:bg-corporate-border/40"
+              )}
+            >
+              <span>{group.label}</span>
+              <span
+                className={cn(
+                  "mt-0.5 block text-xs font-normal",
+                  isActive ? "text-white/80" : "text-corporate-muted"
+                )}
+              >
+                {group.description}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="relative max-w-xl">
         <label htmlFor="master-panel-module-select" className="sr-only">
-          Select module
+          Select {viewGroup?.label ?? "module"}
         </label>
         <select
           id="master-panel-module-select"
@@ -61,19 +104,15 @@ export default function MasterPanelManagerNav({
           onChange={(e) => onSelect(e.target.value as MasterPanelModuleId)}
           className="w-full appearance-none rounded-lg border border-corporate-border bg-white py-2.5 pl-3 pr-10 text-sm font-medium text-corporate-text focus:border-corporate-brand focus:outline-none focus:ring-2 focus:ring-corporate-brand/20"
         >
-          {MASTER_PANEL_MODULE_GROUPS.map((group) => (
-            <optgroup key={group.label} label={group.label}>
-              {group.moduleIds.map((moduleId) => {
-                const panelModule = getMasterPanelModule(moduleId);
-                if (!panelModule) return null;
-                return (
-                  <option key={moduleId} value={moduleId}>
-                    {panelModule.navLabel}
-                  </option>
-                );
-              })}
-            </optgroup>
-          ))}
+          {(viewGroup?.moduleIds ?? []).map((moduleId) => {
+            const panelModule = getMasterPanelModule(moduleId);
+            if (!panelModule) return null;
+            return (
+              <option key={moduleId} value={moduleId}>
+                {panelModule.navLabel}
+              </option>
+            );
+          })}
         </select>
         <ChevronDown
           className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-corporate-muted"
@@ -84,12 +123,12 @@ export default function MasterPanelManagerNav({
       <div
         className="flex flex-wrap gap-1.5 border-t border-corporate-border pt-3"
         role="tablist"
-        aria-label={`${activeGroup.label} sub-settings`}
+        aria-label={`${viewGroup?.label ?? "Group"} modules`}
       >
         <span className="mr-1 self-center text-xs font-semibold uppercase tracking-wide text-corporate-muted">
-          {activeGroup.label}
+          {viewGroup?.label ?? "Modules"}
         </span>
-        {activeGroup.moduleIds.map((moduleId) => {
+        {(viewGroup?.moduleIds ?? []).map((moduleId) => {
           const panelModule = getMasterPanelModule(moduleId);
           if (!panelModule) return null;
           const isActive = moduleId === activeModuleId;

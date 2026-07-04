@@ -54,17 +54,32 @@ function toOptionalString(value: unknown): string | null {
   return str || null;
 }
 
-export function computeTotalBaseUnits(
-  firstMultiplier: number | null,
-  secondMultiplier: number | null
-): number | null {
-  const first = firstMultiplier ?? 0;
-  const second = secondMultiplier ?? 0;
+function hasPositiveMultiplier(value: number | null | undefined): value is number {
+  return value != null && Number.isFinite(value) && value > 0;
+}
 
-  if (first > 0 && second > 0) return first * second;
-  if (first > 0) return first;
-  if (second > 0) return second;
+function hasUnitName(value: string | null | undefined): value is string {
+  return Boolean(value?.trim());
+}
+
+const CHAIN_ARROW = " ➔ ";
+
+export function computeTotalBaseUnits(
+  firstMultiplier: number | null | undefined,
+  secondMultiplier: number | null | undefined
+): number | null {
+  const first = hasPositiveMultiplier(firstMultiplier) ? firstMultiplier : null;
+  const second = hasPositiveMultiplier(secondMultiplier) ? secondMultiplier : null;
+
+  if (first != null && second != null) return first * second;
+  if (first != null) return first;
+  if (second != null) return second;
   return null;
+}
+
+/** Recompute total from live fields — avoids stale or NaN stored values. */
+export function resolveTotalBaseUnits(record: UnitConversionRecord): number | null {
+  return computeTotalBaseUnits(record.firstMultiplier, record.secondMultiplier);
 }
 
 export function normalizeUnitConversionRecord(
@@ -149,79 +164,100 @@ export function validateUnitConversionForm(form: UnitConversionFormState): strin
 }
 
 export function formatChainSummary(record: UnitConversionRecord): string {
-  const parts: string[] = [`Main unit: ${record.baseUnitName}.`];
+  const parts: string[] = [];
+  const total = resolveTotalBaseUnits(record);
+  const hasIntermediate = hasUnitName(record.intermediateUnitName);
+  const hasFinal = hasUnitName(record.finalUnitName);
+  const hasMult1 = hasPositiveMultiplier(record.firstMultiplier);
+  const hasMult2 = hasPositiveMultiplier(record.secondMultiplier);
 
-  if (record.firstMultiplier && record.firstMultiplier > 0) {
-    if (record.intermediateUnitName) {
-      parts.push(
-        `1 ${record.baseUnitName} = ${record.firstMultiplier} ${record.intermediateUnitName}.`
-      );
-    } else if (record.finalUnitName) {
-      parts.push(
-        `1 ${record.baseUnitName} = ${record.firstMultiplier} ${record.finalUnitName}.`
-      );
-    } else {
-      parts.push(`Multiplier 1: ${record.firstMultiplier}.`);
-    }
-  }
-
-  if (
-    record.secondMultiplier &&
-    record.secondMultiplier > 0 &&
-    record.intermediateUnitName &&
-    record.finalUnitName
-  ) {
+  if (hasMult1 && hasIntermediate) {
     parts.push(
-      `Each ${record.intermediateUnitName} = ${record.secondMultiplier} ${record.finalUnitName}.`
+      `1 ${record.baseUnitName} = ${record.firstMultiplier} ${record.intermediateUnitName}`
     );
-  } else if (
-    record.secondMultiplier &&
-    record.secondMultiplier > 0 &&
-    !record.intermediateUnitName &&
-    record.finalUnitName
-  ) {
-    parts.push(`Multiplier 2: ${record.secondMultiplier} ${record.finalUnitName}.`);
-  }
-
-  if (record.totalBaseUnits !== null && record.totalBaseUnits > 0) {
-    const targetUnit =
-      record.finalUnitName ?? record.intermediateUnitName ?? record.baseUnitName;
+  } else if (hasMult1 && hasFinal) {
     parts.push(
-      `Total = ${record.totalBaseUnits.toLocaleString("en-IN")} ${targetUnit}.`
+      `1 ${record.baseUnitName} = ${record.firstMultiplier} ${record.finalUnitName}`
     );
+  } else if (hasMult1) {
+    parts.push(`1 ${record.baseUnitName} = ${record.firstMultiplier}`);
+  } else if (hasIntermediate) {
+    parts.push(`1 ${record.baseUnitName} = 1 ${record.intermediateUnitName}`);
+  } else {
+    parts.push(`Main unit: ${record.baseUnitName}`);
   }
 
-  return parts.join(" ");
+  if (hasMult2 && hasIntermediate && hasFinal) {
+    parts.push(
+      `1 ${record.intermediateUnitName} = ${record.secondMultiplier} ${record.finalUnitName}`
+    );
+  } else if (hasMult2 && hasFinal && !hasIntermediate) {
+    parts.push(`Multiplier 2 = ${record.secondMultiplier} ${record.finalUnitName}`);
+  }
+
+  if (total != null && total > 0) {
+    const targetUnit = hasFinal
+      ? record.finalUnitName!
+      : hasIntermediate
+        ? record.intermediateUnitName!
+        : record.baseUnitName;
+    parts.push(`Total = ${total.toLocaleString("en-IN")} ${targetUnit}`);
+  }
+
+  return `${parts.join(", ")}.`;
 }
 
 export function formatChainShort(record: UnitConversionRecord): string {
   const segments: string[] = [`1 ${record.baseUnitName}`];
+  const hasIntermediate = hasUnitName(record.intermediateUnitName);
+  const hasFinal = hasUnitName(record.finalUnitName);
+  const hasMult1 = hasPositiveMultiplier(record.firstMultiplier);
+  const hasMult2 = hasPositiveMultiplier(record.secondMultiplier);
 
-  if (record.firstMultiplier && record.firstMultiplier > 0) {
-    const target = record.intermediateUnitName ?? record.finalUnitName ?? "?";
-    segments.push(`${record.firstMultiplier} ${target}`);
+  // Level 1: base → intermediate (or direct to final when no intermediate)
+  if (hasMult1 && hasIntermediate) {
+    segments.push(`${record.firstMultiplier} ${record.intermediateUnitName}`);
+  } else if (hasIntermediate) {
+    segments.push(record.intermediateUnitName!);
+  } else if (hasMult1 && hasFinal) {
+    segments.push(`${record.firstMultiplier} ${record.finalUnitName}`);
+  } else if (hasMult1) {
+    segments.push(String(record.firstMultiplier));
   }
 
-  if (
-    record.secondMultiplier &&
-    record.secondMultiplier > 0 &&
-    record.intermediateUnitName &&
-    record.finalUnitName
-  ) {
+  // Level 2: intermediate → final — always show when intermediate exists in the chain
+  if (hasMult2 && hasFinal && hasIntermediate) {
     segments.push(`${record.secondMultiplier} ${record.finalUnitName}`);
+  } else if (hasMult2 && hasFinal && !hasIntermediate) {
+    const lastSegment = segments[segments.length - 1] ?? "";
+    const nextSegment = `${record.secondMultiplier} ${record.finalUnitName}`;
+    if (lastSegment !== nextSegment) {
+      segments.push(nextSegment);
+    }
+  } else if (hasFinal && hasIntermediate) {
+    const lastSegment = segments[segments.length - 1] ?? "";
+    if (!lastSegment.includes(record.finalUnitName!)) {
+      segments.push(record.finalUnitName!);
+    }
   }
 
-  return segments.join(" → ");
+  return segments.join(CHAIN_ARROW);
 }
 
 export function formatTotalBaseUnits(record: UnitConversionRecord): string {
-  if (record.totalBaseUnits === null || record.totalBaseUnits <= 0) {
+  const total = resolveTotalBaseUnits(record);
+
+  if (total == null || total <= 0 || !Number.isFinite(total)) {
     return "—";
   }
 
-  const unit =
-    record.finalUnitName ?? record.intermediateUnitName ?? record.baseUnitName;
-  return `${record.totalBaseUnits.toLocaleString("en-IN")} ${unit}`;
+  const unit = hasUnitName(record.finalUnitName)
+    ? record.finalUnitName
+    : hasUnitName(record.intermediateUnitName)
+      ? record.intermediateUnitName
+      : record.baseUnitName;
+
+  return `${total.toLocaleString("en-IN")} ${unit}`;
 }
 
 export function buildConversionPayload(

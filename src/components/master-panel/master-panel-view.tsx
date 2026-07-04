@@ -29,8 +29,8 @@ export default function MasterPanelView() {
 
       {view === "add" ? (
         <div className="bg-white p-6 rounded-md shadow">
-          {/* यहाँ सिर्फ वही प्रॉपर्टी दी है जो फॉर्म को चाहिए */}
-          <EmployeeForm onSuccess={handleSuccess} />
+          {/* यहाँ फॉर्म की मांग के अनुसार onSuccess और onBack दोनों दे दिए हैं */}
+          <EmployeeForm onSuccess={handleSuccess} onBack={() => setView("list")} />
           
           <button 
             onClick={() => setView("list")}

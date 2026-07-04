@@ -40,7 +40,7 @@ export default function MasterPanelView() {
         </div>
       ) : (
         /* @ts-expect-error - bypassing strict nested employee item type mismatch safely */
-        <EmployeeList employees={[]} />
+        <EmployeeList employees={[]} onAdd={() => setView("add")} />
       )}
     </div>
   );

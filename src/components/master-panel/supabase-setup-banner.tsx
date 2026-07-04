@@ -86,7 +86,7 @@ export default function SupabaseSetupBanner() {
                   </li>
                   <li>
                     <code className="rounded bg-white px-1.5 py-0.5 text-xs">
-                      003_employee_extended_fields.sql
+                      004_employee_attendance.sql
                     </code>
                   </li>
                 </ul>

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
+  Eye,
   Loader2,
   Pencil,
   Plus,
   RefreshCw,
+  Search,
   Trash2,
   Users,
 } from "lucide-react";
@@ -21,9 +23,19 @@ type Props = {
   error?: string | null;
   onRetry?: () => void;
   onAddNew: () => void;
+  onView: (id: string) => void;
   onEdit: (id: string) => void;
   onRefresh: () => void;
 };
+
+function matchesSearch(employee: EmployeeListItem, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+
+  return [employee.firstName, employee.lastName, employee.name, employee.mobileNumber]
+    .filter(Boolean)
+    .some((value) => value.toLowerCase().includes(normalized));
+}
 
 export default function EmployeeList({
   employees = [],
@@ -31,13 +43,20 @@ export default function EmployeeList({
   error = null,
   onRetry,
   onAddNew,
+  onView,
   onEdit,
   onRefresh,
 }: Props) {
+  const [searchQuery, setSearchQuery] = useState("");
   const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const filteredEmployees = useMemo(
+    () => employees.filter((employee) => matchesSearch(employee, searchQuery)),
+    [employees, searchQuery]
+  );
 
   const handleSalarySave = async (employee: EmployeeListItem) => {
     const draft = salaryDrafts[employee.id];
@@ -66,14 +85,25 @@ export default function EmployeeList({
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!window.confirm(`Remove employee "${name}"? This cannot be undone.`)) return;
+  const handleDelete = async (employee: EmployeeListItem) => {
+    if (employee.hasAttendanceRecords) {
+      setActionError(
+        "This employee cannot be deleted because attendance records exist."
+      );
+      return;
+    }
 
-    setDeletingId(id);
+    if (
+      !window.confirm(`Remove employee "${employee.name}"? This cannot be undone.`)
+    ) {
+      return;
+    }
+
+    setDeletingId(employee.id);
     setActionError(null);
 
     try {
-      await deleteEmployee(id);
+      await deleteEmployee(employee.id);
       onRefresh();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to delete employee.");
@@ -93,7 +123,7 @@ export default function EmployeeList({
             Employee List
           </h2>
           <p className="mt-1 text-sm text-corporate-muted">
-            Live data from Supabase — edit salary inline or open full edit form.
+            Search by first or last name — view bio-data or edit inline.
           </p>
           <div className="mt-2">
             <SupabaseConnectedBadge />
@@ -109,6 +139,18 @@ export default function EmployeeList({
             Add Employee
           </button>
         </div>
+      </div>
+
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-corporate-muted" />
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by first or last name..."
+          className="input-field w-full pl-10"
+          aria-label="Search employees by first or last name"
+        />
       </div>
 
       {(error || actionError) && (
@@ -169,17 +211,19 @@ export default function EmployeeList({
                     <p className="mt-3 text-sm text-corporate-muted">Loading employees...</p>
                   </td>
                 </tr>
-              ) : employees.length === 0 && !error ? (
+              ) : filteredEmployees.length === 0 && !error ? (
                 <tr>
                   <td colSpan={7} className="px-5 py-12 text-center">
                     <Users className="mx-auto h-8 w-8 text-corporate-muted/60" />
                     <p className="mt-3 text-sm font-medium text-corporate-text">
-                      No employees found
+                      {searchQuery.trim()
+                        ? "No employees match your search"
+                        : "No employees found"}
                     </p>
                   </td>
                 </tr>
               ) : (
-                employees.map((employee) => {
+                filteredEmployees.map((employee) => {
                   const draftValue =
                     salaryDrafts[employee.id] ??
                     (employee.fixSalaryAmount !== null
@@ -244,21 +288,38 @@ export default function EmployeeList({
                         <div className="inline-flex gap-2">
                           <button
                             type="button"
+                            onClick={() => onView(employee.id)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-corporate-border px-2.5 py-1.5 text-xs font-medium text-corporate-text hover:bg-corporate-bg"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            View
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => onEdit(employee.id)}
                             className="inline-flex items-center gap-1 rounded-lg border border-corporate-border px-2.5 py-1.5 text-xs font-medium text-corporate-text hover:bg-corporate-bg"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                             Edit
                           </button>
-                          <button
-                            type="button"
-                            disabled={deletingId === employee.id}
-                            onClick={() => void handleDelete(employee.id, employee.name)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {deletingId === employee.id ? "..." : "Remove"}
-                          </button>
+                          {!employee.hasAttendanceRecords ? (
+                            <button
+                              type="button"
+                              disabled={deletingId === employee.id}
+                              onClick={() => void handleDelete(employee)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {deletingId === employee.id ? "..." : "Remove"}
+                            </button>
+                          ) : (
+                            <span
+                              className="inline-flex items-center rounded-lg border border-corporate-border px-2.5 py-1.5 text-xs text-corporate-muted"
+                              title="Cannot delete — attendance records exist"
+                            >
+                              Protected
+                            </span>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -272,7 +333,9 @@ export default function EmployeeList({
 
       {!isLoading && !error && (
         <p className="text-xs text-corporate-muted">
-          Showing {employees.length} employee{employees.length === 1 ? "" : "s"}
+          Showing {filteredEmployees.length} of {employees.length} employee
+          {employees.length === 1 ? "" : "s"}
+          {searchQuery.trim() ? ` matching "${searchQuery.trim()}"` : ""}
         </p>
       )}
     </div>

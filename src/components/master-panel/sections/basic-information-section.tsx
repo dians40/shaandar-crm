@@ -100,13 +100,22 @@ export default function BasicInformationSection({
         </h3>
         <div className="grid gap-5 sm:grid-cols-2">
           <TextInput
-            label="Full Name"
-            name="fullName"
+            label="First Name"
+            name="firstName"
             required
-            placeholder="Enter full name"
-            value={data.fullName}
-            error={errors.fullName}
-            onChange={(e) => updateField("fullName", e.target.value)}
+            placeholder="Enter first name"
+            value={data.firstName}
+            error={errors.firstName}
+            onChange={(e) => updateField("firstName", e.target.value)}
+          />
+          <TextInput
+            label="Last Name"
+            name="lastName"
+            required
+            placeholder="Enter last name"
+            value={data.lastName}
+            error={errors.lastName}
+            onChange={(e) => updateField("lastName", e.target.value)}
           />
           <FileInputField
             label={DOCUMENT_LABELS.profilePhoto.label}
@@ -132,7 +141,9 @@ export default function BasicInformationSection({
           <SelectInput
             label="Gender"
             name="gender"
+            required
             value={data.gender}
+            error={errors.gender}
             onChange={(e) => updateField("gender", e.target.value as Gender | "")}
             placeholder="Select gender"
             options={GENDER_OPTIONS.map((g) => ({ value: g, label: g }))}

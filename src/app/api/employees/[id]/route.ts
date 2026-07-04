@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { requireAuth, supabaseNotConfiguredResponse } from "@/lib/api/auth-guard";
+import { employeeHasAttendance } from "@/lib/attendance";
 import {
   mapEmployeeRowToFormData,
   mapEmployeeRowToListItem,
   mapFormToEmployeeInsert,
 } from "@/lib/map-employee-to-db";
+import { validateBasicInformation } from "@/lib/validate-employee-form";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractDocumentFiles } from "@/lib/form-data-utils";
 import { uploadEmployeeDocuments } from "@/lib/supabase/upload-documents";
@@ -77,6 +79,15 @@ export async function PUT(request: Request, context: RouteContext) {
     }
 
     const employeePayload = JSON.parse(employeeJson) as EmployeePayload;
+
+    const validationErrors = validateBasicInformation(
+      employeePayload.basicInformation
+    );
+    if (Object.keys(validationErrors).length > 0) {
+      const firstError = Object.values(validationErrors)[0];
+      return NextResponse.json({ error: firstError ?? "Invalid employee data." }, { status: 400 });
+    }
+
     const supabase = createAdminClient();
 
     const fullFormData: EmployeeFormData = {
@@ -131,7 +142,9 @@ export async function PUT(request: Request, context: RouteContext) {
     }
 
     return NextResponse.json({
-      employee: mapEmployeeRowToListItem(employee),
+      employee: mapEmployeeRowToListItem(employee, {
+        hasAttendanceRecords: await employeeHasAttendance(supabase, id),
+      }),
       message: "Employee updated successfully.",
     });
   } catch (error) {
@@ -153,6 +166,18 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
   try {
     const supabase = createAdminClient();
+
+    const hasAttendance = await employeeHasAttendance(supabase, id);
+    if (hasAttendance) {
+      return NextResponse.json(
+        {
+          error:
+            "Cannot delete this employee: attendance records exist and must be preserved for payroll calculations.",
+        },
+        { status: 409 }
+      );
+    }
+
     const { error } = await supabase.from("employees").delete().eq("id", id);
 
     if (error) {

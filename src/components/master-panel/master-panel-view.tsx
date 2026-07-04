@@ -1,12 +1,13 @@
 "use client";
 
 import { Component, useState, type ReactNode } from "react";
+import EmployeeBioDataCard from "./employee-bio-data-card";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
 import SupabaseSetupBanner from "./supabase-setup-banner";
 import { useEmployees } from "@/hooks/use-employees";
 
-type ViewMode = "list" | "add" | "edit";
+type ViewMode = "list" | "add" | "edit" | "detail";
 
 const EMPTY_EMPLOYEES: never[] = [];
 
@@ -60,11 +61,11 @@ class MasterPanelErrorBoundary extends Component<
 function MasterPanelContent() {
   const { employees, isLoading, error, reload } = useEmployees();
   const [view, setView] = useState<ViewMode>("list");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const handleBack = () => {
     setView("list");
-    setEditingId(null);
+    setSelectedId(null);
   };
 
   const handleSuccess = () => {
@@ -80,13 +81,23 @@ function MasterPanelContent() {
     );
   }
 
-  if (view === "edit" && editingId) {
+  if (view === "edit" && selectedId) {
     return (
       <EmployeeForm
         mode="edit"
-        employeeId={editingId}
+        employeeId={selectedId}
         onBack={handleBack}
         onSuccess={handleSuccess}
+      />
+    );
+  }
+
+  if (view === "detail" && selectedId) {
+    return (
+      <EmployeeBioDataCard
+        employeeId={selectedId}
+        onBack={handleBack}
+        onEdit={() => setView("edit")}
       />
     );
   }
@@ -100,8 +111,12 @@ function MasterPanelContent() {
         error={error}
         onRetry={() => void reload()}
         onAddNew={() => setView("add")}
+        onView={(id) => {
+          setSelectedId(typeof id === "string" ? id : null);
+          setView("detail");
+        }}
         onEdit={(id) => {
-          setEditingId(typeof id === "string" ? id : null);
+          setSelectedId(typeof id === "string" ? id : null);
           setView("edit");
         }}
         onRefresh={() => void reload()}

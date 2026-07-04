@@ -61,7 +61,8 @@ export type ContractPacking = {
 };
 
 export type BasicInformation = {
-  fullName: string;
+  firstName: string;
+  lastName: string;
   fatherName: string;
   motherName: string;
   dateOfBirth: string;
@@ -155,7 +156,8 @@ export const INITIAL_CONTRACT_PACKING: ContractPacking = {
 
 export const INITIAL_EMPLOYEE_FORM: EmployeeFormData = {
   basicInformation: {
-    fullName: "",
+    firstName: "",
+    lastName: "",
     fatherName: "",
     motherName: "",
     dateOfBirth: "",

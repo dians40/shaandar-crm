@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { requireAuth, supabaseNotConfiguredResponse } from "@/lib/api/auth-guard";
+import { getEmployeeIdsWithAttendance } from "@/lib/attendance";
 import {
   mapEmployeeRowToListItem,
   mapFormToEmployeeInsert,
 } from "@/lib/map-employee-to-db";
+import { validateBasicInformation } from "@/lib/validate-employee-form";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractDocumentFiles } from "@/lib/form-data-utils";
 import { uploadEmployeeDocuments } from "@/lib/supabase/upload-documents";
@@ -49,7 +51,18 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    const employees = (data ?? []).map(mapEmployeeRowToListItem);
+    const employees = await (async () => {
+      const rows = data ?? [];
+      const ids = rows.map((row) => row.id as string);
+      const attendanceIds = await getEmployeeIdsWithAttendance(supabase, ids);
+
+      return rows.map((row) =>
+        mapEmployeeRowToListItem(row, {
+          hasAttendanceRecords: attendanceIds.has(row.id as string),
+        })
+      );
+    })();
+
     return NextResponse.json({ employees });
   } catch (error) {
     const message =
@@ -78,6 +91,15 @@ export async function POST(request: Request) {
     }
 
     const employeePayload = JSON.parse(employeeJson) as EmployeePayload;
+
+    const validationErrors = validateBasicInformation(
+      employeePayload.basicInformation
+    );
+    if (Object.keys(validationErrors).length > 0) {
+      const firstError = Object.values(validationErrors)[0];
+      return NextResponse.json({ error: firstError ?? "Invalid employee data." }, { status: 400 });
+    }
+
     const supabase = createAdminClient();
 
     const fullFormData: EmployeeFormData = {

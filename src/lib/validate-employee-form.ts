@@ -1,10 +1,12 @@
 import type { BasicInformation } from "@/types/employee-form";
 
 export type BasicInformationField =
-  | "fullName"
+  | "firstName"
+  | "lastName"
   | "mobileNumber"
   | "dateOfBirth"
-  | "employeeType";
+  | "employeeType"
+  | "gender";
 
 export type BasicInformationErrors = Partial<
   Record<BasicInformationField, string>
@@ -15,12 +17,20 @@ export function validateBasicInformation(
 ): BasicInformationErrors {
   const errors: BasicInformationErrors = {};
 
-  if (!data.fullName.trim()) {
-    errors.fullName = "Full name is required.";
+  if (!data.firstName.trim()) {
+    errors.firstName = "First name is required.";
+  }
+
+  if (!data.lastName.trim()) {
+    errors.lastName = "Last name is required.";
   }
 
   if (!data.dateOfBirth) {
     errors.dateOfBirth = "Date of birth is required.";
+  }
+
+  if (!data.gender) {
+    errors.gender = "Gender is required.";
   }
 
   if (!data.employeeType) {

@@ -2,6 +2,10 @@ import type { EmployeeFormData, DocumentNumbers } from "@/types/employee-form";
 import type { DocumentPaths, EmployeeInsert, EmployeeRow } from "@/types/employee-db";
 import type { EmployeeListItem } from "@/types/employee-list";
 import {
+  combineEmployeeName,
+  splitFullName,
+} from "@/lib/employee-name-utils";
+import {
   calculateAllowances,
   calculateContractTotal,
 } from "@/lib/salary-breakdown";
@@ -56,7 +60,7 @@ export function mapFormToEmployeeInsert(
     null;
 
   return {
-    full_name: basic.fullName.trim(),
+    full_name: combineEmployeeName(basic.firstName, basic.lastName),
     father_name: basic.fatherName.trim() || null,
     mother_name: basic.motherName.trim() || null,
     date_of_birth: basic.dateOfBirth,
@@ -117,7 +121,8 @@ export function mapFormToEmployeeInsert(
   };
 }
 
-export function mapEmployeeRowToListItem(row: {
+export function mapEmployeeRowToListItem(
+  row: {
   id: string;
   full_name: string;
   employee_type: string;
@@ -129,7 +134,9 @@ export function mapEmployeeRowToListItem(row: {
   variable_salary_enabled?: boolean | null;
   daily_rate?: number | null;
   worked_days?: number | null;
-}): EmployeeListItem {
+},
+  options?: { hasAttendanceRecords?: boolean }
+): EmployeeListItem {
   const variableEnabled = Boolean(row.variable_salary_enabled);
   const salaryBase = row.basic_salary ?? row.fix_salary_amount;
   const effectiveSalary = getEffectiveGrossSalary(
@@ -138,10 +145,13 @@ export function mapEmployeeRowToListItem(row: {
     row.daily_rate,
     row.worked_days
   );
+  const { firstName, lastName } = splitFullName(row.full_name);
 
   return {
     id: row.id,
     name: row.full_name,
+    firstName,
+    lastName,
     employeeType: row.employee_type as EmployeeListItem["employeeType"],
     mobileNumber: row.mobile_number,
     vehicleNumber: row.vehicle_number?.trim() || "—",
@@ -151,15 +161,18 @@ export function mapEmployeeRowToListItem(row: {
     dailyRate: row.daily_rate ?? null,
     workedDays: row.worked_days ?? null,
     effectiveSalary: effectiveSalary > 0 ? effectiveSalary : salaryBase ?? null,
+    hasAttendanceRecords: options?.hasAttendanceRecords ?? false,
   };
 }
 
 export function mapEmployeeRowToFormData(row: EmployeeRow): EmployeeFormData {
   const basicSalary = row.basic_salary ?? row.fix_salary_amount;
+  const { firstName, lastName } = splitFullName(row.full_name);
 
   return {
     basicInformation: {
-      fullName: row.full_name,
+      firstName,
+      lastName,
       fatherName: row.father_name ?? "",
       motherName: row.mother_name ?? "",
       dateOfBirth: row.date_of_birth,

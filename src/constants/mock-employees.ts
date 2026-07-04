@@ -1,10 +1,12 @@
 import type { EmployeeListItem } from "@/types/employee-list";
+import { splitFullName } from "@/lib/employee-name-utils";
 
 /** Legacy mock data — app now uses Supabase. Kept for reference/tests only. */
 export const MOCK_EMPLOYEES: EmployeeListItem[] = [
   {
     id: "emp-001",
     name: "Rahul Sharma",
+    ...splitFullName("Rahul Sharma"),
     employeeType: "Regular",
     mobileNumber: "9876543210",
     vehicleNumber: "MH-12-AB-1234",
@@ -14,10 +16,12 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     dailyRate: null,
     workedDays: null,
     effectiveSalary: 25000,
+    hasAttendanceRecords: false,
   },
   {
     id: "emp-002",
     name: "Priya Verma",
+    ...splitFullName("Priya Verma"),
     employeeType: "Contractor",
     mobileNumber: "9123456780",
     vehicleNumber: "GJ-01-CD-5678",
@@ -27,10 +31,12 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     dailyRate: 800,
     workedDays: 22,
     effectiveSalary: 17600,
+    hasAttendanceRecords: true,
   },
   {
     id: "emp-003",
     name: "Amit Kumar",
+    ...splitFullName("Amit Kumar"),
     employeeType: "Temporary",
     mobileNumber: "9988776655",
     vehicleNumber: "—",
@@ -40,5 +46,6 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     dailyRate: null,
     workedDays: null,
     effectiveSalary: 18000,
+    hasAttendanceRecords: false,
   },
 ];

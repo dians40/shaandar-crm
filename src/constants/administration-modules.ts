@@ -6,6 +6,8 @@ export const IMPLEMENTED_ADMINISTRATION_MODULE_IDS = new Set<MasterPanelModuleId
   "account-group",
   "employee-management",
   "godowns-locations",
+  "items-products",
+  "item-groups",
   "units",
   "unit-conversion",
 ]);

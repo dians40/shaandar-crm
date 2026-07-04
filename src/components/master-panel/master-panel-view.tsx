@@ -19,6 +19,8 @@ import AccountsManagementPanel from "./accounts-management-panel";
 import AdministrationPlaceholderPanel from "./administration-placeholder-panel";
 import EmployeeManagementPanel from "./employee-management-panel";
 import GodownManagementPanel from "./godown-management-panel";
+import ItemGroupsManagementPanel from "./item-groups-management-panel";
+import ItemsManagementPanel from "./items-management-panel";
 import MasterPanelManagerNav from "./master-panel-manager-nav";
 import ModulePlaceholder from "./module-placeholder";
 import OvertimeTrackerPanel from "./overtime-tracker-panel";
@@ -108,6 +110,10 @@ function MasterPanelContent() {
           return <EmployeeManagementPanel />;
         case "godowns-locations":
           return <GodownManagementPanel />;
+        case "items-products":
+          return <ItemsManagementPanel />;
+        case "item-groups":
+          return <ItemGroupsManagementPanel />;
         case "units":
           return <UnitsManagementPanel />;
         case "unit-conversion":

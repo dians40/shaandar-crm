@@ -103,7 +103,7 @@ const ADMINISTRATION_MODULES: MasterPanelModule[] = [
     title: "Items / Products Management",
     subtitle: "SKU and product master",
     icon: Boxes,
-    placeholderMessage: "Items / Products Management Coming Soon",
+    placeholderMessage: "",
   },
   {
     id: "item-groups",
@@ -112,7 +112,7 @@ const ADMINISTRATION_MODULES: MasterPanelModule[] = [
     title: "Item Groups / Categories",
     subtitle: "Product grouping hierarchy",
     icon: Layers,
-    placeholderMessage: "Item Groups / Categories Coming Soon",
+    placeholderMessage: "",
   },
   {
     id: "godowns-locations",

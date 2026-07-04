@@ -16,13 +16,13 @@ interface Employee {
 
 export default function MasterPanelView() {
   const [view, setView] = useState<"list" | "add">("list");
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
 
   const fetchEmployees = async () => {
     try {
       const { data, error } = await supabase.from("employees").select("*");
       if (!error && data) {
-        setEmployees(data as Employee[]);
+        setEmployees(data as any[]);
       }
     } catch (err) {
       console.error("Error fetching employees:", err);

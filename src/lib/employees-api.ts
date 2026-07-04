@@ -38,7 +38,11 @@ export async function fetchEmployees(): Promise<EmployeeListItem[]> {
   });
 
   if (!response.ok) {
-    throw new Error(await parseError(response));
+    const message = await parseError(response);
+    if (response.status === 503) {
+      return [];
+    }
+    throw new Error(message);
   }
 
   const data = (await response.json()) as FetchEmployeesResponse;

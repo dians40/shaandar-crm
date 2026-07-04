@@ -37,12 +37,40 @@ export default function SupabaseSetupBanner() {
           {!health.configured && (
             <ol className="list-decimal space-y-2 pl-5 text-amber-900">
               <li>
-                Open file:{" "}
-                <code className="rounded bg-white px-1.5 py-0.5 text-xs">
-                  C:\Users\Rathi\Projects\shaandar-crm\.env.local
-                </code>
+                Open{" "}
+                <strong>Vercel → shaandar-crm → Settings → Environment Variables</strong>{" "}
+                (or <code className="rounded bg-white px-1.5 py-0.5 text-xs">.env.local</code>{" "}
+                for local dev)
               </li>
-              <li>Paste your Supabase URL, Anon Key, and Service Role Key</li>
+              <li>
+                Set these three variables (no quotes around values):
+                <ul className="mt-1 list-disc pl-5">
+                  <li>
+                    <code className="rounded bg-white px-1.5 py-0.5 text-xs">
+                      NEXT_PUBLIC_SUPABASE_URL
+                    </code>{" "}
+                    ={" "}
+                    <code className="rounded bg-white px-1.5 py-0.5 text-xs">
+                      https://YOUR_REF.supabase.co
+                    </code>
+                  </li>
+                  <li>
+                    <code className="rounded bg-white px-1.5 py-0.5 text-xs">
+                      NEXT_PUBLIC_SUPABASE_ANON_KEY
+                    </code>
+                  </li>
+                  <li>
+                    <code className="rounded bg-white px-1.5 py-0.5 text-xs">
+                      SUPABASE_SERVICE_ROLE_KEY
+                    </code>
+                  </li>
+                </ul>
+              </li>
+              <li>
+                Redeploy on Vercel after saving (required for{" "}
+                <code className="rounded bg-white px-1.5 py-0.5 text-xs">NEXT_PUBLIC_*</code>{" "}
+                vars)
+              </li>
               <li>
                 Run SQL migrations in Supabase SQL Editor (in order):
                 <ul className="mt-1 list-disc pl-5">
@@ -62,10 +90,6 @@ export default function SupabaseSetupBanner() {
                     </code>
                   </li>
                 </ul>
-              </li>
-              <li>
-                Stop dev server (<kbd className="rounded border px-1">Ctrl+C</kbd>) and run{" "}
-                <code className="rounded bg-white px-1.5 py-0.5 text-xs">npm run dev</code> again
               </li>
             </ol>
           )}

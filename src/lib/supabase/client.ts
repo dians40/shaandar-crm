@@ -1,4 +1,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import {
+  readSupabaseAnonKey,
+  readSupabaseUrl,
+} from "@/lib/supabase/env";
 
 let cachedClient: SupabaseClient | null | undefined;
 
@@ -11,8 +15,8 @@ export function getSupabaseClient(): SupabaseClient | null {
     return cachedClient;
   }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? "";
+  const supabaseUrl = readSupabaseUrl();
+  const supabaseAnonKey = readSupabaseAnonKey();
 
   if (!supabaseUrl || !supabaseAnonKey) {
     if (typeof window !== "undefined") {

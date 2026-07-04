@@ -1,16 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
+import {
+  isValidSupabaseProjectUrl,
+  readSupabaseServiceRoleKey,
+  readSupabaseUrl,
+} from "@/lib/supabase/env";
 
 /**
  * Server-only admin client. Uses service role key — never expose to the browser.
  * Bypasses RLS; used by API routes until Supabase Auth is fully wired.
  */
 export function createAdminClient() {
-  const url =
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
-    process.env.SUPABASE_URL?.trim();
-  const serviceRoleKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    process.env.SUPABASE_SERVICE_KEY?.trim();
+  const url = readSupabaseUrl();
+  const serviceRoleKey = readSupabaseServiceRoleKey();
 
   if (!url || !serviceRoleKey) {
     throw new Error(
@@ -44,15 +45,11 @@ function looksLikePlaceholder(value: string | undefined): boolean {
 }
 
 export function getSupabaseConfigIssue(): string | null {
-  const url =
-    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ||
-    process.env.SUPABASE_URL?.trim();
-  const serviceRoleKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
-    process.env.SUPABASE_SERVICE_KEY?.trim();
+  const url = readSupabaseUrl();
+  const serviceRoleKey = readSupabaseServiceRoleKey();
 
-  if (!url?.trim() || !serviceRoleKey?.trim()) {
-    return "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local";
+  if (!url || !serviceRoleKey) {
+    return "Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Set them in Vercel → Settings → Environment Variables (or .env.local locally), then redeploy.";
   }
 
   if (looksLikePlaceholder(url)) {
@@ -63,8 +60,8 @@ export function getSupabaseConfigIssue(): string | null {
     return "SUPABASE_SERVICE_ROLE_KEY still has placeholder text. Paste your real service_role key.";
   }
 
-  if (!url.startsWith("https://") || !url.includes(".supabase.co")) {
-    return "NEXT_PUBLIC_SUPABASE_URL must look like https://abcdefgh.supabase.co";
+  if (!isValidSupabaseProjectUrl(url)) {
+    return `NEXT_PUBLIC_SUPABASE_URL must look like https://YOUR_PROJECT_REF.supabase.co (current value starts with "${url.slice(0, 30)}..."). Copy it from Supabase Dashboard → Project Settings → API → Project URL.`;
   }
 
   return null;

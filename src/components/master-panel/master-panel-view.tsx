@@ -1,17 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
-
-type View = "list" | "add";
+// हमने इम्पोर्ट का रास्ता बदलकर सही फ़ाइल '@/lib/supabase/client' कर दिया है
+import { supabase } from "@/lib/supabase/client"; 
 
 export default function MasterPanelView() {
-  const [view, setView] = useState<View>("list");
+  const [view, setView] = useState<"list" | "add">("list");
+  const [employees, setEmployees] = useState<any[]>([]);
 
-  const handleSuccess = () => {
-    setView("list");
+  const fetchEmployees = async () => {
+    const { data, error } = await supabase.from("employees").select("*");
+    if (!error && data) {
+      setEmployees(data);
+    }
   };
+
+  useEffect(() => {
+    fetchEmployees();
+  }, [view]);
 
   return (
     <div className="space-y-5 p-4">
@@ -29,8 +37,7 @@ export default function MasterPanelView() {
 
       {view === "add" ? (
         <div className="bg-white p-6 rounded-md shadow">
-          <EmployeeForm onSuccess={handleSuccess} onBack={() => setView("list")} />
-          
+          <EmployeeForm onSuccess={() => setView("list")} onBack={() => setView("list")} />
           <button 
             onClick={() => setView("list")}
             className="mt-4 bg-gray-500 text-white px-4 py-2 rounded-md hover:bg-gray-600"
@@ -40,7 +47,7 @@ export default function MasterPanelView() {
         </div>
       ) : (
         /* @ts-expect-error - bypassing strict nested employee item type mismatch safely */
-        <EmployeeList employees={[]} onAdd={() => setView("add")} />
+        <EmployeeList employees={employees} />
       )}
     </div>
   );

@@ -15,6 +15,7 @@ import {
 } from "@/constants/master-panel-modules";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/app/login/actions";
+import { useUserPermissions } from "@/contexts/user-permissions-context";
 
 type ExpandableSectionId = "master-panel" | "transactions";
 
@@ -35,6 +36,7 @@ function getExpandableSectionForPath(pathname: string): ExpandableSectionId | nu
 export default function Sidebar() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { selectedRole, canViewMasterPanelModule } = useUserPermissions();
   const activeModuleParam = searchParams.get("module");
 
   const activeModuleId = isMasterPanelModuleId(activeModuleParam)
@@ -67,10 +69,14 @@ export default function Sidebar() {
   const nestedModules = useMemo(
     () =>
       ({
-        "master-panel": getGroupById("administration")?.moduleIds ?? [],
-        transactions: getGroupById("transaction")?.moduleIds ?? [],
+        "master-panel": (getGroupById("administration")?.moduleIds ?? []).filter((moduleId) =>
+          canViewMasterPanelModule(selectedRole, moduleId)
+        ),
+        transactions: (getGroupById("transaction")?.moduleIds ?? []).filter((moduleId) =>
+          canViewMasterPanelModule(selectedRole, moduleId)
+        ),
       }) satisfies Record<ExpandableSectionId, MasterPanelModuleId[]>,
-    []
+    [canViewMasterPanelModule, selectedRole]
   );
 
   return (

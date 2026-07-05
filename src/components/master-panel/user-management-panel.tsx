@@ -1,8 +1,16 @@
 "use client";
 
-import { useCallback, useState } from "react";
 import { Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useUserPermissions } from "@/contexts/user-permissions-context";
+import {
+  PERMISSION_LABELS,
+  PERMISSION_MODULES,
+  USER_ROLES,
+  type PermissionKey,
+  type PermissionModuleId,
+  type UserRoleName,
+} from "@/types/user-permissions";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
@@ -11,85 +19,12 @@ import {
   MASTER_LIST_TABLE_CLASS,
 } from "./universal-master-list";
 
-const ROLES = [
-  "Super Admin",
-  "Manager",
-  "Accountant",
-  "Cashier",
-  "Supervisor",
-  "Operator",
-] as const;
-
-const MODULES = [
-  { id: "masters", label: "Masters", description: "Administration and master data" },
-  { id: "sales", label: "Sales", description: "Sales invoices and returns" },
-  { id: "purchase", label: "Purchase", description: "Purchase vouchers and returns" },
-  { id: "expenses", label: "Expenses", description: "Expenses, receipts, and journals" },
-  { id: "vehicle-trips", label: "Vehicle Trips", description: "Vehicle transaction logs" },
-  { id: "parts-orders", label: "Parts Orders", description: "Parts order workflow" },
-  { id: "maintenance-alerts", label: "Maintenance Alerts", description: "Preventive maintenance" },
-  { id: "orders", label: "Order Module", description: "Party order retention and tracking" },
-  { id: "loading", label: "Loading Module", description: "Loading bay and dispatch detail" },
-  { id: "transfer", label: "Transfer Module", description: "Inter-godown stock movement" },
-  { id: "manufacturing", label: "Manufacturing Module", description: "Production run tracking" },
-  { id: "overtime", label: "Overtime Module", description: "Overtime tracker and payouts" },
-  { id: "attendance", label: "Attendance Module", description: "Daily labor attendance" },
-] as const;
-
-const PERMISSIONS = [
-  { key: "view", label: "View" },
-  { key: "create", label: "Create / Entry" },
-  { key: "edit", label: "Edit" },
-  { key: "delete", label: "Delete" },
-] as const;
-
-type PermissionKey = (typeof PERMISSIONS)[number]["key"];
-type RoleName = (typeof ROLES)[number];
-type ModuleId = (typeof MODULES)[number]["id"];
-
-type PermissionMatrix = Record<
-  RoleName,
-  Record<ModuleId, Record<PermissionKey, boolean>>
->;
-
-function createDefaultMatrix(): PermissionMatrix {
-  return ROLES.reduce((roleAccumulator, role) => {
-    roleAccumulator[role] = MODULES.reduce((moduleAccumulator, module) => {
-      moduleAccumulator[module.id] = PERMISSIONS.reduce(
-        (permissionAccumulator, permission) => {
-          permissionAccumulator[permission.key] = role === "Super Admin";
-          return permissionAccumulator;
-        },
-        {} as Record<PermissionKey, boolean>
-      );
-      return moduleAccumulator;
-    }, {} as Record<ModuleId, Record<PermissionKey, boolean>>);
-    return roleAccumulator;
-  }, {} as PermissionMatrix);
-}
+const PERMISSIONS = (
+  Object.entries(PERMISSION_LABELS) as [PermissionKey, string][]
+).map(([key, label]) => ({ key, label }));
 
 export default function UserManagementPanel() {
-  const [selectedRole, setSelectedRole] = useState<RoleName>("Manager");
-  const [matrix, setMatrix] = useState<PermissionMatrix>(() => createDefaultMatrix());
-
-  const togglePermission = useCallback(
-    (role: RoleName, moduleId: ModuleId, permission: PermissionKey, enabled: boolean) => {
-      if (role === "Super Admin") return;
-
-      setMatrix((current) => ({
-        ...current,
-        [role]: {
-          ...current[role],
-          [moduleId]: {
-            ...current[role][moduleId],
-            [permission]: enabled,
-          },
-        },
-      }));
-    },
-    []
-  );
-
+  const { matrix, selectedRole, setSelectedRole, setPermission } = useUserPermissions();
   const isSuperAdmin = selectedRole === "Super Admin";
 
   return (
@@ -103,7 +38,8 @@ export default function UserManagementPanel() {
                 Role &amp; Rights Permissions
               </h2>
               <p className="text-sm text-corporate-muted">
-                Select a role to configure module permissions across the operational workspace.
+                Changes save instantly and update the left sidebar menu visibility for the
+                selected role.
               </p>
             </div>
           </div>
@@ -118,10 +54,10 @@ export default function UserManagementPanel() {
             <select
               id="select-role"
               value={selectedRole}
-              onChange={(event) => setSelectedRole(event.target.value as RoleName)}
+              onChange={(event) => setSelectedRole(event.target.value as UserRoleName)}
               className="input-field w-full font-semibold"
             >
-              {ROLES.map((role) => (
+              {USER_ROLES.map((role) => (
                 <option key={role} value={role}>
                   {role}
                 </option>
@@ -161,7 +97,7 @@ export default function UserManagementPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-corporate-border">
-              {MODULES.map((module) => (
+              {PERMISSION_MODULES.map((module) => (
                 <tr key={module.id} className="hover:bg-corporate-bg/40">
                   <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "py-5")}>
                     <p className="text-base font-semibold text-corporate-text">{module.label}</p>
@@ -169,7 +105,8 @@ export default function UserManagementPanel() {
                   </td>
                   {PERMISSIONS.map((permission) => {
                     const checked =
-                      isSuperAdmin || matrix[selectedRole][module.id][permission.key];
+                      isSuperAdmin ||
+                      matrix[selectedRole][module.id as PermissionModuleId][permission.key];
 
                     return (
                       <td
@@ -182,9 +119,9 @@ export default function UserManagementPanel() {
                             checked={checked}
                             disabled={isSuperAdmin}
                             onChange={(event) =>
-                              togglePermission(
+                              setPermission(
                                 selectedRole,
-                                module.id,
+                                module.id as PermissionModuleId,
                                 permission.key,
                                 event.target.checked
                               )

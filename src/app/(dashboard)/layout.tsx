@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { AUTH_COOKIE } from "@/lib/auth";
+import DashboardProviders from "@/components/layout/dashboard-providers";
 
 export default async function DashboardGroupLayout({
   children,
@@ -14,5 +15,5 @@ export default async function DashboardGroupLayout({
     redirect("/login");
   }
 
-  return <>{children}</>;
+  return <DashboardProviders>{children}</DashboardProviders>;
 }

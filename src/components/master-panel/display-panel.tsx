@@ -10,6 +10,7 @@ import {
 } from "@/constants/display-criteria-config";
 import CashBankSummaryPanel from "./cash-bank-summary-panel";
 import MaterialLedgerPanel from "./material-ledger-panel";
+import ManufacturingStockLedgerPanel from "./manufacturing-stock-ledger-panel";
 import DisplayReportCriteriaWizard, {
   DisplayReportPlaceholder,
 } from "./display-report-criteria-wizard";
@@ -211,12 +212,18 @@ export default function DisplayPanel() {
 
       case "material-ledger":
         return (
-          <MaterialLedgerPanel
-            fromDate={appliedCriteria.fromDate}
-            toDate={appliedCriteria.toDate}
-            entityFilter={appliedCriteria.entityFilter}
-            reportSubType={appliedCriteria.reportSubType}
-          />
+          <div className="space-y-5">
+            <ManufacturingStockLedgerPanel
+              entityFilter={appliedCriteria.entityFilter}
+              reportSubType={appliedCriteria.reportSubType}
+            />
+            <MaterialLedgerPanel
+              fromDate={appliedCriteria.fromDate}
+              toDate={appliedCriteria.toDate}
+              entityFilter={appliedCriteria.entityFilter}
+              reportSubType={appliedCriteria.reportSubType}
+            />
+          </div>
         );
 
       case "cash-bank":

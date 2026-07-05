@@ -137,6 +137,9 @@ export default function ItemsManagementPanel() {
       conversionTotalBaseUnits: hydrated.conversionTotalBaseUnits,
       openingStockQuantity: hydrated.openingStockQuantity,
       openingStockValue: hydrated.openingStockValue,
+      minimumStockLevel: hydrated.minimumStockLevel,
+      maximumStockLevel: hydrated.maximumStockLevel,
+      reorderLevel: hydrated.reorderLevel,
       purchaseRate: hydrated.purchaseRate,
       salesRateMrp: hydrated.salesRateMrp,
       gstTaxPercentage: hydrated.gstTaxPercentage,
@@ -214,6 +217,9 @@ export default function ItemsManagementPanel() {
       itemName: form.itemName.trim(),
       openingStockQuantity: Number(form.openingStockQuantity) || 0,
       openingStockValue: Number(form.openingStockValue) || 0,
+      minimumStockLevel: Number(form.minimumStockLevel) || 0,
+      maximumStockLevel: Number(form.maximumStockLevel) || 0,
+      reorderLevel: Number(form.reorderLevel) || 0,
       purchaseRate: Number(form.purchaseRate) || 0,
       salesRateMrp: Number(form.salesRateMrp) || 0,
       hsnCode: form.hsnCode.trim(),
@@ -287,6 +293,18 @@ export default function ItemsManagementPanel() {
             {
               label: "Opening Stock Value",
               value: `₹${viewingRecord.openingStockValue.toLocaleString("en-IN")}`,
+            },
+            {
+              label: "Minimum Stock Level (न्यूनतम सीमा)",
+              value: viewingRecord.minimumStockLevel.toLocaleString("en-IN"),
+            },
+            {
+              label: "Maximum Stock Level (अधिकतम सीमा)",
+              value: viewingRecord.maximumStockLevel.toLocaleString("en-IN"),
+            },
+            {
+              label: "Reorder Level (पुनः ऑर्डर बिंदु)",
+              value: viewingRecord.reorderLevel.toLocaleString("en-IN"),
             },
             {
               label: "Purchase Rate",
@@ -370,7 +388,7 @@ export default function ItemsManagementPanel() {
             onAlternateFormulaChange={handleAlternateFormulaChange}
           />
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <TextInput
               label="Opening Stock Quantity"
               type="number"
@@ -397,6 +415,65 @@ export default function ItemsManagementPanel() {
                 }))
               }
             />
+          </div>
+
+          <section className="form-section-card space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold text-corporate-text">
+                Universal Stock Level Parameters
+              </h3>
+              <p className="text-xs text-corporate-muted">
+                Mandatory thresholds for finished goods, raw materials, machinery components, and
+                parts — drives Display stock alerts.
+              </p>
+            </div>
+            <div className="form-grid">
+              <TextInput
+                label="Minimum Stock Level (न्यूनतम सीमा)"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={String(form.minimumStockLevel)}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    minimumStockLevel: Number(e.target.value) || 0,
+                  }))
+                }
+              />
+              <TextInput
+                label="Maximum Stock Level (अधिकतम सीमा)"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={String(form.maximumStockLevel)}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    maximumStockLevel: Number(e.target.value) || 0,
+                  }))
+                }
+              />
+              <TextInput
+                label="Reorder Level (पुनः ऑर्डर बिंदु)"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={String(form.reorderLevel)}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    reorderLevel: Number(e.target.value) || 0,
+                  }))
+                }
+              />
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <TextInput
               label="Purchase Rate"
               type="number"
@@ -479,6 +556,7 @@ export default function ItemsManagementPanel() {
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Group</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Units</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Opening Stock</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Stock Levels</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Rates</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>GST / HSN</th>
               <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
@@ -487,14 +565,14 @@ export default function ItemsManagementPanel() {
           <tbody className="divide-y divide-corporate-border">
             {items.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                <td colSpan={8} className="px-4 py-10 text-center text-sm text-corporate-muted">
                   <Boxes className="mx-auto mb-2 h-6 w-6 opacity-60" />
                   No items yet. Use Add Item to create one.
                 </td>
               </tr>
             ) : filteredItems.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                <td colSpan={8} className="px-4 py-10 text-center text-sm text-corporate-muted">
                   {LIST_SEARCH_EMPTY_MESSAGE}
                 </td>
               </tr>
@@ -518,6 +596,15 @@ export default function ItemsManagementPanel() {
                     <p>Qty: {row.openingStockQuantity}</p>
                     <p className="text-xs text-corporate-muted">
                       Value: ₹{row.openingStockValue.toLocaleString("en-IN")}
+                    </p>
+                  </td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                    <p className="text-xs">
+                      Min: {row.minimumStockLevel.toLocaleString("en-IN")}
+                    </p>
+                    <p className="text-xs text-corporate-muted">
+                      Max: {row.maximumStockLevel.toLocaleString("en-IN")} · Reorder:{" "}
+                      {row.reorderLevel.toLocaleString("en-IN")}
                     </p>
                   </td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>

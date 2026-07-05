@@ -102,3 +102,9 @@ function round2(value: number): number {
 export function getStockBalances(): StockBalances {
   return readBalances();
 }
+
+export function getItemClosingBalance(item: ItemRecord, balances?: StockBalances): number {
+  const ledger = balances ?? readBalances();
+  const movement = ledger[item.id] ?? 0;
+  return round2(item.openingStockQuantity + movement);
+}

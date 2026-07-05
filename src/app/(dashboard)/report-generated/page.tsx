@@ -1,17 +1,13 @@
 import { DashboardShell } from "@/components/layout/dashboard-shell";
+import ReportPanel from "@/components/master-panel/report-panel";
 
-export default function ReportGeneratedPage() {
+export default function ReportPage() {
   return (
     <DashboardShell
-      title="Report Generated"
-      description="Access and download generated reports."
+      title="Report"
+      description="Universal stock, sales, labor, and vehicle logistics summary dashboard."
     >
-      <div className="rounded-xl border border-dashed border-corporate-border bg-corporate-surface p-10 text-center shadow-card">
-        <p className="text-sm font-medium text-corporate-text">Report Generated</p>
-        <p className="mt-2 text-sm text-corporate-muted">
-          This module will be implemented in the next development phase.
-        </p>
-      </div>
+      <ReportPanel />
     </DashboardShell>
   );
 }

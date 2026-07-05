@@ -269,7 +269,7 @@ export default function EmployeeForm({
           </div>
         </div>
 
-        <div className="mt-5 overflow-x-auto">
+        <div className="workspace-table-scroll mt-5">
           <div className="flex min-w-max gap-2">
             {FORM_SECTIONS.map((section, index) => {
               const isActive = section.id === activeSection;

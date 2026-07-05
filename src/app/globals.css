@@ -4,45 +4,69 @@
 
 @layer base {
   html {
-    @apply h-full antialiased;
+    @apply h-full overflow-x-hidden antialiased;
   }
 
   body {
-    @apply h-full bg-corporate-bg text-corporate-text;
+    @apply h-full overflow-x-hidden bg-corporate-bg text-corporate-text;
   }
 }
 
 @layer components {
   .input-field {
-    @apply w-full rounded-lg border border-corporate-border bg-corporate-surface px-4 py-2.5 text-sm text-corporate-text placeholder:text-corporate-muted outline-none transition-colors focus:border-corporate-brand focus:ring-2 focus:ring-corporate-brand/20;
+    @apply h-11 w-full min-h-[44px] rounded-lg border border-corporate-border bg-corporate-surface px-4 text-base text-corporate-text placeholder:text-corporate-muted outline-none transition-colors focus:border-corporate-brand focus:ring-2 focus:ring-corporate-brand/20;
   }
 
   .btn-primary {
-    @apply inline-flex items-center justify-center rounded-lg bg-corporate-brand px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-corporate-brand-hover focus:outline-none focus:ring-2 focus:ring-corporate-brand/30 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex min-h-11 items-center justify-center rounded-lg bg-corporate-brand px-4 py-2.5 text-base font-semibold text-white transition-colors hover:bg-corporate-brand-hover focus:outline-none focus:ring-2 focus:ring-corporate-brand/30 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-lg border border-corporate-border bg-corporate-surface px-4 py-2.5 text-sm font-medium text-corporate-text transition-colors hover:bg-corporate-bg focus:outline-none focus:ring-2 focus:ring-corporate-brand/20 disabled:cursor-not-allowed disabled:opacity-60;
+    @apply inline-flex min-h-11 items-center justify-center rounded-lg border border-corporate-border bg-corporate-surface px-4 py-2.5 text-base font-medium text-corporate-text transition-colors hover:bg-corporate-bg focus:outline-none focus:ring-2 focus:ring-corporate-brand/20 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-outline-brand {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-2 text-sm font-medium text-corporate-brand transition-colors hover:bg-corporate-brand/10;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-2 text-base font-medium text-corporate-brand transition-colors hover:bg-corporate-brand/10;
   }
 
   .select-field {
-    @apply input-field appearance-none bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-10;
+    @apply input-field relative z-[60] appearance-none bg-[length:16px] bg-[right_12px_center] bg-no-repeat pr-10;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   }
 
+  .select-field option {
+    @apply bg-corporate-surface py-2 text-base text-corporate-text;
+  }
+
   .form-label {
-    @apply mb-1.5 block text-sm font-medium text-corporate-text;
+    @apply mb-1.5 block text-sm font-medium text-corporate-text sm:text-base;
   }
 
   .form-hint {
-    @apply mt-1 text-xs text-corporate-muted;
+    @apply mt-1 text-xs text-corporate-muted sm:text-sm;
   }
 
   .form-section-card {
-    @apply rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card sm:p-6;
+    @apply rounded-xl border border-corporate-border bg-corporate-surface p-4 shadow-card sm:p-6;
+  }
+
+  .form-grid {
+    @apply grid grid-cols-1 gap-4 md:grid-cols-3;
+  }
+
+  .form-grid-2 {
+    @apply grid grid-cols-1 gap-4 md:grid-cols-2;
+  }
+
+  .form-grid-4 {
+    @apply grid grid-cols-1 gap-4 lg:grid-cols-4;
+  }
+
+  .workspace-table-scroll {
+    @apply w-full min-w-0 overflow-x-auto;
+  }
+
+  .workspace-panel-stack {
+    @apply grid grid-cols-1 gap-5 lg:grid-cols-[240px_1fr];
   }
 }

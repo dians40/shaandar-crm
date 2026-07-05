@@ -228,7 +228,7 @@ export default function TransferVoucherPanel() {
               </button>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-corporate-border">
+            <div className="workspace-table-scroll rounded-xl border border-corporate-border">
               <table className="min-w-full text-sm">
                 <thead className="bg-corporate-surface text-left text-xs uppercase text-corporate-muted">
                   <tr>

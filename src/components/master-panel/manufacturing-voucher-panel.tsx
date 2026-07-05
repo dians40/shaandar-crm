@@ -275,7 +275,7 @@ export default function ManufacturingVoucherPanel() {
                 <h3 className="text-sm font-semibold text-corporate-text">
                   Raw Materials Consumed
                 </h3>
-                <div className="overflow-x-auto rounded-xl border border-corporate-border">
+                <div className="workspace-table-scroll rounded-xl border border-corporate-border">
                   <table className="min-w-full text-sm">
                     <thead className={MASTER_LIST_HEAD_CLASS}>
                       <tr>

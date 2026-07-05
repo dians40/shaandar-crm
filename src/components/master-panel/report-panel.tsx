@@ -113,7 +113,7 @@ export default function ReportPanel() {
         onToDateChange={setToDate}
       />
 
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <article className="rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
           <div className="mb-4 flex items-center gap-2">
             <Boxes className="h-5 w-5 text-corporate-brand" aria-hidden />

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Building2, ChevronDown, LogOut } from "lucide-react";
+import { Building2, ChevronDown, LogOut, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sidebarNavItems } from "@/constants/nav-config";
 import {
@@ -33,7 +33,13 @@ function getExpandableSectionForPath(pathname: string): ExpandableSectionId | nu
   return null;
 }
 
-export default function Sidebar() {
+export default function Sidebar({
+  onNavigate,
+  onClose,
+}: {
+  onNavigate?: () => void;
+  onClose?: () => void;
+} = {}) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { selectedRole, canViewMasterPanelModule } = useUserPermissions();
@@ -80,17 +86,27 @@ export default function Sidebar() {
   );
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-corporate-border bg-corporate-surface">
-      <div className="flex items-center gap-3 border-b border-corporate-border px-5 py-5">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-corporate-brand-light text-corporate-brand">
+    <aside className="flex h-full w-full shrink-0 flex-col border-r border-corporate-border bg-corporate-surface md:w-64">
+      <div className="flex items-center gap-3 border-b border-corporate-border px-5 py-4">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-corporate-brand-light text-corporate-brand">
           <Building2 className="h-5 w-5" aria-hidden />
         </div>
-        <div>
-          <p className="text-sm font-bold leading-tight text-corporate-text">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold leading-tight text-corporate-text">
             Shaandar CRM
           </p>
           <p className="text-xs text-corporate-muted">Corporate Suite</p>
         </div>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-corporate-border text-corporate-muted transition-colors hover:bg-corporate-bg md:hidden"
+            aria-label="Close navigation menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
@@ -120,14 +136,15 @@ export default function Sidebar() {
                     <div className="flex items-center">
                       <Link
                         href={item.href}
-                        onClick={() =>
+                        onClick={() => {
                           setExpandedSections((current) => ({
                             ...current,
                             [expandableKey]: !current[expandableKey],
-                          }))
-                        }
+                          }));
+                          onNavigate?.();
+                        }}
                         className={cn(
-                          "flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                          "flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-3 text-base font-medium transition-colors sm:text-sm",
                           isSectionActive
                             ? "text-corporate-brand"
                             : "text-corporate-muted hover:bg-corporate-bg hover:text-corporate-text"
@@ -141,7 +158,7 @@ export default function Sidebar() {
                         type="button"
                         onClick={() => toggleSection(expandableKey)}
                         className={cn(
-                          "mr-2 rounded-md p-1.5 text-corporate-muted transition-colors hover:bg-corporate-bg hover:text-corporate-text",
+                          "mr-2 flex h-11 w-11 items-center justify-center rounded-md text-corporate-muted transition-colors hover:bg-corporate-bg hover:text-corporate-text",
                           isExpanded && "text-corporate-brand"
                         )}
                         aria-expanded={isExpanded}
@@ -175,8 +192,9 @@ export default function Sidebar() {
                             <li key={moduleId}>
                               <Link
                                 href={moduleHref}
+                                onClick={() => onNavigate?.()}
                                 className={cn(
-                                  "flex items-center gap-2 rounded-full border px-3 py-2 text-left text-xs font-medium transition-all",
+                                  "flex min-h-11 items-center gap-2 rounded-full border px-3 py-2.5 text-left text-sm font-medium transition-all sm:text-xs",
                                   isModuleActive
                                     ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
                                     : "border-transparent text-corporate-muted hover:border-corporate-border hover:bg-corporate-bg hover:text-corporate-text"
@@ -204,8 +222,9 @@ export default function Sidebar() {
               <li key={item.href}>
                 <Link
                   href={item.href}
+                  onClick={() => onNavigate?.()}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    "flex min-h-11 items-center gap-3 rounded-lg px-3 py-3 text-base font-medium transition-colors sm:text-sm",
                     isActive
                       ? "bg-corporate-brand-light text-corporate-brand"
                       : "text-corporate-muted hover:bg-corporate-bg hover:text-corporate-text"
@@ -225,7 +244,7 @@ export default function Sidebar() {
         <form action={logoutAction}>
           <button
             type="submit"
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-corporate-muted transition-colors hover:bg-red-50 hover:text-red-600"
+            className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-3 text-base font-medium text-corporate-muted transition-colors hover:bg-red-50 hover:text-red-600 sm:text-sm"
           >
             <LogOut className="h-4 w-4" aria-hidden />
             Sign Out

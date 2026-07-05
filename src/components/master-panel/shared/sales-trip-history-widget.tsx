@@ -23,7 +23,7 @@ export default function SalesTripHistoryWidget({
       <p className="mt-1 text-xs text-sky-800">
         Comparative audit for the identical destination station
       </p>
-      <div className="mt-3 overflow-x-auto rounded-lg border border-sky-200 bg-white">
+      <div className="workspace-table-scroll mt-3 rounded-lg border border-sky-200 bg-white">
         <table className="min-w-full text-sm">
           <thead className="bg-sky-100/80 text-left text-xs uppercase text-sky-900">
             <tr>

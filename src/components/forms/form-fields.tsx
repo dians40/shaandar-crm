@@ -37,6 +37,19 @@ export function FormField({
   );
 }
 
+type FormGridProps = {
+  cols?: 2 | 3 | 4;
+  className?: string;
+  children: React.ReactNode;
+};
+
+export function FormGrid({ cols = 3, className, children }: FormGridProps) {
+  const gridClass =
+    cols === 2 ? "form-grid-2" : cols === 4 ? "form-grid-4" : "form-grid";
+
+  return <div className={cn(gridClass, className)}>{children}</div>;
+}
+
 type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   hint?: string;
@@ -159,11 +172,11 @@ type ToggleProps = {
 
 export function ToggleInput({ label, description, checked, onChange }: ToggleProps) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-corporate-border bg-corporate-bg px-4 py-3">
-      <div>
-        <p className="text-sm font-medium text-corporate-text">{label}</p>
+    <div className="flex min-h-11 items-start justify-between gap-4 rounded-lg border border-corporate-border bg-corporate-bg px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-base font-medium text-corporate-text sm:text-sm">{label}</p>
         {description && (
-          <p className="mt-0.5 text-xs text-corporate-muted">{description}</p>
+          <p className="mt-0.5 text-sm text-corporate-muted sm:text-xs">{description}</p>
         )}
       </div>
       <button
@@ -172,13 +185,13 @@ export function ToggleInput({ label, description, checked, onChange }: TogglePro
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={cn(
-          "relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors",
+          "relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors",
           checked ? "bg-corporate-brand" : "bg-corporate-border"
         )}
       >
         <span
           className={cn(
-            "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+            "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform",
             checked ? "translate-x-5" : "translate-x-0.5"
           )}
         />
@@ -204,7 +217,7 @@ export function FileInputField({
 }: FileInputProps) {
   return (
     <FormField label={label} hint={hint}>
-      <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-corporate-border bg-corporate-bg px-4 py-5 transition-colors hover:border-corporate-brand/40 hover:bg-corporate-brand-light/40">
+      <label className="flex min-h-[88px] cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-corporate-border bg-corporate-bg px-4 py-5 transition-colors hover:border-corporate-brand/40 hover:bg-corporate-brand-light/40">
         <input
           type="file"
           accept={accept}

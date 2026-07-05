@@ -98,7 +98,7 @@ export default function DisplayReportCriteriaWizard({
             id={`${viewId}-sub-type`}
             value={reportSubType}
             onChange={(event) => onReportSubTypeChange(event.target.value)}
-            className="input-field w-full"
+            className="select-field w-full"
           >
             {subTypeOptions.map((option) => (
               <option key={option} value={option}>
@@ -139,7 +139,7 @@ export default function DisplayReportCriteriaWizard({
         <button
           type="button"
           onClick={onGenerate}
-          className="rounded-full border border-corporate-brand bg-corporate-brand px-6 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-corporate-brand/90"
+          className="btn-primary rounded-full px-6 font-bold shadow-sm"
         >
           Generate Report / रिपोर्ट देखें
         </button>

@@ -177,7 +177,7 @@ export default function EmployeeBioDataCard({
           </h2>
         </div>
 
-        <div className="grid gap-6 p-6 lg:grid-cols-[220px_1fr]">
+        <div className="grid grid-cols-1 gap-6 p-4 sm:p-6 lg:grid-cols-[220px_1fr]">
           <div className="flex flex-col items-center gap-3">
             <div className="flex h-44 w-44 items-center justify-center overflow-hidden rounded-xl border border-corporate-border bg-corporate-bg">
               {photoUrl ? (

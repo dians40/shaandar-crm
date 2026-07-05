@@ -138,7 +138,7 @@ export default function AttendanceSystemPanel() {
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
+    <div className="workspace-panel-stack">
       <aside>
         <VerificationStagePills
           activeStage={activeStage}

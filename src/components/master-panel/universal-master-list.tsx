@@ -5,7 +5,7 @@ import ModuleListRecordLink from "./module-list-record-link";
 import ModuleListSearchBar from "./module-list-search-bar";
 
 export const MASTER_LIST_TABLE_WRAPPER_CLASS =
-  "overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card";
+  "workspace-table-scroll rounded-xl border border-corporate-border bg-corporate-surface shadow-card";
 
 export const MASTER_LIST_TABLE_CLASS = "min-w-full divide-y divide-corporate-border";
 

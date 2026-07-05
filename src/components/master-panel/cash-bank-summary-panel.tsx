@@ -215,7 +215,7 @@ export default function CashBankSummaryPanel({
 
       {/* Section 1 — Top index & receipts */}
       <section className="space-y-4 rounded-xl border-2 border-corporate-border bg-corporate-surface p-5 shadow-card">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <article className="rounded-xl border border-corporate-border bg-corporate-bg p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-corporate-muted">
               Opening Index

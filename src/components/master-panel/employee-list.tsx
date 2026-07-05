@@ -186,7 +186,7 @@ export default function EmployeeList({
       )}
 
       <div className="overflow-hidden rounded-xl border border-corporate-border bg-white">
-        <div className="overflow-x-auto">
+        <div className="workspace-table-scroll">
           <table className="min-w-full divide-y divide-corporate-border">
             <thead className="bg-corporate-bg">
               <tr>

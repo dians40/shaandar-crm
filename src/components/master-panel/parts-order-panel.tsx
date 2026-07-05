@@ -339,7 +339,7 @@ export default function PartsOrderPanel() {
         </div>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
+      <div className="workspace-panel-stack">
         <PartsOrderStagePills
           activeStage={activeStage}
           onChange={(stage) => {

@@ -1,3 +1,8 @@
+import type {
+  PaymentSettlementStatus,
+  VerificationStage,
+} from "@/types/verification-workflow";
+
 export type OvertimeShiftType = "Half Shift" | "Full Shift";
 
 export type OvertimeRecord = {
@@ -24,6 +29,13 @@ export type OvertimeRecord = {
   workLocationAssignment: string;
   approvedBy: string;
   narration: string;
+  workflowStage: VerificationStage;
+  paymentStatus: PaymentSettlementStatus;
+  operatorVerifiedAt: string | null;
+  operatorVerifiedBy: string | null;
+  supervisorApprovedAt: string | null;
+  supervisorApprovedBy: string | null;
+  attachmentPhotos: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -47,6 +59,13 @@ export const EMPTY_OVERTIME_FORM: Omit<
   workLocationAssignment: "",
   approvedBy: "",
   narration: "",
+  workflowStage: "pending_allocation",
+  paymentStatus: "due",
+  operatorVerifiedAt: null,
+  operatorVerifiedBy: null,
+  supervisorApprovedAt: null,
+  supervisorApprovedBy: null,
+  attachmentPhotos: [],
 };
 
 export function calculateOvertimeHours(fromTime: string, toTime: string): number {
@@ -89,6 +108,13 @@ export function normalizeOvertimeRecord(
       row.workLocationAssignment ?? row.workLocation ?? "",
     approvedBy: row.approvedBy ?? "",
     narration: row.narration ?? "",
+    workflowStage: row.workflowStage ?? "finalized",
+    paymentStatus: row.paymentStatus ?? "due",
+    operatorVerifiedAt: row.operatorVerifiedAt ?? null,
+    operatorVerifiedBy: row.operatorVerifiedBy ?? null,
+    supervisorApprovedAt: row.supervisorApprovedAt ?? null,
+    supervisorApprovedBy: row.supervisorApprovedBy ?? null,
+    attachmentPhotos: Array.isArray(row.attachmentPhotos) ? row.attachmentPhotos : [],
     createdAt: row.createdAt ?? new Date().toISOString(),
     updatedAt: row.updatedAt ?? new Date().toISOString(),
   };

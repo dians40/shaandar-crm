@@ -28,14 +28,18 @@ import {
 } from "@/types/overtime";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
+import DailyOtPayslip from "./shared/daily-ot-payslip";
+import MultiPhotoUploader from "./shared/multi-photo-uploader";
+import VerificationStagePills from "./shared/verification-stage-pills";
 import UniversalRecordProfile from "./universal-record-profile";
+import {
+  VERIFICATION_STAGE_LABELS,
+  type VerificationStage,
+} from "@/types/verification-workflow";
 import {
   MASTER_LIST_HEAD_CLASS,
   MASTER_LIST_HEADER_CELL_CLASS,
   MASTER_LIST_HEADER_CELL_RIGHT_CLASS,
-  UniversalMasterListActionsCell,
-  UniversalMasterListNameCell,
-  UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
 } from "./universal-master-list";
@@ -49,8 +53,13 @@ export default function OvertimeTrackerPanel() {
   const { godowns, isReady: godownsReady } = useGodowns();
   const { machineOptions: machineMasterOptions, overtimeReasonOptions, isReady: machinesReady } =
     useGeneralSettings();
-  const { records, isReady, addRecord, updateRecord } = useOvertimeRecords();
+  const { records, isReady, addRecord, updateRecord, patchRecord, markAsPaid } =
+    useOvertimeRecords();
   const [view, setView] = useState<ViewMode>("list");
+  const [activeStage, setActiveStage] = useState<VerificationStage>("pending_allocation");
+  const [machineDrafts, setMachineDrafts] = useState<Record<string, string>>({});
+  const [photoDrafts, setPhotoDrafts] = useState<Record<string, string[]>>({});
+  const [payslipId, setPayslipId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_OVERTIME_FORM);
   const [machineSelect, setMachineSelect] = useState("");
@@ -66,8 +75,11 @@ export default function OvertimeTrackerPanel() {
 
   const filteredRecords = useMemo(
     () =>
-      records.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.employeeName, [
+      records.filter(
+        (row) =>
+          row.workflowStage === activeStage &&
+          (activeStage !== "finalized" || row.paymentStatus === "due") &&
+          matchesUniversalNameSearch(searchQuery, row.employeeName, [
           row.workDate,
           row.assignedFromGroup,
           row.overtimeReason,
@@ -84,7 +96,21 @@ export default function OvertimeTrackerPanel() {
           String(row.totalHours),
         ])
       ),
-    [records, searchQuery]
+    [records, activeStage, searchQuery]
+  );
+
+  const stageCounts = useMemo(() => {
+    const counts: Partial<Record<VerificationStage, number>> = {};
+    for (const row of records) {
+      if (row.workflowStage === "finalized" && row.paymentStatus === "paid") continue;
+      counts[row.workflowStage] = (counts[row.workflowStage] ?? 0) + 1;
+    }
+    return counts;
+  }, [records]);
+
+  const payslipRecord = useMemo(
+    () => records.find((row) => row.id === payslipId) ?? null,
+    [records, payslipId]
   );
 
   const applySelectedEmployee = (employeeId: string, employeeName: string) => {
@@ -194,6 +220,10 @@ export default function OvertimeTrackerPanel() {
     setView("list");
     setSearchQuery("");
     setViewingId(null);
+    setActiveStage("pending_allocation");
+    setMachineDrafts({});
+    setPhotoDrafts({});
+    setPayslipId(null);
   }, []);
 
   useMasterPanelBlockReset("transaction", resetPanelState);
@@ -202,11 +232,6 @@ export default function OvertimeTrackerPanel() {
     resetForm();
     consumePendingEmployeeSelection();
     setView("add");
-  };
-
-  const openView = (record: OvertimeRecord) => {
-    setViewingId(record.id);
-    setView("detail");
   };
 
   const openEdit = (record: OvertimeRecord) => {
@@ -227,6 +252,13 @@ export default function OvertimeTrackerPanel() {
       workLocationAssignment: record.workLocationAssignment,
       approvedBy: record.approvedBy,
       narration: record.narration,
+      workflowStage: record.workflowStage,
+      paymentStatus: record.paymentStatus,
+      operatorVerifiedAt: record.operatorVerifiedAt,
+      operatorVerifiedBy: record.operatorVerifiedBy,
+      supervisorApprovedAt: record.supervisorApprovedAt,
+      supervisorApprovedBy: record.supervisorApprovedBy,
+      attachmentPhotos: record.attachmentPhotos,
     });
     syncMachineFields(record.assignedMachine);
     setView("edit");
@@ -279,16 +311,64 @@ export default function OvertimeTrackerPanel() {
       assignedMachine: resolvedMachine,
       workLocation: form.workLocationAssignment,
       amountPaidToday: Number(form.amountPaidToday) || 0,
+      workflowStage: "pending_allocation" as VerificationStage,
+      paymentStatus: "due" as const,
+      operatorVerifiedAt: null,
+      operatorVerifiedBy: null,
+      supervisorApprovedAt: null,
+      supervisorApprovedBy: null,
+      attachmentPhotos: [],
     };
 
     if (view === "edit" && editingId) {
-      updateRecord(editingId, payload);
+      const existing = records.find((row) => row.id === editingId);
+      updateRecord(editingId, {
+        ...payload,
+        workflowStage: existing?.workflowStage ?? "pending_allocation",
+        paymentStatus: existing?.paymentStatus ?? "due",
+        operatorVerifiedAt: existing?.operatorVerifiedAt ?? null,
+        operatorVerifiedBy: existing?.operatorVerifiedBy ?? null,
+        supervisorApprovedAt: existing?.supervisorApprovedAt ?? null,
+        supervisorApprovedBy: existing?.supervisorApprovedBy ?? null,
+        attachmentPhotos: existing?.attachmentPhotos ?? [],
+      });
     } else {
       addRecord(payload);
     }
 
     resetForm();
     setView("list");
+    setActiveStage("pending_allocation");
+  };
+
+  const handleAssignMachine = (record: OvertimeRecord) => {
+    const machine = (machineDrafts[record.id] ?? record.assignedMachine).trim();
+    if (!machine) return;
+    patchRecord(record.id, {
+      assignedMachine: machine,
+      workflowStage: "operator_verification",
+    });
+  };
+
+  const handleOperatorVerify = (record: OvertimeRecord) => {
+    patchRecord(record.id, {
+      workflowStage: "supervisor_approval",
+      operatorVerifiedAt: new Date().toISOString(),
+      operatorVerifiedBy: "Machine Operator",
+    });
+  };
+
+  const handleSupervisorApprove = (record: OvertimeRecord) => {
+    const photos = photoDrafts[record.id] ?? [];
+    if (photos.length === 0) return;
+    patchRecord(record.id, {
+      attachmentPhotos: photos,
+      workflowStage: "finalized",
+      paymentStatus: "due",
+      supervisorApprovedAt: new Date().toISOString(),
+      supervisorApprovedBy: record.assignedManager || "Supervisor",
+    });
+    setActiveStage("finalized");
   };
 
   useEffect(() => {
@@ -310,6 +390,30 @@ export default function OvertimeTrackerPanel() {
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading overtime records...
       </div>
+    );
+  }
+
+  if (payslipRecord) {
+    return (
+      <>
+        <ModuleAddListTabBar
+          moduleName="Overtime"
+          active="list"
+          onList={() => {
+            setPayslipId(null);
+            setView("list");
+          }}
+          onAdd={openAdd}
+        />
+        <DailyOtPayslip
+          record={payslipRecord}
+          onMarkPaid={() => {
+            markAsPaid(payslipRecord.id);
+            setPayslipId(null);
+          }}
+          onBack={() => setPayslipId(null)}
+        />
+      </>
     );
   }
 
@@ -557,68 +661,150 @@ export default function OvertimeTrackerPanel() {
         onAdd={openAdd}
       />
 
-      <UniversalMasterListShell
-        moduleName="Overtime"
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-      >
-        <UniversalMasterListTable>
-          <thead className={MASTER_LIST_HEAD_CLASS}>
-            <tr>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Assigned From</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Reason</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Duration</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Machine</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Paid Today</th>
-              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-corporate-border">
-            {records.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <Clock className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  No overtime records yet.
-                </td>
-              </tr>
-            ) : filteredRecords.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  {LIST_SEARCH_EMPTY_MESSAGE}
-                </td>
-              </tr>
-            ) : (
-              filteredRecords.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.employeeName}
-                    onEdit={() => openEdit(row)}
-                  />
-                  <td className="px-4 py-3 text-sm">{row.workDate}</td>
-                  <td className="px-4 py-3 text-sm">{row.assignedFromGroup || "—"}</td>
-                  <td className="px-4 py-3 text-sm">{row.overtimeReason || "—"}</td>
-                  <td className="px-4 py-3 text-sm">
-                    {row.fromTime} – {row.toTime} ({row.totalHours}h)
-                  </td>
-                  <td className="px-4 py-3 text-sm">{row.assignedMachine || "—"}</td>
-                  <td className="px-4 py-3 text-sm">
-                    ₹{row.amountPaidToday.toLocaleString("en-IN")}
-                  </td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => openView(row)}
-                      onEdit={() => openEdit(row)}
-                      editLabel="Edit Overtime"
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
-          </tbody>
-        </UniversalMasterListTable>
-      </UniversalMasterListShell>
+      <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
+        <aside>
+          <VerificationStagePills
+            activeStage={activeStage}
+            onChange={setActiveStage}
+            counts={stageCounts}
+          />
+        </aside>
+
+        <div className="space-y-5">
+          <div className="rounded-xl border border-corporate-border bg-corporate-surface p-4 shadow-card">
+            <h2 className="text-lg font-semibold text-corporate-text">
+              {VERIFICATION_STAGE_LABELS[activeStage]}
+            </h2>
+            <p className="text-sm text-corporate-muted">
+              Independent day-by-day OT ledger — finalized entries with Status DUE appear in Stage 4
+              until marked paid.
+            </p>
+          </div>
+
+          <UniversalMasterListShell
+            moduleName="Overtime"
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+          >
+            <UniversalMasterListTable>
+              <thead className={MASTER_LIST_HEAD_CLASS}>
+                <tr>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Reason</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Machine</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Paid Today</th>
+                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-corporate-border">
+                {filteredRecords.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                      <Clock className="mx-auto mb-2 h-6 w-6 opacity-60" />
+                      {searchQuery.trim()
+                        ? LIST_SEARCH_EMPTY_MESSAGE
+                        : `No records in ${VERIFICATION_STAGE_LABELS[activeStage]}.`}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRecords.map((row) => (
+                    <tr key={row.id}>
+                      <td className="px-4 py-3 text-sm font-medium">{row.employeeName}</td>
+                      <td className="px-4 py-3 text-sm">{row.workDate}</td>
+                      <td className="px-4 py-3 text-sm">{row.overtimeReason || "—"}</td>
+                      <td className="px-4 py-3 text-sm">{row.assignedMachine || "—"}</td>
+                      <td className="px-4 py-3 text-sm">
+                        ₹{row.amountPaidToday.toLocaleString("en-IN")}
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm">
+                        {activeStage === "pending_allocation" && (
+                          <div className="inline-flex min-w-[200px] flex-col gap-2 text-left">
+                            <SelectInput
+                              label=""
+                              value={machineDrafts[row.id] ?? row.assignedMachine}
+                              placeholder="Select machine"
+                              options={machineOptions}
+                              onChange={(e) =>
+                                setMachineDrafts((prev) => ({
+                                  ...prev,
+                                  [row.id]: e.target.value,
+                                }))
+                              }
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAssignMachine(row)}
+                              className="rounded-full bg-corporate-brand px-4 py-1.5 text-xs font-semibold text-white"
+                            >
+                              Assign Machine & Forward
+                            </button>
+                          </div>
+                        )}
+                        {activeStage === "operator_verification" && (
+                          <button
+                            type="button"
+                            onClick={() => handleOperatorVerify(row)}
+                            className="rounded-full bg-corporate-brand px-4 py-2 text-xs font-semibold text-white"
+                          >
+                            Verify & Approve Operator Shift
+                          </button>
+                        )}
+                        {activeStage === "supervisor_approval" && (
+                          <div className="inline-block min-w-[260px] space-y-2 text-left">
+                            <MultiPhotoUploader
+                              photos={photoDrafts[row.id] ?? []}
+                              onChange={(photos) =>
+                                setPhotoDrafts((prev) => ({ ...prev, [row.id]: photos }))
+                              }
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSupervisorApprove(row)}
+                              disabled={(photoDrafts[row.id] ?? []).length === 0}
+                              className="rounded-full bg-corporate-brand px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                            >
+                              Grant Final Approval
+                            </button>
+                          </div>
+                        )}
+                        {activeStage === "finalized" && (
+                          <div className="inline-flex flex-col items-end gap-2">
+                            <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase text-amber-800 ring-2 ring-amber-300">
+                              Status: DUE
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setPayslipId(row.id)}
+                              className="rounded-full border border-corporate-border px-3 py-1 text-xs font-medium"
+                            >
+                              View Daily Payslip
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => markAsPaid(row.id)}
+                              className="rounded-full bg-corporate-brand px-4 py-1.5 text-xs font-semibold text-white"
+                            >
+                              Mark as Paid / Clear Settlement
+                            </button>
+                          </div>
+                        )}
+                        {activeStage !== "finalized" && (
+                          <ModuleListActionGroup
+                            showView={false}
+                            onEdit={() => openEdit(row)}
+                            editLabel="Edit Draft"
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </UniversalMasterListTable>
+          </UniversalMasterListShell>
+        </div>
+      </div>
     </>
   );
 }

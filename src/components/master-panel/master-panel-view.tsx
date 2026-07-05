@@ -31,6 +31,7 @@ import ItemsManagementPanel from "./items-management-panel";
 import MasterPanelManagerNav from "./master-panel-manager-nav";
 import ModulePlaceholder from "./module-placeholder";
 import OvertimeTrackerPanel from "./overtime-tracker-panel";
+import AttendanceSystemPanel from "./attendance-system-panel";
 import TransactionPlaceholderPanel from "./transaction-placeholder-panel";
 import UnitConversionManagementPanel from "./unit-conversion-management-panel";
 import UnitsManagementPanel from "./units-management-panel";
@@ -184,6 +185,8 @@ function MasterPanelContent() {
           return <GeneralSettingsManagementPanel />;
         case "api-integration-gateway":
           return <ApiIntegrationGatewayPanel />;
+        case "attendance-system":
+          return <AttendanceSystemPanel />;
         case "overtime-tracker":
           return <OvertimeTrackerPanel />;
         default: {

@@ -4,6 +4,10 @@ import {
   parseAttendanceSyncBody,
   validateAttendanceSyncToken,
 } from "@/lib/attendance-sync-auth";
+import {
+  buildDefaultAttendanceWorkflowNotes,
+  serializeAttendanceWorkflowNotes,
+} from "@/types/attendance-workflow";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -40,7 +44,7 @@ export async function POST(request: Request) {
 
     const { data: employee, error: employeeError } = await supabase
       .from("employees")
-      .select("id")
+      .select("id, name")
       .eq("id", employeeId)
       .maybeSingle();
 
@@ -49,13 +53,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Employee not found." }, { status: 404 });
     }
 
+    const workflowNotes = buildDefaultAttendanceWorkflowNotes(
+      punchIn,
+      punchOut ?? "",
+      typeof employee.name === "string" ? employee.name : undefined
+    );
+
     const upsertPayload: Record<string, unknown> = {
       employee_id: employeeId,
       attendance_date: attendanceDate,
       status: "present",
-      notes: punchOut
-        ? `Webhook sync — in: ${punchIn}, out: ${punchOut}`
-        : `Webhook sync — in: ${punchIn}`,
+      notes: serializeAttendanceWorkflowNotes(workflowNotes),
     };
 
     const { data, error } = await supabase

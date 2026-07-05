@@ -6,6 +6,7 @@ import {
   normalizeOvertimeRecord,
   type OvertimeRecord,
 } from "@/types/overtime";
+import type { VerificationStage } from "@/types/verification-workflow";
 
 const STORAGE_KEY = "shaandar-crm-overtime";
 
@@ -52,6 +53,8 @@ export function useOvertimeRecords() {
         ...input,
         id: `ot-${Date.now()}`,
         totalHours: calculateOvertimeHours(input.fromTime, input.toTime),
+        workflowStage: input.workflowStage ?? "pending_allocation",
+        paymentStatus: input.paymentStatus ?? "due",
         createdAt: now,
         updatedAt: now,
       };
@@ -81,5 +84,48 @@ export function useOvertimeRecords() {
     [persist]
   );
 
-  return { records, isReady, addRecord, updateRecord };
+  const patchRecord = useCallback(
+    (id: string, patch: Partial<OvertimeRecord>) => {
+      const next = readOvertimeRecords().map((row) =>
+        row.id === id
+          ? normalizeOvertimeRecord({
+              ...row,
+              ...patch,
+              id: row.id,
+              updatedAt: new Date().toISOString(),
+            })
+          : row
+      );
+      persist(next);
+    },
+    [persist]
+  );
+
+  const transitionStage = useCallback(
+    (
+      id: string,
+      workflowStage: VerificationStage,
+      extra: Partial<OvertimeRecord> = {}
+    ) => {
+      patchRecord(id, { workflowStage, ...extra });
+    },
+    [patchRecord]
+  );
+
+  const markAsPaid = useCallback(
+    (id: string) => {
+      patchRecord(id, { paymentStatus: "paid" });
+    },
+    [patchRecord]
+  );
+
+  return {
+    records,
+    isReady,
+    addRecord,
+    updateRecord,
+    patchRecord,
+    transitionStage,
+    markAsPaid,
+  };
 }

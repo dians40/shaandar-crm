@@ -43,6 +43,9 @@ import VehiclesManagementMasterPanel from "./vehicles-management-master-panel";
 import EmployeeGroupManagementPanel from "./employee-group-management-panel";
 import ApiIntegrationGatewayPanel from "./api-integration-gateway-panel";
 import GeneralSettingsManagementPanel from "./general-settings-management-panel";
+import InventoryVoucherPanel from "./inventory-voucher-panel";
+import ManufacturingVoucherPanel from "./manufacturing-voucher-panel";
+import { INVENTORY_VOUCHER_CONFIGS } from "@/constants/inventory-voucher-configs";
 
 type ErrorBoundaryState = {
   hasError: boolean;
@@ -192,6 +195,26 @@ function MasterPanelContent() {
           return <OvertimeTrackerPanel />;
         case "vehicle-management-transaction":
           return <VehicleManagementTransactionPanel />;
+        case "sales-dispatch":
+          return (
+            <InventoryVoucherPanel config={INVENTORY_VOUCHER_CONFIGS["sales-dispatch"]} />
+          );
+        case "sales-return":
+          return (
+            <InventoryVoucherPanel config={INVENTORY_VOUCHER_CONFIGS["sales-return"]} />
+          );
+        case "purchase-logs":
+          return (
+            <InventoryVoucherPanel config={INVENTORY_VOUCHER_CONFIGS["purchase-logs"]} />
+          );
+        case "purchase-return-order":
+          return (
+            <InventoryVoucherPanel
+              config={INVENTORY_VOUCHER_CONFIGS["purchase-return-order"]}
+            />
+          );
+        case "manufacturing-production":
+          return <ManufacturingVoucherPanel />;
         default: {
           const moduleGroup = getGroupForModule(moduleId);
           if (

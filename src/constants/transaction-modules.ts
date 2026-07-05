@@ -5,6 +5,11 @@ export const IMPLEMENTED_TRANSACTION_MODULE_IDS = new Set<MasterPanelModuleId>([
   "attendance-system",
   "overtime-tracker",
   "vehicle-management-transaction",
+  "sales-dispatch",
+  "sales-return",
+  "purchase-logs",
+  "purchase-return-order",
+  "manufacturing-production",
 ]);
 
 export type TransactionListColumnLabels = {

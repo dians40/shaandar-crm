@@ -47,7 +47,7 @@ type ViewMode = "list" | "add" | "edit" | "detail";
 export default function OvertimeTrackerPanel() {
   const { employees, isLoading: employeesLoading } = useEmployees();
   const { godowns, isReady: godownsReady } = useGodowns();
-  const { machineOptions: machineMasterOptions, isReady: machinesReady } =
+  const { machineOptions: machineMasterOptions, overtimeReasonOptions, isReady: machinesReady } =
     useGeneralSettings();
   const { records, isReady, addRecord, updateRecord } = useOvertimeRecords();
   const [view, setView] = useState<ViewMode>("list");
@@ -68,6 +68,9 @@ export default function OvertimeTrackerPanel() {
     () =>
       records.filter((row) =>
         matchesUniversalNameSearch(searchQuery, row.employeeName, [
+          row.workDate,
+          row.assignedFromGroup,
+          row.overtimeReason,
           row.shiftType,
           row.fromTime,
           row.toTime,
@@ -77,7 +80,7 @@ export default function OvertimeTrackerPanel() {
           row.assignedMachine,
           row.approvedBy,
           row.narration,
-          String(row.amountToPay),
+          String(row.amountPaidToday),
           String(row.totalHours),
         ])
       ),
@@ -85,10 +88,12 @@ export default function OvertimeTrackerPanel() {
   );
 
   const applySelectedEmployee = (employeeId: string, employeeName: string) => {
+    const employee = employees.find((row) => row.id === employeeId);
     setForm((prev) => ({
       ...prev,
       employeeId,
       employeeName,
+      assignedFromGroup: employee?.assignedFromGroup ?? "",
     }));
   };
 
@@ -114,17 +119,12 @@ export default function OvertimeTrackerPanel() {
   );
 
   const machineOptions = useMemo(() => {
-    const fromEmployees = employees
-      .map((employee) => employee.machineAssignment?.trim())
-      .filter((value): value is string => Boolean(value && value !== "—"));
-    const unique = Array.from(new Set(fromEmployees));
     const masterLabels = machineMasterOptions.map((option) => option.label);
-    const merged = Array.from(new Set([...masterLabels, ...unique]));
     return [
-      ...merged.map((label) => ({ value: label, label })),
+      ...masterLabels.map((label) => ({ value: label, label })),
       { value: MACHINE_CUSTOM_VALUE, label: "Other / type manually" },
     ];
-  }, [employees, machineMasterOptions]);
+  }, [machineMasterOptions]);
 
   const managerOptions = useMemo(() => {
     const fromEmployees = employees.map((employee) => employee.name);
@@ -212,13 +212,16 @@ export default function OvertimeTrackerPanel() {
   const openEdit = (record: OvertimeRecord) => {
     setEditingId(record.id);
     setForm({
+      workDate: record.workDate,
       employeeId: record.employeeId,
       employeeName: record.employeeName,
+      assignedFromGroup: record.assignedFromGroup,
       shiftType: record.shiftType,
       fromTime: record.fromTime,
       toTime: record.toTime,
-      amountToPay: record.amountToPay,
+      amountPaidToday: record.amountPaidToday,
       assignedMachine: record.assignedMachine,
+      overtimeReason: record.overtimeReason,
       workLocation: record.workLocation,
       assignedManager: record.assignedManager,
       workLocationAssignment: record.workLocationAssignment,
@@ -235,6 +238,7 @@ export default function OvertimeTrackerPanel() {
       ...prev,
       employeeId,
       employeeName: employee?.name ?? "",
+      assignedFromGroup: employee?.assignedFromGroup ?? "",
     }));
   };
 
@@ -256,14 +260,16 @@ export default function OvertimeTrackerPanel() {
 
     if (
       !form.employeeId ||
+      !form.workDate ||
       !form.fromTime ||
       !form.toTime ||
+      !form.overtimeReason.trim() ||
       !form.approvedBy.trim() ||
       !form.workLocationAssignment.trim() ||
       !form.assignedManager.trim()
     ) {
       setError(
-        "Employee, time range, work location assignment, assigned manager, and Approved By are required."
+        "Work date, employee, time range, overtime reason, work location assignment, assigned manager, and Approved By are required."
       );
       return;
     }
@@ -272,7 +278,7 @@ export default function OvertimeTrackerPanel() {
       ...form,
       assignedMachine: resolvedMachine,
       workLocation: form.workLocationAssignment,
-      amountToPay: Number(form.amountToPay) || 0,
+      amountPaidToday: Number(form.amountPaidToday) || 0,
     };
 
     if (view === "edit" && editingId) {
@@ -284,12 +290,6 @@ export default function OvertimeTrackerPanel() {
     resetForm();
     setView("list");
   };
-
-  useEffect(() => {
-    if (view === "add" && !form.amountToPay && totalHours > 0) {
-      setForm((prev) => ({ ...prev, amountToPay: totalHours * 100 }));
-    }
-  }, [totalHours, view, form.amountToPay]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -317,15 +317,18 @@ export default function OvertimeTrackerPanel() {
     return (
       <UniversalRecordProfile
         title={viewingRecord.employeeName}
-        subtitle={`${viewingRecord.shiftType} · Overtime Record`}
+        subtitle={`${viewingRecord.workDate} · ${viewingRecord.overtimeReason || viewingRecord.shiftType}`}
         fields={[
+          { label: "Work Date", value: viewingRecord.workDate },
+          { label: "Assigned From / Contractor", value: viewingRecord.assignedFromGroup || "—" },
+          { label: "Overtime Reason", value: viewingRecord.overtimeReason || "—" },
           { label: "Shift Type", value: viewingRecord.shiftType },
           { label: "From Time", value: viewingRecord.fromTime },
           { label: "To Time", value: viewingRecord.toTime },
           { label: "Total Hours", value: viewingRecord.totalHours },
           {
-            label: "Amount to Pay",
-            value: `₹${viewingRecord.amountToPay.toLocaleString("en-IN")}`,
+            label: "Amount Paid Today",
+            value: `₹${viewingRecord.amountPaidToday.toLocaleString("en-IN")}`,
           },
           { label: "Assigned Machine", value: viewingRecord.assignedMachine },
           { label: "Work Location", value: viewingRecord.workLocation },
@@ -361,7 +364,7 @@ export default function OvertimeTrackerPanel() {
             {view === "add" ? "Add Overtime" : "Edit Overtime"}
           </h2>
           <p className="text-sm text-corporate-muted">
-            Capture shift, duration, machine, manager assignment, and approval details.
+            Independent day-by-day overtime logging with immediate cash payout — not linked to monthly salary.
           </p>
         </div>
 
@@ -372,6 +375,13 @@ export default function OvertimeTrackerPanel() {
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
+          <TextInput
+            label="Work Date"
+            type="date"
+            required
+            value={form.workDate}
+            onChange={(e) => setForm((prev) => ({ ...prev, workDate: e.target.value }))}
+          />
           <SelectInput
             label="Employee Name"
             required
@@ -380,6 +390,23 @@ export default function OvertimeTrackerPanel() {
             placeholder="Select employee"
             onChange={(e) => handleEmployeeChange(e.target.value)}
             options={employeeOptions}
+          />
+          <TextInput
+            label="Contractor / Assigned From"
+            readOnly
+            value={form.assignedFromGroup || "—"}
+            className="bg-corporate-bg"
+            hint="Auto-filled from Employee Master assigned-from group"
+          />
+          <SelectInput
+            label="Overtime Reason"
+            required
+            value={form.overtimeReason}
+            placeholder="Select overtime reason"
+            onChange={(e) =>
+              setForm((prev) => ({ ...prev, overtimeReason: e.target.value }))
+            }
+            options={overtimeReasonOptions}
           />
           <SelectInput
             label="Shift Type / Operation"
@@ -418,21 +445,24 @@ export default function OvertimeTrackerPanel() {
             hint="Auto-calculated from From/To time"
           />
           <TextInput
-            label="Amount to Pay"
+            label="Amount Paid Today (Day-by-Day Cash System)"
             type="number"
             min="0"
             step="0.01"
-            value={String(form.amountToPay)}
+            required
+            value={String(form.amountPaidToday)}
             onChange={(e) =>
-              setForm((prev) => ({ ...prev, amountToPay: Number(e.target.value) }))
+              setForm((prev) => ({ ...prev, amountPaidToday: Number(e.target.value) }))
             }
+            hint="Record immediate daily cash settlement — separate from monthly payroll"
           />
           <SelectInput
             label="Assigned Machine"
             value={machineSelect}
-            placeholder="Select machine"
+            placeholder="Select from Machine Master"
             onChange={(e) => handleMachineSelectChange(e.target.value)}
             options={machineOptions}
+            hint="Live options from General Settings → Machine Master"
           />
           {machineSelect === MACHINE_CUSTOM_VALUE && (
             <TextInput
@@ -536,25 +566,26 @@ export default function OvertimeTrackerPanel() {
           <thead className={MASTER_LIST_HEAD_CLASS}>
             <tr>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Shift</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Assigned From</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Reason</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Duration</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Location / Manager</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Amount</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Approved By</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Machine</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Paid Today</th>
               <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
             {records.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                <td colSpan={8} className="px-4 py-10 text-center text-sm text-corporate-muted">
                   <Clock className="mx-auto mb-2 h-6 w-6 opacity-60" />
                   No overtime records yet.
                 </td>
               </tr>
             ) : filteredRecords.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                <td colSpan={8} className="px-4 py-10 text-center text-sm text-corporate-muted">
                   {LIST_SEARCH_EMPTY_MESSAGE}
                 </td>
               </tr>
@@ -565,27 +596,16 @@ export default function OvertimeTrackerPanel() {
                     name={row.employeeName}
                     onEdit={() => openEdit(row)}
                   />
-                  <td className="px-4 py-3 text-sm">{row.shiftType}</td>
+                  <td className="px-4 py-3 text-sm">{row.workDate}</td>
+                  <td className="px-4 py-3 text-sm">{row.assignedFromGroup || "—"}</td>
+                  <td className="px-4 py-3 text-sm">{row.overtimeReason || "—"}</td>
                   <td className="px-4 py-3 text-sm">
                     {row.fromTime} – {row.toTime} ({row.totalHours}h)
                   </td>
+                  <td className="px-4 py-3 text-sm">{row.assignedMachine || "—"}</td>
                   <td className="px-4 py-3 text-sm">
-                    <p>{row.workLocationAssignment || row.workLocation || "—"}</p>
-                    {row.assignedManager && (
-                      <p className="text-xs text-corporate-muted">
-                        Manager: {row.assignedManager}
-                      </p>
-                    )}
-                    {row.narration && (
-                      <p className="mt-1 text-xs italic text-corporate-muted">
-                        {row.narration}
-                      </p>
-                    )}
+                    ₹{row.amountPaidToday.toLocaleString("en-IN")}
                   </td>
-                  <td className="px-4 py-3 text-sm">
-                    ₹{row.amountToPay.toLocaleString("en-IN")}
-                  </td>
-                  <td className="px-4 py-3 text-sm">{row.approvedBy}</td>
                   <UniversalMasterListActionsCell>
                     <ModuleListActionGroup
                       onView={() => openView(row)}

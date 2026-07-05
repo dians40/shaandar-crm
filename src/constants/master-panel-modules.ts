@@ -14,6 +14,7 @@ import {
   Landmark,
   Package,
   PackageCheck,
+  Plug,
   Receipt,
   RotateCcw,
   Ruler,
@@ -44,6 +45,7 @@ export type MasterPanelModuleId =
   | "salary-component"
   | "vehicles-management-master"
   | "general-settings"
+  | "api-integration-gateway"
   | "sales-dispatch"
   | "sales-return"
   | "purchase-logs"
@@ -202,8 +204,17 @@ const ADMINISTRATION_MODULES: MasterPanelModule[] = [
     serial: 14,
     navLabel: "General Settings",
     title: "General Settings",
-    subtitle: "Contractors, employee types, and machine registry for global dropdowns",
+    subtitle: "Contractors, employee types, machines, and overtime reasons for global dropdowns",
     icon: Settings,
+    placeholderMessage: "",
+  },
+  {
+    id: "api-integration-gateway",
+    serial: 15,
+    navLabel: "API Gateway",
+    title: "API & Integration Settings",
+    subtitle: "Attendance webhooks, secure tokens, and external system sync",
+    icon: Plug,
     placeholderMessage: "",
   },
 ];

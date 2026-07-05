@@ -5,6 +5,7 @@ import {
   DEFAULT_CONTRACTOR_SEEDS,
   DEFAULT_EMPLOYEE_TYPE_SEEDS,
   DEFAULT_MACHINE_SEEDS,
+  DEFAULT_OVERTIME_REASON_SEEDS,
   normalizeGeneralSettingsRecord,
   type GeneralSettingsRecord,
 } from "@/types/general-settings";
@@ -15,6 +16,7 @@ type GeneralSettingsStore = {
   contractors: GeneralSettingsRecord[];
   employeeTypes: GeneralSettingsRecord[];
   machines: GeneralSettingsRecord[];
+  overtimeReasons: GeneralSettingsRecord[];
 };
 
 function createSeedRecords(names: string[], prefix: string): GeneralSettingsRecord[] {
@@ -34,6 +36,7 @@ function defaultStore(): GeneralSettingsStore {
     contractors: createSeedRecords(DEFAULT_CONTRACTOR_SEEDS, "contractor"),
     employeeTypes: createSeedRecords(DEFAULT_EMPLOYEE_TYPE_SEEDS, "employee-type"),
     machines: createSeedRecords(DEFAULT_MACHINE_SEEDS, "machine"),
+    overtimeReasons: createSeedRecords(DEFAULT_OVERTIME_REASON_SEEDS, "overtime-reason"),
   };
 }
 
@@ -63,6 +66,9 @@ function readStore(): GeneralSettingsStore {
       machines: normalizeRecordList(parsed.machines).length
         ? normalizeRecordList(parsed.machines)
         : defaults.machines,
+      overtimeReasons: normalizeRecordList(parsed.overtimeReasons).length
+        ? normalizeRecordList(parsed.overtimeReasons)
+        : defaults.overtimeReasons,
     };
   } catch {
     return defaultStore();
@@ -128,6 +134,16 @@ export function useGeneralSettings() {
     [store.machines]
   );
 
+  const overtimeReasonOptions = useMemo(
+    () => toSelectOptions(store.overtimeReasons),
+    [store.overtimeReasons]
+  );
+
+  const overtimeReasonNames = useMemo(
+    () => store.overtimeReasons.map((row) => row.name),
+    [store.overtimeReasons]
+  );
+
   const addRecord = useCallback(
     (key: SubMasterKey, name: string) => {
       const now = new Date().toISOString();
@@ -183,12 +199,15 @@ export function useGeneralSettings() {
     contractors: store.contractors,
     employeeTypes: store.employeeTypes,
     machines: store.machines,
+    overtimeReasons: store.overtimeReasons,
     contractorOptions,
     employeeTypeOptions,
     machineOptions,
+    overtimeReasonOptions,
     contractorNames,
     employeeTypeNames,
     machineNames,
+    overtimeReasonNames,
     isReady,
     addRecord,
     updateRecord,

@@ -29,14 +29,6 @@ export function buildSeedSalaryComponents(): SalaryComponentRecord[] {
       updatedAt: NOW,
     },
     {
-      id: "sal-ot",
-      componentName: "Overtime Earnings",
-      componentType: "earning",
-      isSystemSeed: true,
-      createdAt: NOW,
-      updatedAt: NOW,
-    },
-    {
       id: "sal-advance",
       componentName: "Advance Salary Deduction / Recovery",
       componentType: "deduction",

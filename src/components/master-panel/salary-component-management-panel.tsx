@@ -125,6 +125,9 @@ export default function SalaryComponentManagementPanel() {
       <p className="mt-1 text-sm font-semibold text-corporate-brand">
         Net Pay = Total Earnings − Total Deductions
       </p>
+      <p className="mt-2 text-xs text-corporate-muted">
+        Overtime is decoupled — day-by-day cash payouts are recorded only in Overtime Tracker.
+      </p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div>
           <p className="text-xs font-semibold text-emerald-700">Earnings</p>
@@ -240,7 +243,7 @@ export default function SalaryComponentManagementPanel() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         title="Salary Component List"
-        subtitle="Standard payroll rules — Basic, DA, HRA, PF, ESI, and custom heads."
+        subtitle="Monthly payroll heads only — Basic, DA, HRA, PF, ESI. Overtime is tracked separately."
       >
         {payrollBanner}
         <UniversalMasterListTable>

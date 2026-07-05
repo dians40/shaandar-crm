@@ -9,17 +9,23 @@ import {
 
 const STORAGE_KEY = "shaandar-crm-salary-components";
 
+/** Overtime is tracked day-by-day in Overtime Tracker — never part of monthly payroll. */
+const PAYROLL_EXCLUDED_COMPONENT_NAMES = new Set(["overtime earnings"]);
+
 function mergeWithSeeds(records: SalaryComponentRecord[]): SalaryComponentRecord[] {
   const byName = new Map<string, SalaryComponentRecord>();
   for (const seed of buildSeedSalaryComponents()) {
     byName.set(seed.componentName.toLowerCase(), seed);
   }
   for (const row of records) {
+    if (PAYROLL_EXCLUDED_COMPONENT_NAMES.has(row.componentName.toLowerCase())) {
+      continue;
+    }
     byName.set(row.componentName.toLowerCase(), row);
   }
-  return Array.from(byName.values()).sort((a, b) =>
-    a.componentName.localeCompare(b.componentName)
-  );
+  return Array.from(byName.values())
+    .filter((row) => !PAYROLL_EXCLUDED_COMPONENT_NAMES.has(row.componentName.toLowerCase()))
+    .sort((a, b) => a.componentName.localeCompare(b.componentName));
 }
 
 function readComponents(): SalaryComponentRecord[] {

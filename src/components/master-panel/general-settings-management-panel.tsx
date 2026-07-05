@@ -65,6 +65,15 @@ export default function GeneralSettingsManagementPanel() {
           updateRecord: (id, name) => settings.updateRecord("machines", id, name),
           removeRecord: (id) => settings.removeRecord("machines", id),
         };
+      case "overtime-reasons":
+        return {
+          key: "overtime-reasons",
+          singularLabel: "Overtime Reason",
+          records: settings.overtimeReasons,
+          addRecord: (name) => settings.addRecord("overtimeReasons", name),
+          updateRecord: (id, name) => settings.updateRecord("overtimeReasons", id, name),
+          removeRecord: (id) => settings.removeRecord("overtimeReasons", id),
+        };
       default:
         return {
           key: "contractors",
@@ -164,7 +173,7 @@ export default function GeneralSettingsManagementPanel() {
           <div>
             <h2 className="text-lg font-semibold text-corporate-text">General Settings</h2>
             <p className="text-sm text-corporate-muted">
-              Central registry feeding dropdowns across Employee Master and Overtime Tracker.
+            Central registry feeding dropdowns across Employee Master and the independent Overtime Tracker.
             </p>
           </div>
         </div>

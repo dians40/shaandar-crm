@@ -2,14 +2,22 @@ export type OvertimeShiftType = "Half Shift" | "Full Shift";
 
 export type OvertimeRecord = {
   id: string;
+  /** Day-by-day log date (YYYY-MM-DD) */
+  workDate: string;
   employeeId: string;
   employeeName: string;
+  /** Contractor or firm from Employee Master assigned-from group */
+  assignedFromGroup: string;
   shiftType: OvertimeShiftType;
   fromTime: string;
   toTime: string;
   totalHours: number;
-  amountToPay: number;
+  /** Immediate daily cash payout — independent of monthly salary */
+  amountPaidToday: number;
+  /** @deprecated Use amountPaidToday — kept for legacy localStorage rows */
+  amountToPay?: number;
   assignedMachine: string;
+  overtimeReason: string;
   /** Legacy free-text — kept for backward compatibility */
   workLocation: string;
   assignedManager: string;
@@ -22,15 +30,18 @@ export type OvertimeRecord = {
 
 export const EMPTY_OVERTIME_FORM: Omit<
   OvertimeRecord,
-  "id" | "totalHours" | "createdAt" | "updatedAt"
+  "id" | "totalHours" | "createdAt" | "updatedAt" | "amountToPay"
 > = {
+  workDate: new Date().toISOString().slice(0, 10),
   employeeId: "",
   employeeName: "",
+  assignedFromGroup: "",
   shiftType: "Half Shift",
   fromTime: "",
   toTime: "",
-  amountToPay: 0,
+  amountPaidToday: 0,
   assignedMachine: "",
+  overtimeReason: "",
   workLocation: "",
   assignedManager: "",
   workLocationAssignment: "",
@@ -56,16 +67,22 @@ export function calculateOvertimeHours(fromTime: string, toTime: string): number
 export function normalizeOvertimeRecord(
   row: Partial<OvertimeRecord> & Pick<OvertimeRecord, "id">
 ): OvertimeRecord {
+  const amountPaidToday =
+    row.amountPaidToday ?? row.amountToPay ?? 0;
+
   return {
     id: row.id,
+    workDate: row.workDate ?? new Date().toISOString().slice(0, 10),
     employeeId: row.employeeId ?? "",
     employeeName: row.employeeName ?? "",
+    assignedFromGroup: row.assignedFromGroup ?? "",
     shiftType: row.shiftType ?? "Half Shift",
     fromTime: row.fromTime ?? "",
     toTime: row.toTime ?? "",
     totalHours: row.totalHours ?? calculateOvertimeHours(row.fromTime ?? "", row.toTime ?? ""),
-    amountToPay: row.amountToPay ?? 0,
+    amountPaidToday,
     assignedMachine: row.assignedMachine ?? "",
+    overtimeReason: row.overtimeReason ?? "",
     workLocation: row.workLocation ?? "",
     assignedManager: row.assignedManager ?? "",
     workLocationAssignment:

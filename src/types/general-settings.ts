@@ -41,7 +41,11 @@ export function validateGeneralSettingsName(
   return null;
 }
 
-export type GeneralSettingsSubMaster = "contractors" | "employee-types" | "machines";
+export type GeneralSettingsSubMaster =
+  | "contractors"
+  | "employee-types"
+  | "machines"
+  | "overtime-reasons";
 
 export const GENERAL_SETTINGS_SUB_TABS: Array<{
   id: GeneralSettingsSubMaster;
@@ -62,6 +66,11 @@ export const GENERAL_SETTINGS_SUB_TABS: Array<{
     id: "machines",
     label: "Machine Master",
     description: "Register factory machines for overtime and production tracking.",
+  },
+  {
+    id: "overtime-reasons",
+    label: "Overtime Reasons",
+    description: "Standard overtime justification labels for the day-by-day OT tracker.",
   },
 ];
 
@@ -86,4 +95,10 @@ export const DEFAULT_MACHINE_SEEDS = [
   "Machine B",
   "Machine C",
   "Mixer B",
+];
+
+export const DEFAULT_OVERTIME_REASON_SEEDS = [
+  "Extra Power",
+  "Short of Employee",
+  "Other Reasons",
 ];

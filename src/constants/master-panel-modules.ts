@@ -377,6 +377,16 @@ export function getMasterPanelModule(
 export const DEFAULT_MASTER_PANEL_MODULE_ID: MasterPanelModuleId =
   "employee-management";
 
+export const DEFAULT_TRANSACTION_MODULE_ID: MasterPanelModuleId =
+  "sales-dispatch";
+
+export function isMasterPanelModuleId(
+  id: string | null | undefined
+): id is MasterPanelModuleId {
+  if (!id) return false;
+  return MODULE_MAP.has(id as MasterPanelModuleId);
+}
+
 /** Exactly two executive groups — Administration and Transaction. */
 export const MASTER_PANEL_MODULE_GROUPS: MasterPanelModuleGroup[] = [
   {
@@ -413,4 +423,11 @@ export function getGroupById(
     MASTER_PANEL_MODULE_GROUPS[0] ??
     null
   );
+}
+
+export function getModuleWorkspaceHref(moduleId: MasterPanelModuleId): string {
+  const group = getGroupForModule(moduleId);
+  const basePath =
+    group?.id === "transaction" ? "/transactions" : "/master-panel";
+  return `${basePath}?module=${moduleId}`;
 }

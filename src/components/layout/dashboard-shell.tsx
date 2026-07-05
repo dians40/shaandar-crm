@@ -1,7 +1,7 @@
 "use client";
 
 import { Menu } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Sidebar from "./sidebar";
 import { cn } from "@/lib/utils";
 
@@ -62,7 +62,9 @@ export default function DashboardLayoutClient({
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <Sidebar />
+        <Suspense fallback={<div className="h-full w-64 shrink-0 border-r border-corporate-border bg-corporate-surface" />}>
+          <Sidebar />
+        </Suspense>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">{children}</div>
@@ -98,7 +100,9 @@ export function DashboardShell({
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
-        <Sidebar />
+        <Suspense fallback={<div className="h-full w-64 shrink-0 border-r border-corporate-border bg-corporate-surface" />}>
+          <Sidebar />
+        </Suspense>
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -107,7 +111,7 @@ export function DashboardShell({
           description={description}
           onMenuOpen={() => setMobileOpen(true)}
         />
-        <main className="flex-1 p-4 lg:p-8">{children}</main>
+        <main className="flex min-w-0 flex-1 flex-col p-3 lg:p-5">{children}</main>
       </div>
     </div>
   );

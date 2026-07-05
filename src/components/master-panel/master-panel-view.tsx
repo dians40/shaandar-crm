@@ -2,6 +2,7 @@
 
 import {
   Component,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -9,12 +10,17 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { IMPLEMENTED_ADMINISTRATION_MODULE_IDS } from "@/constants/administration-modules";
 import { IMPLEMENTED_TRANSACTION_MODULE_IDS } from "@/constants/transaction-modules";
 import {
   DEFAULT_MASTER_PANEL_MODULE_ID,
+  DEFAULT_TRANSACTION_MODULE_ID,
   getGroupForModule,
   getMasterPanelModule,
+  getModuleWorkspaceHref,
+  isMasterPanelModuleId,
+  type MasterPanelModuleGroupId,
   type MasterPanelModuleId,
 } from "@/constants/master-panel-modules";
 import {
@@ -28,7 +34,6 @@ import EmployeeManagementPanel from "./employee-management-panel";
 import GodownManagementPanel from "./godown-management-panel";
 import ItemGroupsManagementPanel from "./item-groups-management-panel";
 import ItemsManagementPanel from "./items-management-panel";
-import MasterPanelManagerNav from "./master-panel-manager-nav";
 import ModulePlaceholder from "./module-placeholder";
 import OvertimeTrackerPanel from "./overtime-tracker-panel";
 import AttendanceSystemPanel from "./attendance-system-panel";
@@ -99,9 +104,33 @@ class MasterPanelErrorBoundary extends Component<
   }
 }
 
-function MasterPanelContent() {
-  const [activeModuleId, setActiveModuleId] = useState<MasterPanelModuleId>(
-    DEFAULT_MASTER_PANEL_MODULE_ID
+function resolveDefaultModuleId(
+  scope: MasterPanelModuleGroupId,
+  moduleParam: string | null
+): MasterPanelModuleId {
+  if (isMasterPanelModuleId(moduleParam)) {
+    const moduleGroup = getGroupForModule(moduleParam);
+    if (moduleGroup?.id === scope) {
+      return moduleParam;
+    }
+  }
+
+  return scope === "transaction"
+    ? DEFAULT_TRANSACTION_MODULE_ID
+    : DEFAULT_MASTER_PANEL_MODULE_ID;
+}
+
+type MasterPanelContentProps = {
+  scope: MasterPanelModuleGroupId;
+};
+
+function MasterPanelContent({ scope }: MasterPanelContentProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const moduleParam = searchParams.get("module");
+
+  const [activeModuleId, setActiveModuleId] = useState<MasterPanelModuleId>(() =>
+    resolveDefaultModuleId(scope, moduleParam)
   );
   const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
   const activeModuleIdRef = useRef(activeModuleId);
@@ -110,34 +139,45 @@ function MasterPanelContent() {
   const activeModule = useMemo(
     () =>
       getMasterPanelModule(activeModuleId) ??
-      getMasterPanelModule(DEFAULT_MASTER_PANEL_MODULE_ID),
-    [activeModuleId]
+      getMasterPanelModule(
+        scope === "transaction"
+          ? DEFAULT_TRANSACTION_MODULE_ID
+          : DEFAULT_MASTER_PANEL_MODULE_ID
+      ),
+    [activeModuleId, scope]
   );
 
-  const navigateToModule = useCallback((id: MasterPanelModuleId) => {
-    const previousId = activeModuleIdRef.current;
-    const previousBlock = getGroupForModule(previousId)?.id;
-    const nextBlock = getGroupForModule(id)?.id;
+  const navigateToModule = useCallback(
+    (id: MasterPanelModuleId, syncUrl = true) => {
+      const previousId = activeModuleIdRef.current;
+      const previousBlock = getGroupForModule(previousId)?.id;
+      const nextBlock = getGroupForModule(id)?.id;
 
-    if (
-      previousId !== id &&
-      previousBlock &&
-      nextBlock &&
-      previousBlock !== nextBlock
-    ) {
-      resetMasterPanelBlockState(previousBlock);
-      setWorkspaceEpoch((epoch) => epoch + 1);
-    }
+      if (
+        previousId !== id &&
+        previousBlock &&
+        nextBlock &&
+        previousBlock !== nextBlock
+      ) {
+        resetMasterPanelBlockState(previousBlock);
+        setWorkspaceEpoch((epoch) => epoch + 1);
+      }
 
-    setActiveModuleId(id);
-  }, []);
+      setActiveModuleId(id);
 
-  const handleModuleSelect = useCallback(
-    (id: MasterPanelModuleId) => {
-      navigateToModule(id);
+      if (syncUrl) {
+        router.replace(getModuleWorkspaceHref(id), { scroll: false });
+      }
     },
-    [navigateToModule]
+    [router]
   );
+
+  useEffect(() => {
+    const nextModuleId = resolveDefaultModuleId(scope, moduleParam);
+    if (nextModuleId !== activeModuleIdRef.current) {
+      navigateToModule(nextModuleId, false);
+    }
+  }, [moduleParam, navigateToModule, scope]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -157,7 +197,7 @@ function MasterPanelContent() {
     if (!moduleId) {
       return (
         <div className="rounded-xl border border-corporate-border bg-corporate-surface p-6 text-sm text-corporate-muted">
-          Select a module from Administration or Transaction to begin.
+          Select a module from the left navigation tree to begin.
         </div>
       );
     }
@@ -262,35 +302,45 @@ function MasterPanelContent() {
   };
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
-      <aside className="min-w-0">
-        <MasterPanelManagerNav
-          activeModuleId={activeModuleId}
-          onSelect={handleModuleSelect}
-        />
-      </aside>
-      <section
-        className="min-w-0"
-        aria-label={`${activeModule?.title ?? "Module"} workspace`}
-      >
-        {activeModule && (
-          <div className="mb-4 border-b border-corporate-border pb-3">
-            <h2 className="text-base font-semibold text-corporate-text">
-              {activeModule.title}
-            </h2>
-            <p className="text-sm text-corporate-muted">{activeModule.subtitle}</p>
-          </div>
-        )}
-        <div key={`${workspaceEpoch}-${activeModuleId}`}>{renderModuleWorkspace()}</div>
-      </section>
+    <section
+      className="flex min-w-0 flex-1 flex-col"
+      aria-label={`${activeModule?.title ?? "Module"} workspace`}
+    >
+      {activeModule && (
+        <div className="mb-4 border-b border-corporate-border pb-3">
+          <h2 className="text-base font-semibold text-corporate-text">
+            {activeModule.title}
+          </h2>
+          <p className="text-sm text-corporate-muted">{activeModule.subtitle}</p>
+        </div>
+      )}
+      <div key={`${workspaceEpoch}-${activeModuleId}`} className="min-w-0 flex-1">
+        {renderModuleWorkspace()}
+      </div>
+    </section>
+  );
+}
+
+function MasterPanelWorkspaceFallback() {
+  return (
+    <div className="rounded-xl border border-corporate-border bg-corporate-surface p-6 text-sm text-corporate-muted">
+      Loading workspace...
     </div>
   );
 }
 
-export default function MasterPanelView() {
+type MasterPanelViewProps = {
+  scope?: MasterPanelModuleGroupId;
+};
+
+export default function MasterPanelView({
+  scope = "administration",
+}: MasterPanelViewProps) {
   return (
     <MasterPanelErrorBoundary>
-      <MasterPanelContent />
+      <Suspense fallback={<MasterPanelWorkspaceFallback />}>
+        <MasterPanelContent scope={scope} />
+      </Suspense>
     </MasterPanelErrorBoundary>
   );
 }

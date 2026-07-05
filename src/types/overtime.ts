@@ -83,6 +83,14 @@ export function calculateOvertimeHours(fromTime: string, toTime: string): number
   return Math.round((diff / 60) * 100) / 100;
 }
 
+export function calculateOvertimePayout(
+  totalHours: number,
+  hourlyRate: number
+): number {
+  if (totalHours <= 0 || hourlyRate <= 0) return 0;
+  return Math.round(totalHours * hourlyRate * 100) / 100;
+}
+
 export function normalizeOvertimeRecord(
   row: Partial<OvertimeRecord> & Pick<OvertimeRecord, "id">
 ): OvertimeRecord {

@@ -113,6 +113,7 @@ export type BankAndSalary = {
   bonusLastYear: string;
   extraPayment: string;
   advancePaid: string;
+  overtimeHourlyRate: string;
 };
 
 export type EmployeeFormData = {
@@ -204,5 +205,6 @@ export const INITIAL_EMPLOYEE_FORM: EmployeeFormData = {
     bonusLastYear: "",
     extraPayment: "",
     advancePaid: "",
+    overtimeHourlyRate: "",
   },
 };

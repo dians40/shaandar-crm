@@ -19,6 +19,7 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     esiStatus: "Active",
     pfStatus: "Active",
     hasAttendanceRecords: false,
+    overtimeHourlyRate: 400,
   },
   {
     id: "emp-002",
@@ -36,6 +37,7 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     esiStatus: "Non-Active",
     pfStatus: "Non-Active",
     hasAttendanceRecords: true,
+    overtimeHourlyRate: 300,
   },
   {
     id: "emp-003",
@@ -53,5 +55,6 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     esiStatus: "Active",
     pfStatus: "Active",
     hasAttendanceRecords: false,
+    overtimeHourlyRate: 500,
   },
 ];

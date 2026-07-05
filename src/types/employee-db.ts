@@ -77,6 +77,7 @@ export type EmployeeRow = {
   bonus_last_year: number | null;
   extra_payment: number | null;
   advance_paid: number | null;
+  overtime_hourly_rate: number | null;
 };
 
 export type EmployeeInsert = Omit<

@@ -321,6 +321,25 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
 
       <section className="space-y-4">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-corporate-muted">
+          Overtime Configuration
+        </h3>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <TextInput
+            label="Overtime Hourly Rate (₹)"
+            name="overtimeHourlyRate"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="e.g. 300, 400, 500"
+            value={data.overtimeHourlyRate}
+            onChange={(e) => updateField("overtimeHourlyRate", e.target.value)}
+            hint="Fixed rate applied automatically in Overtime Tracker day-by-day entries"
+          />
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-corporate-muted">
           Financial Tracker
         </h3>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

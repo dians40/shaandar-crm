@@ -134,6 +134,7 @@ export function mapFormToEmployeeInsert(
     bonus_last_year: parseAmount(bank.bonusLastYear),
     extra_payment: parseAmount(bank.extraPayment),
     advance_paid: parseAmount(bank.advancePaid),
+    overtime_hourly_rate: parseAmount(bank.overtimeHourlyRate),
   };
 }
 
@@ -156,6 +157,7 @@ export function mapEmployeeRowToListItem(
   pf_status?: string | null;
   esi_enabled?: boolean | null;
   pf_enabled?: boolean | null;
+  overtime_hourly_rate?: number | null;
 },
   options?: { hasAttendanceRecords?: boolean }
 ): EmployeeListItem {
@@ -186,6 +188,7 @@ export function mapEmployeeRowToListItem(
     esiStatus: parseStatutoryStatusFromDb(row.esi_status, row.esi_enabled),
     pfStatus: parseStatutoryStatusFromDb(row.pf_status, row.pf_enabled),
     hasAttendanceRecords: options?.hasAttendanceRecords ?? false,
+    overtimeHourlyRate: row.overtime_hourly_rate ?? null,
   };
 }
 
@@ -262,6 +265,7 @@ export function mapEmployeeRowToFormData(row: EmployeeRow): EmployeeFormData {
       bonusLastYear: amountToString(row.bonus_last_year),
       extraPayment: amountToString(row.extra_payment),
       advancePaid: amountToString(row.advance_paid),
+      overtimeHourlyRate: amountToString(row.overtime_hourly_rate),
     },
   };
 }

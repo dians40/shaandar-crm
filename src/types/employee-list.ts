@@ -17,4 +17,5 @@ export type EmployeeListItem = {
   esiStatus: StatutoryStatus;
   pfStatus: StatutoryStatus;
   hasAttendanceRecords: boolean;
+  overtimeHourlyRate: number | null;
 };

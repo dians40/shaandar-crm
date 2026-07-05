@@ -39,6 +39,8 @@ export type InventoryVoucherRecord = {
   partyAccountId: string;
   partyName: string;
   destinationStation: string;
+  vehicleId: string;
+  vehicleRegistration: string;
   originalInvoiceRef: string;
   returnReason: string;
   lines: TransactionItemLine[];
@@ -108,6 +110,8 @@ export function emptyInventoryVoucherForm(
     partyAccountId: "",
     partyName: "",
     destinationStation: "",
+    vehicleId: "",
+    vehicleRegistration: "",
     originalInvoiceRef: "",
     returnReason: "",
     lines: [createEmptyItemLine()],
@@ -161,6 +165,8 @@ export function normalizeInventoryVoucherRecord(
     partyAccountId: row.partyAccountId ?? "",
     partyName: row.partyName ?? "",
     destinationStation: row.destinationStation ?? "",
+    vehicleId: row.vehicleId ?? "",
+    vehicleRegistration: row.vehicleRegistration ?? "",
     originalInvoiceRef: row.originalInvoiceRef ?? "",
     returnReason: row.returnReason ?? "",
     lines,
@@ -184,6 +190,8 @@ export function recordToInventoryVoucherForm(
     partyAccountId: record.partyAccountId,
     partyName: record.partyName,
     destinationStation: record.destinationStation,
+    vehicleId: record.vehicleId,
+    vehicleRegistration: record.vehicleRegistration,
     originalInvoiceRef: record.originalInvoiceRef,
     returnReason: record.returnReason,
     lines: record.lines.length > 0 ? record.lines : [createEmptyItemLine()],

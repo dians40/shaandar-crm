@@ -10,6 +10,12 @@ import { useItems } from "@/hooks/use-items";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import { useUnitConversions } from "@/hooks/use-unit-conversions";
 import { useUnits } from "@/hooks/use-units";
+import { useVehicleTripExpenses } from "@/hooks/use-vehicle-trip-expenses";
+import { useVehiclesMaster } from "@/hooks/use-vehicles-master";
+import {
+  findLastMatchingTrips,
+  toTripHistoryAuditRow,
+} from "@/lib/vehicle-trip-history";
 import {
   computeVoucherTotals,
   validateInventoryVoucherForm,
@@ -28,6 +34,7 @@ import {
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import TransactionItemLinesGrid from "./shared/transaction-item-lines-grid";
 import TransactionSundriesBlock from "./shared/transaction-sundries-block";
+import SalesTripHistoryWidget from "./shared/sales-trip-history-widget";
 import UniversalRecordProfile from "./universal-record-profile";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
@@ -56,6 +63,8 @@ export default function InventoryVoucherPanel({ config }: Props) {
   const { sundries, isReady: sundriesReady } = useBillOfSundries();
   const { conversions, isReady: conversionsReady } = useUnitConversions();
   const { units, isReady: unitsReady } = useUnits();
+  const { vehicles, isReady: vehiclesReady } = useVehiclesMaster();
+  const { records: tripRecords, isReady: tripsReady } = useVehicleTripExpenses();
   const { records, isReady: vouchersReady, addVoucher, updateVoucher } =
     useInventoryVouchers(config.kind);
 
@@ -69,7 +78,13 @@ export default function InventoryVoucherPanel({ config }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
 
   const isReady =
-    accountsReady && itemsReady && sundriesReady && conversionsReady && unitsReady && vouchersReady;
+    accountsReady &&
+    itemsReady &&
+    sundriesReady &&
+    conversionsReady &&
+    unitsReady &&
+    vouchersReady &&
+    (config.kind !== "sales" || (vehiclesReady && tripsReady));
 
   const unitNameById = useMemo(
     () => Object.fromEntries(units.map((row) => [row.id, row.name])),
@@ -80,6 +95,30 @@ export default function InventoryVoucherPanel({ config }: Props) {
     () => Object.fromEntries(items.map((row) => [row.id, row])),
     [items]
   );
+
+  const vehicleOptions = useMemo(
+    () => vehicles.map((row) => ({ value: row.id, label: row.registrationNumber })),
+    [vehicles]
+  );
+
+  const salesTripHistory = useMemo(() => {
+    if (config.kind !== "sales" || !form.vehicleId || !form.destinationStation.trim()) {
+      return [];
+    }
+    return findLastMatchingTrips(tripRecords, {
+      vehicleId: form.vehicleId,
+      tripType: "sales",
+      partyAccountId: form.partyAccountId,
+      partyStationName: form.destinationStation,
+      limit: 2,
+    }).map(toTripHistoryAuditRow);
+  }, [
+    config.kind,
+    tripRecords,
+    form.vehicleId,
+    form.destinationStation,
+    form.partyAccountId,
+  ]);
 
   const totals = useMemo(() => computeVoucherTotals(form), [form]);
 
@@ -151,6 +190,15 @@ export default function InventoryVoucherPanel({ config }: Props) {
     setForm(recordToInventoryVoucherForm(record));
     setError(null);
     setView("edit");
+  }
+
+  function handleVehicleChange(vehicleId: string) {
+    const vehicle = vehicles.find((row) => row.id === vehicleId);
+    setForm((prev) => ({
+      ...prev,
+      vehicleId,
+      vehicleRegistration: vehicle?.registrationNumber ?? "",
+    }));
   }
 
   function handlePartyChange(partyAccountId: string) {
@@ -275,7 +323,20 @@ export default function InventoryVoucherPanel({ config }: Props) {
               readOnly
               placeholder="Auto from selected account"
             />
+            {config.kind === "sales" && (
+              <SelectInput
+                label="Vehicle"
+                value={form.vehicleId}
+                onChange={(event) => handleVehicleChange(event.target.value)}
+                options={vehicleOptions}
+                placeholder="Select vehicle for route audit"
+              />
+            )}
           </div>
+
+          {config.kind === "sales" && salesTripHistory.length > 0 && (
+            <SalesTripHistoryWidget rows={salesTripHistory} />
+          )}
 
           {config.isReturn && (
             <div className="grid gap-4 sm:grid-cols-2">

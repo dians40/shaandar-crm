@@ -22,6 +22,7 @@ import {
 } from "@/lib/master-panel-entity-bridge";
 import {
   calculateOvertimeHours,
+  calculateOvertimePayout,
   EMPTY_OVERTIME_FORM,
   type OvertimeRecord,
   type OvertimeShiftType,
@@ -115,12 +116,18 @@ export default function OvertimeTrackerPanel() {
 
   const applySelectedEmployee = (employeeId: string, employeeName: string) => {
     const employee = employees.find((row) => row.id === employeeId);
-    setForm((prev) => ({
-      ...prev,
-      employeeId,
-      employeeName,
-      assignedFromGroup: employee?.assignedFromGroup ?? "",
-    }));
+    setForm((prev) => {
+      const hours = calculateOvertimeHours(prev.fromTime, prev.toTime);
+      const hourlyRate = employee?.overtimeHourlyRate ?? 0;
+      return {
+        ...prev,
+        employeeId,
+        employeeName,
+        assignedFromGroup: employee?.assignedFromGroup ?? "",
+        amountPaidToday:
+          hourlyRate > 0 && hours > 0 ? calculateOvertimePayout(hours, hourlyRate) : prev.amountPaidToday,
+      };
+    });
   };
 
   const consumePendingEmployeeSelection = () => {
@@ -134,6 +141,24 @@ export default function OvertimeTrackerPanel() {
     () => calculateOvertimeHours(form.fromTime, form.toTime),
     [form.fromTime, form.toTime]
   );
+
+  const selectedEmployeeRate = useMemo(
+    () => employees.find((row) => row.id === form.employeeId)?.overtimeHourlyRate ?? 0,
+    [employees, form.employeeId]
+  );
+
+  const autoOvertimePayout = useMemo(
+    () => calculateOvertimePayout(totalHours, selectedEmployeeRate),
+    [totalHours, selectedEmployeeRate]
+  );
+
+  useEffect(() => {
+    if (!form.employeeId || selectedEmployeeRate <= 0 || totalHours <= 0) return;
+    setForm((prev) => ({
+      ...prev,
+      amountPaidToday: calculateOvertimePayout(totalHours, selectedEmployeeRate),
+    }));
+  }, [form.employeeId, selectedEmployeeRate, totalHours]);
 
   const employeeOptions = useMemo(
     () =>
@@ -266,11 +291,15 @@ export default function OvertimeTrackerPanel() {
 
   const handleEmployeeChange = (employeeId: string) => {
     const employee = employees.find((row) => row.id === employeeId);
+    const hours = calculateOvertimeHours(form.fromTime, form.toTime);
+    const hourlyRate = employee?.overtimeHourlyRate ?? 0;
     setForm((prev) => ({
       ...prev,
       employeeId,
       employeeName: employee?.name ?? "",
       assignedFromGroup: employee?.assignedFromGroup ?? "",
+      amountPaidToday:
+        hourlyRate > 0 && hours > 0 ? calculateOvertimePayout(hours, hourlyRate) : prev.amountPaidToday,
     }));
   };
 
@@ -554,11 +583,18 @@ export default function OvertimeTrackerPanel() {
             min="0"
             step="0.01"
             required
-            value={String(form.amountPaidToday)}
+            readOnly={selectedEmployeeRate > 0 && totalHours > 0}
+            value={String(
+              selectedEmployeeRate > 0 && totalHours > 0 ? autoOvertimePayout : form.amountPaidToday
+            )}
             onChange={(e) =>
               setForm((prev) => ({ ...prev, amountPaidToday: Number(e.target.value) }))
             }
-            hint="Record immediate daily cash settlement — separate from monthly payroll"
+            hint={
+              selectedEmployeeRate > 0
+                ? `Auto-calculated from fixed OT rate ₹${selectedEmployeeRate}/hr × ${totalHours} hr`
+                : "Set Overtime Hourly Rate in Employee Master or enter amount manually"
+            }
           />
           <SelectInput
             label="Assigned Machine"

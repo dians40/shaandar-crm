@@ -20,6 +20,21 @@ export type VehicleTripStatus =
 
 export type VehicleTripSettlementStatus = "due" | "paid_settled";
 
+export type FinancialApprovalStatus =
+  | "none"
+  | "pending_accountant_review"
+  | "pending_cashier_payout"
+  | "settled_paid";
+
+export const FINANCIAL_APPROVAL_STATUS_LABELS: Record<FinancialApprovalStatus, string> = {
+  none: "Not Started",
+  pending_accountant_review: "Pending Accountant Review",
+  pending_cashier_payout: "Pending Cashier Payout",
+  settled_paid: "SETTLED / PAID",
+};
+
+export type TripDriverMode = "assigned" | "temporary";
+
 export type OnRouteExtraExpense = {
   id: string;
   description: string;
@@ -64,6 +79,17 @@ export type VehicleTripExpenseRecord = {
   netDueCashBalance: number;
   supervisorVerifiedAt: string | null;
   supervisorVerifiedBy: string | null;
+  financialApprovalStatus: FinancialApprovalStatus;
+  accountantApprovedAt: string | null;
+  accountantApprovedBy: string | null;
+  cashierDisbursedAt: string | null;
+  cashierDisbursedBy: string | null;
+  driverMode: TripDriverMode;
+  driverEmployeeId: string;
+  driverName: string;
+  driverPhone: string;
+  temporaryDriverDocumentPhoto: string;
+  openingKmBaselineLocked: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -105,6 +131,17 @@ export const EMPTY_VEHICLE_TRIP_FORM: VehicleTripExpenseFormState = {
   onRouteExtraExpenses: [],
   supervisorVerifiedAt: null,
   supervisorVerifiedBy: null,
+  financialApprovalStatus: "none",
+  accountantApprovedAt: null,
+  accountantApprovedBy: null,
+  cashierDisbursedAt: null,
+  cashierDisbursedBy: null,
+  driverMode: "assigned",
+  driverEmployeeId: "",
+  driverName: "",
+  driverPhone: "",
+  temporaryDriverDocumentPhoto: "",
+  openingKmBaselineLocked: false,
 };
 
 export type ComputedTripAmounts = {
@@ -218,6 +255,17 @@ export function normalizeVehicleTripExpenseRecord(
       : [],
     supervisorVerifiedAt: row.supervisorVerifiedAt ?? null,
     supervisorVerifiedBy: row.supervisorVerifiedBy ?? null,
+    financialApprovalStatus: row.financialApprovalStatus ?? "none",
+    accountantApprovedAt: row.accountantApprovedAt ?? null,
+    accountantApprovedBy: row.accountantApprovedBy ?? null,
+    cashierDisbursedAt: row.cashierDisbursedAt ?? null,
+    cashierDisbursedBy: row.cashierDisbursedBy ?? null,
+    driverMode: row.driverMode === "temporary" ? "temporary" : "assigned",
+    driverEmployeeId: row.driverEmployeeId ?? "",
+    driverName: row.driverName ?? "",
+    driverPhone: row.driverPhone ?? "",
+    temporaryDriverDocumentPhoto: row.temporaryDriverDocumentPhoto ?? "",
+    openingKmBaselineLocked: Boolean(row.openingKmBaselineLocked),
   };
 
   const computed = computeTripAmounts(form);

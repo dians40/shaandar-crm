@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Car, History, Plus, Trash2 } from "lucide-react";
+import { Car, Plus, Trash2 } from "lucide-react";
 import { SelectInput, TextInput } from "@/components/forms/form-fields";
 import { useAccounts } from "@/hooks/use-accounts";
+import { useEmployees } from "@/hooks/use-employees";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import { useVehicleTripExpenses } from "@/hooks/use-vehicle-trip-expenses";
 import { useVehiclesMaster } from "@/hooks/use-vehicles-master";
@@ -14,12 +15,14 @@ import {
   VEHICLE_TRIP_TYPE_OPTIONS,
 } from "@/lib/vehicle-trip-calculator";
 import {
-  findPreviousMatchingTrip,
+  findLastMatchingTrips,
+  getVehicleBaselineOpeningKm,
   isVehicleAvailableForDispatch,
-  toPreviousTripHistorySummary,
+  toTripHistoryAuditRow,
 } from "@/lib/vehicle-trip-history";
 import {
   EMPTY_VEHICLE_TRIP_FORM,
+  FINANCIAL_APPROVAL_STATUS_LABELS,
   VEHICLE_TRIP_STATUS_LABELS,
   applySalesStationKmMapping,
   computeTripAmounts,
@@ -30,6 +33,8 @@ import {
 } from "@/types/vehicle-trip-expense";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
+import SalesTripHistoryWidget from "./shared/sales-trip-history-widget";
+import SinglePhotoUploader from "./shared/single-photo-uploader";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
@@ -73,6 +78,17 @@ function recordToForm(record: VehicleTripExpenseRecord): VehicleTripExpenseFormS
     onRouteExtraExpenses: record.onRouteExtraExpenses,
     supervisorVerifiedAt: record.supervisorVerifiedAt,
     supervisorVerifiedBy: record.supervisorVerifiedBy,
+    financialApprovalStatus: record.financialApprovalStatus,
+    accountantApprovedAt: record.accountantApprovedAt,
+    accountantApprovedBy: record.accountantApprovedBy,
+    cashierDisbursedAt: record.cashierDisbursedAt,
+    cashierDisbursedBy: record.cashierDisbursedBy,
+    driverMode: record.driverMode,
+    driverEmployeeId: record.driverEmployeeId,
+    driverName: record.driverName,
+    driverPhone: record.driverPhone,
+    temporaryDriverDocumentPhoto: record.temporaryDriverDocumentPhoto,
+    openingKmBaselineLocked: record.openingKmBaselineLocked,
   };
 }
 
@@ -92,6 +108,7 @@ function statusBadgeClass(status: VehicleTripExpenseRecord["tripStatus"]): strin
 export default function VehicleManagementTransactionPanel() {
   const { vehicles, isReady: vehiclesReady } = useVehiclesMaster();
   const { accounts, isReady: accountsReady } = useAccounts();
+  const { employees, isLoading: employeesLoading } = useEmployees();
   const { records, isReady: tripsReady, addTrip, updateTrip, patchTrip } =
     useVehicleTripExpenses();
 
@@ -103,10 +120,11 @@ export default function VehicleManagementTransactionPanel() {
 
   const isLedger = view === "ledger" && Boolean(ledgerId);
   const openingKmLocked =
-    isLedger &&
-    (form.tripStatus === "on_route" ||
-      form.tripStatus === "delivered" ||
-      form.tripStatus === "closed_settled");
+    form.openingKmBaselineLocked ||
+    (isLedger &&
+      (form.tripStatus === "on_route" ||
+        form.tripStatus === "delivered" ||
+        form.tripStatus === "closed_settled"));
 
   const partyStationOptions = useMemo(
     () =>
@@ -135,17 +153,31 @@ export default function VehicleManagementTransactionPanel() {
 
   const computed = useMemo(() => computeTripAmounts(form), [form]);
 
-  const previousHistory = useMemo(() => {
-    if (!form.vehicleId) return null;
-    const match = findPreviousMatchingTrip(records, {
+  const driverEmployeeOptions = useMemo(
+    () => employees.map((row) => ({ value: row.id, label: row.name })),
+    [employees]
+  );
+
+  const twoTripHistory = useMemo(() => {
+    if (!form.vehicleId || form.tripType !== "sales" || !form.partyAccountId) {
+      return [];
+    }
+    return findLastMatchingTrips(records, {
       vehicleId: form.vehicleId,
-      tripType: form.tripType,
+      tripType: "sales",
       partyAccountId: form.partyAccountId,
       partyStationName: form.partyStationName,
       excludeId: ledgerId ?? undefined,
-    });
-    return toPreviousTripHistorySummary(match);
-  }, [records, form.vehicleId, form.tripType, form.partyAccountId, form.partyStationName, ledgerId]);
+      limit: 2,
+    }).map(toTripHistoryAuditRow);
+  }, [
+    records,
+    form.vehicleId,
+    form.tripType,
+    form.partyAccountId,
+    form.partyStationName,
+    ledgerId,
+  ]);
 
   const filtered = useMemo(
     () =>
@@ -177,11 +209,21 @@ export default function VehicleManagementTransactionPanel() {
 
   const handleVehicleChange = (vehicleId: string) => {
     const vehicle = vehicles.find((row) => row.id === vehicleId);
+    const baselineKm = getVehicleBaselineOpeningKm(records, vehicleId, ledgerId ?? undefined);
+    const mapped =
+      form.tripType === "sales" && form.partyDistanceKm > 0
+        ? applySalesStationKmMapping(baselineKm, form.partyDistanceKm)
+        : { openingKm: baselineKm, closingKm: baselineKm };
+
     setForm((prev) => ({
       ...prev,
       vehicleId,
       vehicleRegistration: vehicle?.registrationNumber ?? "",
       averageMileageKmPerLiter: vehicle?.averageMileageKmPerLiter ?? 0,
+      openingKm: mapped.openingKm,
+      closingKm: mapped.closingKm,
+      openingKmBaselineLocked: baselineKm > 0,
+      driverName: prev.driverMode === "assigned" ? vehicle?.driverName ?? prev.driverName : prev.driverName,
     }));
   };
 
@@ -221,6 +263,20 @@ export default function VehicleManagementTransactionPanel() {
     if (validationError) {
       setError(validationError);
       return;
+    }
+    if (form.driverMode === "assigned" && !form.driverEmployeeId && !form.driverName.trim()) {
+      setError("Driver selection is required.");
+      return;
+    }
+    if (form.driverMode === "temporary") {
+      if (!form.driverName.trim() || !form.driverPhone.trim()) {
+        setError("Temporary driver name and phone number are required.");
+        return;
+      }
+      if (!form.temporaryDriverDocumentPhoto.trim()) {
+        setError("Temporary driver license / document upload is required.");
+        return;
+      }
     }
     if (!isVehicleAvailableForDispatch(records, form.vehicleId)) {
       setError("This vehicle is already on an active trip. Close the open ledger first.");
@@ -277,18 +333,44 @@ export default function VehicleManagementTransactionPanel() {
       return;
     }
     saveLedgerProgress();
-    patchTrip(ledgerId, { tripStatus: "delivered" });
-    setForm((prev) => ({ ...prev, tripStatus: "delivered" }));
+    patchTrip(ledgerId, {
+      tripStatus: "delivered",
+      financialApprovalStatus: "pending_accountant_review",
+    });
+    setForm((prev) => ({
+      ...prev,
+      tripStatus: "delivered",
+      financialApprovalStatus: "pending_accountant_review",
+    }));
   };
 
-  const handleSupervisorClose = () => {
+  const handleAccountantApprove = () => {
+    if (!ledgerId) return;
+    saveLedgerProgress();
+    patchTrip(ledgerId, {
+      financialApprovalStatus: "pending_cashier_payout",
+      accountantApprovedAt: new Date().toISOString(),
+      accountantApprovedBy: "Accountant",
+    });
+    setForm((prev) => ({
+      ...prev,
+      financialApprovalStatus: "pending_cashier_payout",
+      accountantApprovedAt: new Date().toISOString(),
+      accountantApprovedBy: "Accountant",
+    }));
+  };
+
+  const handleCashierPayout = () => {
     if (!ledgerId) return;
     saveLedgerProgress();
     patchTrip(ledgerId, {
       tripStatus: "closed_settled",
       settlementStatus: "paid_settled",
+      financialApprovalStatus: "settled_paid",
+      cashierDisbursedAt: new Date().toISOString(),
+      cashierDisbursedBy: "Cashier",
       supervisorVerifiedAt: new Date().toISOString(),
-      supervisorVerifiedBy: "Supervisor / Admin",
+      supervisorVerifiedBy: "Cashier Payout",
       netDueCashBalance: computed.netDueCashBalance,
       extraExpensesTotal: computed.extraExpensesTotal,
       fuelCost: computed.fuelCost,
@@ -341,16 +423,88 @@ export default function VehicleManagementTransactionPanel() {
 
   const renderTripFields = (mode: "dispatch" | "ledger") => (
     <>
-      {previousHistory && (
-        <div className="flex items-start gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          <History className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>
-            <span className="font-semibold">Previous Trip History</span> ({previousHistory.tripDate}
-            ): Fuel Cost: {formatCurrency(previousHistory.fuelCost)}, Freight:{" "}
-            {formatCurrency(previousHistory.freight)}, Food: {formatCurrency(previousHistory.food)}
-          </p>
-        </div>
+      {twoTripHistory.length > 0 && form.tripType === "sales" && (
+        <SalesTripHistoryWidget rows={twoTripHistory} />
       )}
+
+      <div className="rounded-xl border border-corporate-border bg-corporate-bg/30 p-4 space-y-4">
+        <h3 className="text-sm font-semibold text-corporate-text">Driver Allocation</h3>
+        <div className="flex flex-wrap gap-2">
+          {(["assigned", "temporary"] as const).map((driverMode) => (
+            <button
+              key={driverMode}
+              type="button"
+              disabled={mode === "ledger" && form.tripStatus !== "pending_driver_acceptance"}
+              onClick={() =>
+                setForm((prev) => ({
+                  ...prev,
+                  driverMode,
+                  driverEmployeeId: driverMode === "assigned" ? prev.driverEmployeeId : "",
+                  driverName: driverMode === "temporary" ? prev.driverName : "",
+                  driverPhone: driverMode === "temporary" ? prev.driverPhone : "",
+                  temporaryDriverDocumentPhoto:
+                    driverMode === "temporary" ? prev.temporaryDriverDocumentPhoto : "",
+                }))
+              }
+              className={`rounded-full border px-4 py-2 text-sm font-semibold ${
+                form.driverMode === driverMode
+                  ? "border-corporate-brand bg-corporate-brand text-white"
+                  : "border-corporate-border bg-white"
+              }`}
+            >
+              {driverMode === "assigned" ? "Assigned Driver" : "Add Temporary / New Driver"}
+            </button>
+          ))}
+        </div>
+
+        {form.driverMode === "assigned" ? (
+          <SelectInput
+            label="Driver Selection"
+            value={form.driverEmployeeId}
+            onChange={(event) => {
+              const employee = employees.find((row) => row.id === event.target.value);
+              setForm((prev) => ({
+                ...prev,
+                driverEmployeeId: event.target.value,
+                driverName: employee?.name ?? prev.driverName,
+              }));
+            }}
+            options={driverEmployeeOptions}
+            placeholder="Select driver (dynamic — not fixed to vehicle)"
+            disabled={mode === "ledger" && form.tripStatus !== "pending_driver_acceptance"}
+          />
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextInput
+              label="Driver Name"
+              value={form.driverName}
+              onChange={(event) => setForm((prev) => ({ ...prev, driverName: event.target.value }))}
+              disabled={mode === "ledger" && form.tripStatus !== "pending_driver_acceptance"}
+            />
+            <TextInput
+              label="Phone Number"
+              value={form.driverPhone}
+              onChange={(event) => setForm((prev) => ({ ...prev, driverPhone: event.target.value }))}
+              disabled={mode === "ledger" && form.tripStatus !== "pending_driver_acceptance"}
+            />
+            <div className="sm:col-span-2">
+              <SinglePhotoUploader
+                label="Driver Documents / License Cover"
+                photo={form.temporaryDriverDocumentPhoto}
+                onChange={(photo) =>
+                  setForm((prev) => ({ ...prev, temporaryDriverDocumentPhoto: photo }))
+                }
+                disabled={mode === "ledger" && form.tripStatus !== "pending_driver_acceptance"}
+              />
+              {form.temporaryDriverDocumentPhoto && (
+                <span className="mt-2 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                  Compliance Document Active
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <TextInput
@@ -428,7 +582,13 @@ export default function VehicleManagementTransactionPanel() {
               return { ...prev, openingKm };
             });
           }}
-          hint={openingKmLocked ? "Locked after driver acceptance" : undefined}
+          hint={
+            openingKmLocked
+              ? form.openingKmBaselineLocked
+                ? "Locked from previous trip closing KM baseline"
+                : "Locked after driver acceptance"
+              : undefined
+          }
         />
         <TextInput
           label="Closing KM"
@@ -558,7 +718,7 @@ export default function VehicleManagementTransactionPanel() {
     </>
   );
 
-  if (!vehiclesReady || !accountsReady || !tripsReady) {
+  if (!vehiclesReady || !accountsReady || !tripsReady || employeesLoading) {
     return (
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading Vehicle Expenses & Trip Calculator...
@@ -722,23 +882,39 @@ export default function VehicleManagementTransactionPanel() {
           )}
 
           {form.tripStatus === "delivered" && (
-            <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+            <div className="space-y-4 rounded-xl border border-violet-200 bg-violet-50 p-4">
               <p className="text-sm font-medium text-violet-900">
-                Supervisor / Admin Review — verify cash balance and close trip ledger.
+                Financial Approval —{" "}
+                {FINANCIAL_APPROVAL_STATUS_LABELS[form.financialApprovalStatus]}
               </p>
-              <button
-                type="button"
-                onClick={handleSupervisorClose}
-                className="mt-3 rounded-full bg-corporate-brand px-5 py-2 text-sm font-semibold text-white"
-              >
-                Supervisor: Verify Balance & Close Trip
-              </button>
+
+              {form.financialApprovalStatus === "pending_accountant_review" && (
+                <button
+                  type="button"
+                  onClick={handleAccountantApprove}
+                  className="rounded-full bg-violet-700 px-5 py-2 text-sm font-semibold text-white"
+                >
+                  Accountant: Approve Expense Tally
+                </button>
+              )}
+
+              {form.financialApprovalStatus === "pending_cashier_payout" && (
+                <button
+                  type="button"
+                  onClick={handleCashierPayout}
+                  className="rounded-full bg-emerald-700 px-5 py-2 text-sm font-semibold text-white"
+                >
+                  Cashier: Clear Cash Payout / Disburse Balance
+                </button>
+              )}
             </div>
           )}
 
           {form.tripStatus === "closed_settled" && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-              Trip settled as <strong>PAID/SETTLED</strong>. Vehicle is available for next dispatch.
+              Trip settled as <strong>{FINANCIAL_APPROVAL_STATUS_LABELS.settled_paid}</strong>.
+              Vehicle is available for next dispatch. Closing KM{" "}
+              {form.closingKm.toLocaleString("en-IN")} saved as meter baseline.
               Net balance handed over: {formatCurrency(computed.netDueCashBalance)}
             </div>
           )}

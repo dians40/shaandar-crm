@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BookOpen, Landmark, Scale, Wallet } from "lucide-react";
+import { BookOpen, Landmark, Scale, ScrollText, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
+import CashLedgerPanel from "./cash-ledger-panel";
 import WorkspaceDateRangeFilter, {
   getDefaultDateRange,
   isWithinDateRange,
@@ -19,6 +20,7 @@ import {
 const DISPLAY_VIEWS = [
   { id: "daybook", label: "Daybook View", icon: BookOpen },
   { id: "ledgers", label: "Account Ledgers Grid", icon: Landmark },
+  { id: "cash-ledger", label: "Cash Ledger", icon: ScrollText },
   { id: "cash-bank", label: "Cash / Bank Summary", icon: Wallet },
   { id: "trial-balance", label: "Trial Balance Sheet", icon: Scale },
 ] as const;
@@ -186,6 +188,15 @@ export default function DisplayPanel() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {activeView === "cash-ledger" && (
+        <CashLedgerPanel
+          fromDate={fromDate}
+          toDate={toDate}
+          onFromDateChange={setFromDate}
+          onToDateChange={setToDate}
+        />
       )}
 
       {activeView === "cash-bank" && (

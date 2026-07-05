@@ -3,6 +3,13 @@
 import { useCallback, useState } from "react";
 import { Shield } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  MASTER_LIST_BODY_CELL_CLASS,
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_TABLE_WRAPPER_CLASS,
+  MASTER_LIST_TABLE_CLASS,
+} from "./universal-master-list";
 
 const ROLES = [
   "Super Admin",
@@ -20,11 +27,13 @@ const MODULES = [
   { id: "expenses", label: "Expenses", description: "Expenses, receipts, and journals" },
   { id: "vehicle-trips", label: "Vehicle Trips", description: "Vehicle transaction logs" },
   { id: "parts-orders", label: "Parts Orders", description: "Parts order workflow" },
-  {
-    id: "maintenance-alerts",
-    label: "Maintenance Alerts",
-    description: "Preventive maintenance alerts",
-  },
+  { id: "maintenance-alerts", label: "Maintenance Alerts", description: "Preventive maintenance" },
+  { id: "orders", label: "Order Module", description: "Party order retention and tracking" },
+  { id: "loading", label: "Loading Module", description: "Loading bay and dispatch detail" },
+  { id: "transfer", label: "Transfer Module", description: "Inter-godown stock movement" },
+  { id: "manufacturing", label: "Manufacturing Module", description: "Production run tracking" },
+  { id: "overtime", label: "Overtime Module", description: "Overtime tracker and payouts" },
+  { id: "attendance", label: "Attendance Module", description: "Daily labor attendance" },
 ] as const;
 
 const PERMISSIONS = [
@@ -60,6 +69,7 @@ function createDefaultMatrix(): PermissionMatrix {
 }
 
 export default function UserManagementPanel() {
+  const [selectedRole, setSelectedRole] = useState<RoleName>("Manager");
   const [matrix, setMatrix] = useState<PermissionMatrix>(() => createDefaultMatrix());
 
   const togglePermission = useCallback(
@@ -80,103 +90,123 @@ export default function UserManagementPanel() {
     []
   );
 
+  const isSuperAdmin = selectedRole === "Super Admin";
+
   return (
-    <section className="flex min-w-0 flex-1 flex-col" aria-label="User management workspace">
-      <div className="mb-4 border-b border-corporate-border pb-3">
-        <div className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-corporate-brand" aria-hidden />
-          <div>
-            <h2 className="text-base font-semibold text-corporate-text">
-              Role &amp; Rights Permissions Matrix
-            </h2>
-            <p className="text-sm text-corporate-muted">
-              Configure View, Create, Edit, and Delete rights across major modules. UI-only
-              preview — database sync will follow in a later phase.
-            </p>
+    <section className="flex min-w-0 flex-1 flex-col gap-5" aria-label="User management workspace">
+      <div className="border-b border-corporate-border pb-3">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5 text-corporate-brand" aria-hidden />
+            <div>
+              <h2 className="text-base font-semibold text-corporate-text">
+                Role &amp; Rights Permissions
+              </h2>
+              <p className="text-sm text-corporate-muted">
+                Select a role to configure module permissions across the operational workspace.
+              </p>
+            </div>
+          </div>
+
+          <div className="min-w-[240px]">
+            <label
+              htmlFor="select-role"
+              className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-corporate-muted"
+            >
+              Select Role
+            </label>
+            <select
+              id="select-role"
+              value={selectedRole}
+              onChange={(event) => setSelectedRole(event.target.value as RoleName)}
+              className="input-field w-full font-semibold"
+            >
+              {ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
 
-      <div className="min-w-0 flex-1 overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
-        <table className="min-w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-corporate-border bg-corporate-bg">
-              <th className="sticky left-0 z-10 min-w-[180px] border-r border-corporate-border bg-corporate-bg px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
-                Module / Role
-              </th>
-              {ROLES.map((role) => (
-                <th
-                  key={role}
-                  colSpan={PERMISSIONS.length}
-                  className="border-r border-corporate-border px-2 py-3 text-center text-xs font-semibold uppercase tracking-wide text-corporate-text last:border-r-0"
-                >
-                  {role}
+      <div className="w-full min-w-0 flex-1 rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
+        <div className="border-b border-corporate-border bg-corporate-bg px-5 py-4">
+          <p className="text-sm font-semibold text-corporate-text">
+            Permissions for: <span className="text-corporate-brand">{selectedRole}</span>
+          </p>
+          {isSuperAdmin && (
+            <p className="mt-1 text-xs text-corporate-muted">
+              Super Admin retains full access. All permissions are locked on.
+            </p>
+          )}
+        </div>
+
+        <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "rounded-none border-0 shadow-none")}>
+          <table className={cn(MASTER_LIST_TABLE_CLASS, "w-full")}>
+            <thead className={MASTER_LIST_HEAD_CLASS}>
+              <tr>
+                <th className={cn(MASTER_LIST_HEADER_CELL_CLASS, "min-w-[280px] py-4")}>
+                  Operational Module
                 </th>
-              ))}
-            </tr>
-            <tr className="border-b border-corporate-border bg-corporate-bg/70">
-              <th className="sticky left-0 z-10 border-r border-corporate-border bg-corporate-bg/70 px-4 py-2" />
-              {ROLES.map((role) =>
-                PERMISSIONS.map((permission) => (
+                {PERMISSIONS.map((permission) => (
                   <th
-                    key={`${role}-${permission.key}`}
-                    className="min-w-[68px] border-r border-corporate-border px-1 py-2 text-center text-[10px] font-medium uppercase tracking-wide text-corporate-muted last:border-r-0"
+                    key={permission.key}
+                    className={cn(MASTER_LIST_HEADER_CELL_CLASS, "min-w-[140px] py-4 text-center")}
                   >
                     {permission.label}
                   </th>
-                ))
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {MODULES.map((module) => (
-              <tr
-                key={module.id}
-                className="border-b border-corporate-border last:border-b-0"
-              >
-                <td className="sticky left-0 z-10 border-r border-corporate-border bg-white px-4 py-3">
-                  <p className="font-semibold text-corporate-text">{module.label}</p>
-                  <p className="text-xs text-corporate-muted">{module.description}</p>
-                </td>
-                {ROLES.map((role) =>
-                  PERMISSIONS.map((permission) => {
-                    const isSuperAdmin = role === "Super Admin";
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-corporate-border">
+              {MODULES.map((module) => (
+                <tr key={module.id} className="hover:bg-corporate-bg/40">
+                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "py-5")}>
+                    <p className="text-base font-semibold text-corporate-text">{module.label}</p>
+                    <p className="mt-1 text-sm text-corporate-muted">{module.description}</p>
+                  </td>
+                  {PERMISSIONS.map((permission) => {
                     const checked =
-                      isSuperAdmin || matrix[role][module.id][permission.key];
+                      isSuperAdmin || matrix[selectedRole][module.id][permission.key];
 
                     return (
                       <td
-                        key={`${module.id}-${role}-${permission.key}`}
-                        className="border-r border-corporate-border px-2 py-3 text-center last:border-r-0"
+                        key={`${module.id}-${permission.key}`}
+                        className={cn(MASTER_LIST_BODY_CELL_CLASS, "py-5 text-center")}
                       >
-                        <label className="inline-flex cursor-pointer items-center justify-center">
+                        <label className="inline-flex cursor-pointer items-center justify-center gap-2">
                           <input
                             type="checkbox"
                             checked={checked}
                             disabled={isSuperAdmin}
                             onChange={(event) =>
                               togglePermission(
-                                role,
+                                selectedRole,
                                 module.id,
                                 permission.key,
                                 event.target.checked
                               )
                             }
                             className={cn(
-                              "h-4 w-4 rounded border-corporate-border text-corporate-brand focus:ring-corporate-brand",
+                              "h-5 w-5 rounded border-corporate-border text-corporate-brand focus:ring-corporate-brand",
                               isSuperAdmin && "cursor-not-allowed opacity-60"
                             )}
-                            aria-label={`${role} ${module.label} ${permission.label}`}
+                            aria-label={`${selectedRole} ${module.label} ${permission.label}`}
                           />
+                          <span className="hidden text-sm font-medium text-corporate-muted xl:inline">
+                            {permission.label}
+                          </span>
                         </label>
                       </td>
                     );
-                  })
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
   );

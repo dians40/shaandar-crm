@@ -4,6 +4,7 @@ import type { MasterPanelModuleId } from "@/constants/master-panel-modules";
 export const IMPLEMENTED_TRANSACTION_MODULE_IDS = new Set<MasterPanelModuleId>([
   "attendance-system",
   "overtime-tracker",
+  "vehicle-management-transaction",
 ]);
 
 export type TransactionListColumnLabels = {

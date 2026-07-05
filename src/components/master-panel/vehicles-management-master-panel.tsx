@@ -86,6 +86,7 @@ export default function VehiclesManagementMasterPanel() {
       registrationNumber: record.registrationNumber,
       model: record.model,
       ownerDetails: record.ownerDetails,
+      averageMileageKmPerLiter: record.averageMileageKmPerLiter,
       driverName: record.driverName,
       driverJoiningDate: record.driverJoiningDate,
       driverHistory: record.driverHistory,
@@ -204,6 +205,21 @@ export default function VehiclesManagementMasterPanel() {
               value={form.ownerDetails}
               onChange={(e) => setForm((p) => ({ ...p, ownerDetails: e.target.value }))}
             />
+            <TextInput
+              label="Average Mileage (KM per Liter)"
+              type="number"
+              min="0.1"
+              step="0.1"
+              required
+              value={String(form.averageMileageKmPerLiter || "")}
+              onChange={(e) =>
+                setForm((p) => ({
+                  ...p,
+                  averageMileageKmPerLiter: Number(e.target.value) || 0,
+                }))
+              }
+              hint="Fixed fuel efficiency saved permanently on this vehicle profile"
+            />
           </div>
 
           <div className="space-y-4 rounded-lg border border-corporate-border bg-corporate-bg/40 p-4">
@@ -299,6 +315,7 @@ export default function VehiclesManagementMasterPanel() {
             <tr>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Registration</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Driver</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Mileage (KM/L)</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Model</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Compliance</th>
               <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
@@ -307,7 +324,7 @@ export default function VehiclesManagementMasterPanel() {
           <tbody className="divide-y divide-corporate-border">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
                   <Car className="mx-auto mb-2 h-6 w-6 opacity-60" />
                   {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No vehicles yet."}
                 </td>
@@ -320,6 +337,11 @@ export default function VehiclesManagementMasterPanel() {
                     onEdit={() => openEdit(row)}
                   />
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.driverName || "—"}</td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                    {row.averageMileageKmPerLiter > 0
+                      ? `${row.averageMileageKmPerLiter} KM/L`
+                      : "—"}
+                  </td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.model || "—"}</td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>
                     {getVehicleRenewalSummary(row)}

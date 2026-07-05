@@ -37,6 +37,8 @@ export type VehicleMasterRecord = {
   registrationNumber: string;
   model: string;
   ownerDetails: string;
+  /** Fixed average fuel efficiency — KM per liter */
+  averageMileageKmPerLiter: number;
   driverName: string;
   driverJoiningDate: string;
   driverHistory: VehicleDriverEntry[];
@@ -82,6 +84,7 @@ export const EMPTY_VEHICLE_MASTER_FORM: VehicleMasterFormState = {
   registrationNumber: "",
   model: "",
   ownerDetails: "",
+  averageMileageKmPerLiter: 0,
   driverName: "",
   driverJoiningDate: "",
   driverHistory: [],
@@ -140,6 +143,7 @@ export function normalizeVehicleMasterRecord(
     registrationNumber: row.registrationNumber ?? row.vehicleName ?? "",
     model: row.model ?? "",
     ownerDetails: row.ownerDetails ?? "",
+    averageMileageKmPerLiter: Number(row.averageMileageKmPerLiter) || 0,
     driverName: row.driverName ?? "",
     driverJoiningDate: row.driverJoiningDate ?? "",
     driverHistory: Array.isArray(row.driverHistory) ? row.driverHistory : [],
@@ -153,6 +157,9 @@ export function validateVehicleMasterForm(form: VehicleMasterFormState): string 
   if (!form.registrationNumber.trim()) return "Registration number is required.";
   if (!form.driverName.trim()) return "Driver name is required.";
   if (!form.driverJoiningDate.trim()) return "Driver joining date is required.";
+  if (!form.averageMileageKmPerLiter || form.averageMileageKmPerLiter <= 0) {
+    return "Average Mileage (KM per Liter) is required and must be greater than zero.";
+  }
   return null;
 }
 

@@ -71,6 +71,12 @@ export default function VehicleProfileCard({
           <p className="mt-2 text-sm text-corporate-text">
             Driver: {record.driverName || "—"} (joined {record.driverJoiningDate || "—"})
           </p>
+          <p className="mt-1 text-sm font-medium text-corporate-brand">
+            Avg Mileage:{" "}
+            {record.averageMileageKmPerLiter > 0
+              ? `${record.averageMileageKmPerLiter} KM per Liter`
+              : "Not configured"}
+          </p>
           {record.ownerDetails && (
             <p className="mt-1 text-sm text-corporate-text">
               Owner: {record.ownerDetails}

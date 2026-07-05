@@ -1,13 +1,37 @@
 import {
   applySalesStationKmMapping,
+  calculateEstimatedCashAdvance,
   calculateFinalTripSettlement,
   calculateFuelCost,
+  calculateNetDueCashBalance,
   calculateStationDistanceFreight,
   calculateTonnageFreight,
   resolveTonnageRate,
+  sumOnRouteExtraExpenses,
   type TonnageRateOption,
   type VehicleTripType,
 } from "@/lib/vehicle-trip-calculator";
+
+export type VehicleTripStatus =
+  | "pending_driver_acceptance"
+  | "on_route"
+  | "delivered"
+  | "closed_settled";
+
+export type VehicleTripSettlementStatus = "due" | "paid_settled";
+
+export type OnRouteExtraExpense = {
+  id: string;
+  description: string;
+  amount: number;
+};
+
+export const VEHICLE_TRIP_STATUS_LABELS: Record<VehicleTripStatus, string> = {
+  pending_driver_acceptance: "Dispatched / Pending Driver Acceptance",
+  on_route: "On-Route",
+  delivered: "Delivered",
+  closed_settled: "Closed / Settled",
+};
 
 export type VehicleTripExpenseRecord = {
   id: string;
@@ -30,13 +54,31 @@ export type VehicleTripExpenseRecord = {
   stationDistanceFreight: number;
   dailyFoodAllowance: number;
   finalSettlement: number;
+  tripStatus: VehicleTripStatus;
+  settlementStatus: VehicleTripSettlementStatus;
+  cashAdvanceGiven: number;
+  driverAcceptedAt: string | null;
+  driverAcceptedOpeningKm: number | null;
+  onRouteExtraExpenses: OnRouteExtraExpense[];
+  extraExpensesTotal: number;
+  netDueCashBalance: number;
+  supervisorVerifiedAt: string | null;
+  supervisorVerifiedBy: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
 export type VehicleTripExpenseFormState = Omit<
   VehicleTripExpenseRecord,
-  "id" | "fuelCost" | "tonnageFreight" | "stationDistanceFreight" | "finalSettlement" | "createdAt" | "updatedAt"
+  | "id"
+  | "fuelCost"
+  | "tonnageFreight"
+  | "stationDistanceFreight"
+  | "finalSettlement"
+  | "extraExpensesTotal"
+  | "netDueCashBalance"
+  | "createdAt"
+  | "updatedAt"
 >;
 
 export const EMPTY_VEHICLE_TRIP_FORM: VehicleTripExpenseFormState = {
@@ -55,6 +97,14 @@ export const EMPTY_VEHICLE_TRIP_FORM: VehicleTripExpenseFormState = {
   partyStationName: "",
   partyDistanceKm: 0,
   dailyFoodAllowance: 0,
+  tripStatus: "pending_driver_acceptance",
+  settlementStatus: "due",
+  cashAdvanceGiven: 0,
+  driverAcceptedAt: null,
+  driverAcceptedOpeningKm: null,
+  onRouteExtraExpenses: [],
+  supervisorVerifiedAt: null,
+  supervisorVerifiedBy: null,
 };
 
 export type ComputedTripAmounts = {
@@ -62,7 +112,21 @@ export type ComputedTripAmounts = {
   tonnageFreight: number;
   stationDistanceFreight: number;
   finalSettlement: number;
+  cashAdvanceGiven: number;
+  extraExpensesTotal: number;
+  netDueCashBalance: number;
 };
+
+export function createOnRouteExtraExpense(
+  description = "",
+  amount = 0
+): OnRouteExtraExpense {
+  return {
+    id: `extra-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    description,
+    amount,
+  };
+}
 
 export function computeTripAmounts(
   form: VehicleTripExpenseFormState
@@ -94,7 +158,34 @@ export function computeTripAmounts(
     stationDistanceFreight
   );
 
-  return { fuelCost, tonnageFreight, stationDistanceFreight, finalSettlement };
+  const cashAdvanceGiven =
+    form.cashAdvanceGiven > 0
+      ? form.cashAdvanceGiven
+      : calculateEstimatedCashAdvance(
+          form.dailyFoodAllowance,
+          fuelCost,
+          tonnageFreight,
+          stationDistanceFreight
+        );
+
+  const extraExpensesTotal = sumOnRouteExtraExpenses(form.onRouteExtraExpenses);
+
+  const netDueCashBalance = calculateNetDueCashBalance(
+    cashAdvanceGiven,
+    fuelCost,
+    form.dailyFoodAllowance,
+    extraExpensesTotal
+  );
+
+  return {
+    fuelCost,
+    tonnageFreight,
+    stationDistanceFreight,
+    finalSettlement,
+    cashAdvanceGiven,
+    extraExpensesTotal,
+    netDueCashBalance,
+  };
 }
 
 export function normalizeVehicleTripExpenseRecord(
@@ -116,6 +207,17 @@ export function normalizeVehicleTripExpenseRecord(
     partyStationName: row.partyStationName ?? "",
     partyDistanceKm: Number(row.partyDistanceKm) || 0,
     dailyFoodAllowance: Number(row.dailyFoodAllowance) || 0,
+    tripStatus: row.tripStatus ?? "closed_settled",
+    settlementStatus: row.settlementStatus ?? "paid_settled",
+    cashAdvanceGiven: Number(row.cashAdvanceGiven) || 0,
+    driverAcceptedAt: row.driverAcceptedAt ?? null,
+    driverAcceptedOpeningKm:
+      row.driverAcceptedOpeningKm != null ? Number(row.driverAcceptedOpeningKm) : null,
+    onRouteExtraExpenses: Array.isArray(row.onRouteExtraExpenses)
+      ? row.onRouteExtraExpenses
+      : [],
+    supervisorVerifiedAt: row.supervisorVerifiedAt ?? null,
+    supervisorVerifiedBy: row.supervisorVerifiedBy ?? null,
   };
 
   const computed = computeTripAmounts(form);
@@ -127,26 +229,32 @@ export function normalizeVehicleTripExpenseRecord(
     tonnageFreight: row.tonnageFreight ?? computed.tonnageFreight,
     stationDistanceFreight: row.stationDistanceFreight ?? computed.stationDistanceFreight,
     finalSettlement: row.finalSettlement ?? computed.finalSettlement,
+    cashAdvanceGiven: row.cashAdvanceGiven ?? computed.cashAdvanceGiven,
+    extraExpensesTotal: row.extraExpensesTotal ?? computed.extraExpensesTotal,
+    netDueCashBalance: row.netDueCashBalance ?? computed.netDueCashBalance,
     createdAt: row.createdAt ?? new Date().toISOString(),
     updatedAt: row.updatedAt ?? new Date().toISOString(),
   };
 }
 
-export function validateVehicleTripForm(form: VehicleTripExpenseFormState): string | null {
+export function validateVehicleTripForm(
+  form: VehicleTripExpenseFormState,
+  options?: { isDispatch?: boolean }
+): string | null {
   if (!form.tripDate.trim()) return "Trip date is required.";
   if (!form.vehicleId) return "Vehicle selection is required.";
   if (form.averageMileageKmPerLiter <= 0) {
     return "Selected vehicle must have Average Mileage (KM per Liter) configured in Vehicles Master.";
   }
   if (form.dieselPricePerLiter <= 0) return "Today's diesel price per liter is required.";
-  if (form.closingKm < form.openingKm) {
-    return "Closing KM must be greater than or equal to Opening KM.";
-  }
   if (form.tripType === "purchase" && form.totalTonnageLoaded <= 0) {
     return "Total tonnage loaded is required for purchase / inward trips.";
   }
   if (form.tripType === "sales" && !form.partyAccountId) {
     return "Party station / destination is required for sales / outward trips.";
+  }
+  if (!options?.isDispatch && form.closingKm < form.openingKm) {
+    return "Closing KM must be greater than or equal to Opening KM.";
   }
   return null;
 }

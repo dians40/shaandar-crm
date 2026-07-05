@@ -78,6 +78,23 @@ export function useVehicleTripExpenses() {
     [persist]
   );
 
+  const patchTrip = useCallback(
+    (id: string, patch: Partial<VehicleTripExpenseRecord>) => {
+      const next = readTrips().map((row) =>
+        row.id === id
+          ? normalizeVehicleTripExpenseRecord({
+              ...row,
+              ...patch,
+              id: row.id,
+              updatedAt: new Date().toISOString(),
+            })
+          : row
+      );
+      persist(next);
+    },
+    [persist]
+  );
+
   const removeTrip = useCallback(
     (id: string) => {
       persist(readTrips().filter((row) => row.id !== id));
@@ -85,5 +102,5 @@ export function useVehicleTripExpenses() {
     [persist]
   );
 
-  return { records, isReady, addTrip, updateTrip, removeTrip };
+  return { records, isReady, addTrip, updateTrip, patchTrip, removeTrip };
 }

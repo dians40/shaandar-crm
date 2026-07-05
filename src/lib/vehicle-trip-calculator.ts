@@ -87,3 +87,39 @@ export function applySalesStationKmMapping(
     closingKm: round2(opening + distance),
   };
 }
+
+export function sumOnRouteExtraExpenses(
+  expenses: Array<{ amount: number }>
+): number {
+  return round2(
+    expenses.reduce((sum, row) => sum + (Number(row.amount) || 0), 0)
+  );
+}
+
+/** Estimated cash advance at dispatch — fuel + food + applicable freight. */
+export function calculateEstimatedCashAdvance(
+  dailyFoodAllowance: number,
+  fuelCost: number,
+  tonnageFreight: number,
+  stationDistanceFreight: number
+): number {
+  return calculateFinalTripSettlement(
+    dailyFoodAllowance,
+    fuelCost,
+    tonnageFreight,
+    stationDistanceFreight
+  );
+}
+
+/** Net cash the driver must return after on-route spending. */
+export function calculateNetDueCashBalance(
+  cashAdvanceGiven: number,
+  fuelCost: number,
+  dailyFoodAllowance: number,
+  extraExpensesTotal: number
+): number {
+  return round2(
+    Math.max(0, cashAdvanceGiven) -
+      (Math.max(0, fuelCost) + Math.max(0, dailyFoodAllowance) + Math.max(0, extraExpensesTotal))
+  );
+}

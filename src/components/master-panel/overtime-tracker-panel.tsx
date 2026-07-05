@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Clock, Plus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Clock } from "lucide-react";
 import { SelectInput, TextInput, TextareaInput } from "@/components/forms/form-fields";
 import {
   OVERTIME_LOCATION_PRESETS,
@@ -10,6 +10,7 @@ import {
 import { useEmployees } from "@/hooks/use-employees";
 import { useGeneralSettings } from "@/hooks/use-general-settings";
 import { useGodowns } from "@/hooks/use-godowns";
+import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import { useOvertimeRecords } from "@/hooks/use-overtime";
 import {
   LIST_SEARCH_EMPTY_MESSAGE,
@@ -25,9 +26,19 @@ import {
   type OvertimeRecord,
   type OvertimeShiftType,
 } from "@/types/overtime";
+import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
-import ModuleListSearchBar from "./module-list-search-bar";
 import UniversalRecordProfile from "./universal-record-profile";
+import {
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_HEADER_CELL_RIGHT_CLASS,
+  UniversalMasterListActionsCell,
+  UniversalMasterListNameCell,
+  UniversalMasterListRow,
+  UniversalMasterListShell,
+  UniversalMasterListTable,
+} from "./universal-master-list";
 
 const MACHINE_CUSTOM_VALUE = "__custom_machine__";
 
@@ -178,6 +189,15 @@ export default function OvertimeTrackerPanel() {
     setError(null);
   };
 
+  const resetPanelState = useCallback(() => {
+    resetForm();
+    setView("list");
+    setSearchQuery("");
+    setViewingId(null);
+  }, []);
+
+  useMasterPanelBlockReset("transaction", resetPanelState);
+
   const openAdd = () => {
     resetForm();
     consumePendingEmployeeSelection();
@@ -325,7 +345,17 @@ export default function OvertimeTrackerPanel() {
 
   if (view === "add" || view === "edit") {
     return (
-      <div className="space-y-5 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
+      <>
+        <ModuleAddListTabBar
+          moduleName="Overtime"
+          active="add"
+          onList={() => {
+            resetForm();
+            setView("list");
+          }}
+          onAdd={openAdd}
+        />
+        <div className="space-y-5 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
         <div>
           <h2 className="text-lg font-semibold text-corporate-text">
             {view === "add" ? "Add Overtime" : "Edit Overtime"}
@@ -481,59 +511,37 @@ export default function OvertimeTrackerPanel() {
           </button>
         </div>
       </div>
+      </>
     );
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-corporate-text">Overtime List</h2>
-          <p className="text-sm text-corporate-muted">
-            Track authorized extra hours, manager assignments, and payout amounts.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={openAdd}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-corporate-brand px-4 py-2 text-sm font-medium text-white"
-        >
-          <Plus className="h-4 w-4" />
-          Add Overtime
-        </button>
-      </div>
-
-      <ModuleListSearchBar
+    <>
+      <ModuleAddListTabBar
         moduleName="Overtime"
-        value={searchQuery}
-        onChange={setSearchQuery}
+        active="list"
+        onList={() => {
+          resetForm();
+          setView("list");
+        }}
+        onAdd={openAdd}
       />
 
-      <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
-        <table className="min-w-full divide-y divide-corporate-border">
-          <thead className="bg-corporate-bg">
+      <UniversalMasterListShell
+        moduleName="Overtime"
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+      >
+        <UniversalMasterListTable>
+          <thead className={MASTER_LIST_HEAD_CLASS}>
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Employee
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Shift
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Duration
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Location / Manager
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Amount
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-corporate-muted">
-                Approved By
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-corporate-muted">
-                Actions
-              </th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Shift</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Duration</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Location / Manager</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Amount</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Approved By</th>
+              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
@@ -552,8 +560,11 @@ export default function OvertimeTrackerPanel() {
               </tr>
             ) : (
               filteredRecords.map((row) => (
-                <tr key={row.id}>
-                  <td className="px-4 py-3 text-sm font-medium">{row.employeeName}</td>
+                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
+                  <UniversalMasterListNameCell
+                    name={row.employeeName}
+                    onEdit={() => openEdit(row)}
+                  />
                   <td className="px-4 py-3 text-sm">{row.shiftType}</td>
                   <td className="px-4 py-3 text-sm">
                     {row.fromTime} – {row.toTime} ({row.totalHours}h)
@@ -571,21 +582,23 @@ export default function OvertimeTrackerPanel() {
                       </p>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-sm">₹{row.amountToPay.toLocaleString("en-IN")}</td>
+                  <td className="px-4 py-3 text-sm">
+                    ₹{row.amountToPay.toLocaleString("en-IN")}
+                  </td>
                   <td className="px-4 py-3 text-sm">{row.approvedBy}</td>
-                  <td className="px-4 py-3 text-right">
+                  <UniversalMasterListActionsCell>
                     <ModuleListActionGroup
                       onView={() => openView(row)}
                       onEdit={() => openEdit(row)}
                       editLabel="Edit Overtime"
                     />
-                  </td>
-                </tr>
+                  </UniversalMasterListActionsCell>
+                </UniversalMasterListRow>
               ))
             )}
           </tbody>
-        </table>
-      </div>
-    </div>
+        </UniversalMasterListTable>
+      </UniversalMasterListShell>
+    </>
   );
 }

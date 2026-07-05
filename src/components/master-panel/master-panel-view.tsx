@@ -5,17 +5,22 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { IMPLEMENTED_ADMINISTRATION_MODULE_IDS } from "@/constants/administration-modules";
+import { IMPLEMENTED_TRANSACTION_MODULE_IDS } from "@/constants/transaction-modules";
 import {
   DEFAULT_MASTER_PANEL_MODULE_ID,
   getGroupForModule,
   getMasterPanelModule,
   type MasterPanelModuleId,
 } from "@/constants/master-panel-modules";
-import { MASTER_PANEL_NAVIGATE_EVENT } from "@/lib/master-panel-entity-bridge";
+import {
+  MASTER_PANEL_NAVIGATE_EVENT,
+  resetMasterPanelBlockState,
+} from "@/lib/master-panel-entity-bridge";
 import AccountGroupManagementPanel from "./account-group-management-panel";
 import AccountsManagementPanel from "./accounts-management-panel";
 import AdministrationPlaceholderPanel from "./administration-placeholder-panel";
@@ -26,6 +31,7 @@ import ItemsManagementPanel from "./items-management-panel";
 import MasterPanelManagerNav from "./master-panel-manager-nav";
 import ModulePlaceholder from "./module-placeholder";
 import OvertimeTrackerPanel from "./overtime-tracker-panel";
+import TransactionPlaceholderPanel from "./transaction-placeholder-panel";
 import UnitConversionManagementPanel from "./unit-conversion-management-panel";
 import UnitsManagementPanel from "./units-management-panel";
 import BillOfSundriesManagementPanel from "./bill-of-sundries-management-panel";
@@ -86,6 +92,9 @@ function MasterPanelContent() {
   const [activeModuleId, setActiveModuleId] = useState<MasterPanelModuleId>(
     DEFAULT_MASTER_PANEL_MODULE_ID
   );
+  const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
+  const activeModuleIdRef = useRef(activeModuleId);
+  activeModuleIdRef.current = activeModuleId;
 
   const activeModule = useMemo(
     () =>
@@ -94,21 +103,43 @@ function MasterPanelContent() {
     [activeModuleId]
   );
 
-  const handleModuleSelect = useCallback((id: MasterPanelModuleId) => {
+  const navigateToModule = useCallback((id: MasterPanelModuleId) => {
+    const previousId = activeModuleIdRef.current;
+    const previousBlock = getGroupForModule(previousId)?.id;
+    const nextBlock = getGroupForModule(id)?.id;
+
+    if (
+      previousId !== id &&
+      previousBlock &&
+      nextBlock &&
+      previousBlock !== nextBlock
+    ) {
+      resetMasterPanelBlockState(previousBlock);
+      setWorkspaceEpoch((epoch) => epoch + 1);
+    }
+
     setActiveModuleId(id);
   }, []);
 
+  const handleModuleSelect = useCallback(
+    (id: MasterPanelModuleId) => {
+      navigateToModule(id);
+    },
+    [navigateToModule]
+  );
+
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ targetModuleId?: MasterPanelModuleId }>).detail;
+      const detail = (event as CustomEvent<{ targetModuleId?: MasterPanelModuleId }>)
+        .detail;
       if (detail?.targetModuleId) {
-        setActiveModuleId(detail.targetModuleId);
+        navigateToModule(detail.targetModuleId);
       }
     };
 
     window.addEventListener(MASTER_PANEL_NAVIGATE_EVENT, handler);
     return () => window.removeEventListener(MASTER_PANEL_NAVIGATE_EVENT, handler);
-  }, []);
+  }, [navigateToModule]);
 
   const renderModuleWorkspace = () => {
     const moduleId = activeModule?.id;
@@ -161,6 +192,13 @@ function MasterPanelContent() {
           ) {
             return <AdministrationPlaceholderPanel module={activeModule} />;
           }
+          if (
+            moduleGroup?.id === "transaction" &&
+            !IMPLEMENTED_TRANSACTION_MODULE_IDS.has(moduleId) &&
+            activeModule
+          ) {
+            return <TransactionPlaceholderPanel module={activeModule} />;
+          }
           return activeModule ? (
             <ModulePlaceholder module={activeModule} />
           ) : null;
@@ -196,7 +234,7 @@ function MasterPanelContent() {
             <p className="text-sm text-corporate-muted">{activeModule.subtitle}</p>
           </div>
         )}
-        {renderModuleWorkspace()}
+        <div key={`${workspaceEpoch}-${activeModuleId}`}>{renderModuleWorkspace()}</div>
       </section>
     </div>
   );

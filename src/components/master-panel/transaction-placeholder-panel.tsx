@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { Construction } from "lucide-react";
 import type { MasterPanelModule } from "@/constants/master-panel-modules";
+import { getTransactionListColumnLabels } from "@/constants/transaction-modules";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
@@ -17,19 +18,20 @@ type Props = {
   module: MasterPanelModule;
 };
 
-export default function AdministrationPlaceholderPanel({ module }: Props) {
+export default function TransactionPlaceholderPanel({ module }: Props) {
   const [view, setView] = useState<"list" | "add">("list");
   const [searchQuery, setSearchQuery] = useState("");
   const Icon = module?.icon ?? Construction;
   const moduleName = module?.navLabel ?? "Module";
   const hasSearchQuery = searchQuery.trim().length > 0;
+  const { primaryLabel, secondaryLabel } = getTransactionListColumnLabels(module.id);
 
   const resetPanelState = useCallback(() => {
     setView("list");
     setSearchQuery("");
   }, []);
 
-  useMasterPanelBlockReset("administration", resetPanelState);
+  useMasterPanelBlockReset("transaction", resetPanelState);
 
   return (
     <>
@@ -50,13 +52,17 @@ export default function AdministrationPlaceholderPanel({ module }: Props) {
             <table className="min-w-full divide-y divide-corporate-border">
               <thead className={MASTER_LIST_HEAD_CLASS}>
                 <tr>
-                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Name</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>{primaryLabel}</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>{secondaryLabel}</th>
                   <th className={MASTER_LIST_HEADER_CELL_CLASS}>Status</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td colSpan={2} className="px-4 py-12 text-center text-sm text-corporate-muted">
+                  <td
+                    colSpan={3}
+                    className="px-4 py-12 text-center text-sm text-corporate-muted"
+                  >
                     <Icon className="mx-auto mb-2 h-6 w-6 opacity-60" aria-hidden />
                     {hasSearchQuery
                       ? LIST_SEARCH_EMPTY_MESSAGE

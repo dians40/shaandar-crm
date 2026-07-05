@@ -1,8 +1,12 @@
-import type { MasterPanelModuleId } from "@/constants/master-panel-modules";
+import type {
+  MasterPanelModuleGroupId,
+  MasterPanelModuleId,
+} from "@/constants/master-panel-modules";
 
 const STORAGE_KEY = "shaandar-crm-master-panel-selection";
 export const MASTER_PANEL_NAVIGATE_EVENT = "master-panel:navigate";
 export const MASTER_PANEL_ENTITY_SELECTED_EVENT = "master-panel:entity-selected";
+export const MASTER_PANEL_BLOCK_RESET_EVENT = "master-panel:block-reset";
 
 export type MasterPanelEntityType =
   | "employee"
@@ -67,6 +71,19 @@ export function readMasterPanelSelection(): MasterPanelEntityRef | null {
 export function clearMasterPanelSelection() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(STORAGE_KEY);
+}
+
+/** Wipe cross-module entity bridge state when leaving an ERP block. */
+export function resetMasterPanelBlockState(
+  clearedBlock: MasterPanelModuleGroupId
+): void {
+  if (typeof window === "undefined") return;
+  clearMasterPanelSelection();
+  window.dispatchEvent(
+    new CustomEvent(MASTER_PANEL_BLOCK_RESET_EVENT, {
+      detail: { clearedBlock },
+    })
+  );
 }
 
 export function navigateMasterPanelModule(targetModuleId: MasterPanelModuleId) {

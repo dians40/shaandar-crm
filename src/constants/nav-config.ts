@@ -1,14 +1,4 @@
-import {
-  LayoutDashboard,
-  PanelTop,
-  Users,
-  ArrowLeftRight,
-  Monitor,
-  FileBarChart,
-  LineChart,
-  Database,
-  type LucideIcon,
-} from "lucide-react";
+import { LayoutDashboard, PanelTop, Users, ArrowLeftRight, Monitor, FileBarChart, LineChart, type LucideIcon } from "lucide-react";
 
 export type NavItem = {
   label: string;
@@ -24,5 +14,4 @@ export const sidebarNavItems: NavItem[] = [
   { label: "Display", href: "/display", icon: Monitor },
   { label: "Report", href: "/report-generated", icon: FileBarChart },
   { label: "Analyze API", href: "/api-refresh", icon: LineChart },
-  { label: "Fresh Data Analyze", href: "/data-analysis", icon: Database },
 ];

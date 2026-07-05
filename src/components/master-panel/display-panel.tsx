@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BookOpen, Landmark, Package, Scale, ScrollText, Wallet } from "lucide-react";
+import { BookOpen, Landmark, Package, Scale, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import CashLedgerPanel from "./cash-ledger-panel";
+import CashBankSummaryPanel from "./cash-bank-summary-panel";
 import MaterialLedgerPanel from "./material-ledger-panel";
 import WorkspaceDateRangeFilter, {
   getDefaultDateRange,
@@ -21,9 +21,8 @@ import {
 const DISPLAY_VIEWS = [
   { id: "daybook", label: "Daybook View", icon: BookOpen },
   { id: "ledgers", label: "Account Ledgers Grid", icon: Landmark },
-  { id: "cash-ledger", label: "Cash Ledger", icon: ScrollText },
   { id: "material-ledger", label: "Material Ledger", icon: Package },
-  { id: "cash-bank", label: "Cash / Bank Summary", icon: Wallet },
+  { id: "cash-bank", label: "Cash & Bank Summary", icon: Wallet },
   { id: "trial-balance", label: "Trial Balance Sheet", icon: Scale },
 ] as const;
 
@@ -45,12 +44,6 @@ const LEDGER_ROWS = [
   { date: "2026-07-05", account: "Diesel Expense", opening: "0.00", debit: "12,400.00", credit: "0.00", closing: "12,400.00" },
 ];
 
-const CASH_BANK_ROWS = [
-  { account: "Cash In Hand", opening: "2,10,000.00", receipts: "32,000.00", payments: "18,500.00", closing: "2,23,500.00", status: "Balanced" },
-  { account: "HDFC Current A/c", opening: "8,45,000.00", receipts: "1,25,000.00", payments: "48,500.00", closing: "9,21,500.00", status: "Balanced" },
-  { account: "Petty Cash", opening: "15,000.00", receipts: "4,200.00", payments: "3,800.00", closing: "15,400.00", status: "Review" },
-];
-
 const TRIAL_BALANCE_ROWS = [
   { group: "Assets", account: "Cash & Bank", debit: "11,45,000.00", credit: "0.00" },
   { group: "Assets", account: "Inventory Closing", debit: "6,80,000.00", credit: "0.00" },
@@ -58,19 +51,6 @@ const TRIAL_BALANCE_ROWS = [
   { group: "Income", account: "Sales Account", debit: "0.00", credit: "12,50,000.00" },
   { group: "Expenses", account: "Purchase & Diesel", debit: "4,95,000.00", credit: "0.00" },
 ];
-
-function StatusBadge({ label }: { label: string }) {
-  const tone =
-    label === "Balanced"
-      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-      : "bg-amber-50 text-amber-700 border-amber-200";
-
-  return (
-    <span className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold", tone)}>
-      {label}
-    </span>
-  );
-}
 
 export default function DisplayPanel() {
   const defaults = getDefaultDateRange();
@@ -93,8 +73,8 @@ export default function DisplayPanel() {
       <div className="border-b border-corporate-border pb-3">
         <h2 className="text-base font-semibold text-corporate-text">Universal Display Console</h2>
         <p className="text-sm text-corporate-muted">
-          Tally-style ledger views with full-width daybook, account ledgers, cash/bank summary,
-          and trial balance grids.
+          Professional ledger views including daybook, account ledgers, cash &amp; bank summary,
+          material movement, and trial balance grids.
         </p>
       </div>
 
@@ -192,15 +172,6 @@ export default function DisplayPanel() {
         </div>
       )}
 
-      {activeView === "cash-ledger" && (
-        <CashLedgerPanel
-          fromDate={fromDate}
-          toDate={toDate}
-          onFromDateChange={setFromDate}
-          onToDateChange={setToDate}
-        />
-      )}
-
       {activeView === "material-ledger" && (
         <MaterialLedgerPanel
           fromDate={fromDate}
@@ -211,38 +182,12 @@ export default function DisplayPanel() {
       )}
 
       {activeView === "cash-bank" && (
-        <div className="space-y-3">
-          {CASH_BANK_ROWS.map((row) => (
-            <div
-              key={row.account}
-              className="grid gap-3 rounded-xl border border-corporate-border bg-corporate-surface p-4 shadow-card lg:grid-cols-[1.2fr_repeat(4,minmax(0,1fr))_auto]"
-            >
-              <div>
-                <p className="text-xs uppercase tracking-wide text-corporate-muted">Account</p>
-                <p className="font-semibold text-corporate-text">{row.account}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-corporate-muted">Opening</p>
-                <p className="font-medium">{row.opening}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-corporate-muted">Receipts</p>
-                <p className="font-medium text-emerald-700">{row.receipts}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-corporate-muted">Payments</p>
-                <p className="font-medium text-red-700">{row.payments}</p>
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-corporate-muted">Closing</p>
-                <p className="font-semibold">{row.closing}</p>
-              </div>
-              <div className="flex items-center">
-                <StatusBadge label={row.status} />
-              </div>
-            </div>
-          ))}
-        </div>
+        <CashBankSummaryPanel
+          fromDate={fromDate}
+          toDate={toDate}
+          onFromDateChange={setFromDate}
+          onToDateChange={setToDate}
+        />
       )}
 
       {activeView === "trial-balance" && (

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Building2, ChevronDown, LogOut, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sidebarNavItems } from "@/constants/nav-config";
@@ -41,6 +41,7 @@ export default function Sidebar({
   onClose?: () => void;
 } = {}) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { selectedRole, canViewMasterPanelModule } = useUserPermissions();
   const activeModuleParam = searchParams.get("module");
@@ -71,6 +72,17 @@ export default function Sidebar({
       [sectionId]: !current[sectionId],
     }));
   }, []);
+
+  const openSection = useCallback((sectionId: ExpandableSectionId, href: string) => {
+    setExpandedSections((current) => ({
+      ...current,
+      [sectionId]: true,
+    }));
+
+    if (!pathname.startsWith(href)) {
+      router.push(href);
+    }
+  }, [pathname, router]);
 
   const nestedModules = useMemo(
     () =>
@@ -134,26 +146,21 @@ export default function Sidebar({
                     )}
                   >
                     <div className="flex items-center">
-                      <Link
-                        href={item.href}
-                        onClick={() => {
-                          setExpandedSections((current) => ({
-                            ...current,
-                            [expandableKey]: !current[expandableKey],
-                          }));
-                          onNavigate?.();
-                        }}
+                      <button
+                        type="button"
+                        onClick={() => openSection(expandableKey, sectionConfig.href)}
                         className={cn(
-                          "flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-3 text-base font-medium transition-colors sm:text-sm",
+                          "flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-3 text-left text-base font-medium transition-colors sm:text-sm",
                           isSectionActive
                             ? "text-corporate-brand"
                             : "text-corporate-muted hover:bg-corporate-bg hover:text-corporate-text"
                         )}
-                        aria-current={isSectionActive ? "page" : undefined}
+                        aria-expanded={isExpanded}
+                        aria-controls={`sidebar-section-${expandableKey}`}
                       >
                         <Icon className="h-4 w-4 shrink-0" aria-hidden />
                         <span className="truncate">{item.label}</span>
-                      </Link>
+                      </button>
                       <button
                         type="button"
                         onClick={() => toggleSection(expandableKey)}
@@ -162,6 +169,7 @@ export default function Sidebar({
                           isExpanded && "text-corporate-brand"
                         )}
                         aria-expanded={isExpanded}
+                        aria-controls={`sidebar-section-${expandableKey}`}
                         aria-label={`${isExpanded ? "Collapse" : "Expand"} ${item.label} modules`}
                       >
                         <ChevronDown
@@ -176,10 +184,16 @@ export default function Sidebar({
 
                     {isExpanded && (
                       <ul
+                        id={`sidebar-section-${expandableKey}`}
                         className="space-y-0.5 pb-2 pl-3"
                         aria-label={`${group?.label ?? item.label} modules`}
                       >
-                        {nestedModules[expandableKey].map((moduleId) => {
+                        {nestedModules[expandableKey].length === 0 ? (
+                          <li className="px-3 py-2 text-xs text-corporate-muted">
+                            No modules available for the current role.
+                          </li>
+                        ) : (
+                          nestedModules[expandableKey].map((moduleId) => {
                           const panelModule = getMasterPanelModule(moduleId);
                           if (!panelModule) return null;
 
@@ -206,7 +220,8 @@ export default function Sidebar({
                               </Link>
                             </li>
                           );
-                        })}
+                        })
+                        )}
                       </ul>
                     )}
                   </div>

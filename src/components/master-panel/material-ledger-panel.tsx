@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { cn } from "@/lib/utils";
-import WorkspaceDateRangeFilter, { isWithinDateRange } from "./workspace-date-range-filter";
+import { matchesEntityFilter } from "@/constants/display-criteria-config";
+import { isWithinDateRange } from "./workspace-date-range-filter";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
@@ -160,39 +161,63 @@ function CategoryBadge({ label }: { label: InwardCategory }) {
 type MaterialLedgerPanelProps = {
   fromDate: string;
   toDate: string;
-  onFromDateChange: (value: string) => void;
-  onToDateChange: (value: string) => void;
+  entityFilter?: string;
+  reportSubType?: string;
 };
 
 export default function MaterialLedgerPanel({
   fromDate,
   toDate,
-  onFromDateChange,
-  onToDateChange,
+  entityFilter = "",
+  reportSubType = "Summary View",
 }: MaterialLedgerPanelProps) {
   const filteredInward = useMemo(
-    () => INWARD_ROWS.filter((row) => isWithinDateRange(row.date, fromDate, toDate)),
-    [fromDate, toDate]
+    () =>
+      INWARD_ROWS.filter(
+        (row) =>
+          isWithinDateRange(row.date, fromDate, toDate) &&
+          matchesEntityFilter(
+            `${row.supplier} ${row.item} ${row.vehicleLr} ${row.category}`,
+            entityFilter
+          )
+      ),
+    [fromDate, toDate, entityFilter]
   );
 
   const filteredSales = useMemo(
-    () => SALES_OUTWARD_ROWS.filter((row) => isWithinDateRange(row.date, fromDate, toDate)),
-    [fromDate, toDate]
+    () =>
+      SALES_OUTWARD_ROWS.filter(
+        (row) =>
+          isWithinDateRange(row.date, fromDate, toDate) &&
+          matchesEntityFilter(`${row.customer} ${row.goods} ${row.vehicleNo}`, entityFilter)
+      ),
+    [fromDate, toDate, entityFilter]
   );
 
   const filteredDispatch = useMemo(
-    () => DISPATCH_OUTWARD_ROWS.filter((row) => isWithinDateRange(row.date, fromDate, toDate)),
-    [fromDate, toDate]
+    () =>
+      DISPATCH_OUTWARD_ROWS.filter(
+        (row) =>
+          isWithinDateRange(row.date, fromDate, toDate) &&
+          matchesEntityFilter(
+            `${row.destination} ${row.goods} ${row.vehicleNo} ${row.lrNumber}`,
+            entityFilter
+          )
+      ),
+    [fromDate, toDate, entityFilter]
   );
 
   return (
     <div className="space-y-5" aria-label="Material inward outward ledger">
-      <WorkspaceDateRangeFilter
-        fromDate={fromDate}
-        toDate={toDate}
-        onFromDateChange={onFromDateChange}
-        onToDateChange={onToDateChange}
-      />
+      <p className="text-xs text-corporate-muted">
+        Report mode: <span className="font-semibold text-corporate-text">{reportSubType}</span>
+        {entityFilter ? (
+          <>
+            {" "}
+            · Entity filter: <span className="font-semibold text-corporate-text">{entityFilter}</span>
+          </>
+        ) : null}
+      </p>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Left — Inward / आवक */}

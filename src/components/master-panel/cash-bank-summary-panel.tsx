@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
-import WorkspaceDateRangeFilter, { isWithinDateRange } from "./workspace-date-range-filter";
+import { matchesEntityFilter } from "@/constants/display-criteria-config";
+import { isWithinDateRange } from "./workspace-date-range-filter";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
@@ -113,15 +114,15 @@ function formatRupee(value: number) {
 type CashBankSummaryPanelProps = {
   fromDate: string;
   toDate: string;
-  onFromDateChange: (value: string) => void;
-  onToDateChange: (value: string) => void;
+  entityFilter?: string;
+  reportSubType?: string;
 };
 
 export default function CashBankSummaryPanel({
   fromDate,
   toDate,
-  onFromDateChange,
-  onToDateChange,
+  entityFilter = "",
+  reportSubType = "Summary View",
 }: CashBankSummaryPanelProps) {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
     "vehicle-expenses": true,
@@ -130,8 +131,13 @@ export default function CashBankSummaryPanel({
   });
 
   const filteredIncoming = useMemo(
-    () => INCOMING_PARTIES.filter((row) => isWithinDateRange(row.date, fromDate, toDate)),
-    [fromDate, toDate]
+    () =>
+      INCOMING_PARTIES.filter(
+        (row) =>
+          isWithinDateRange(row.date, fromDate, toDate) &&
+          matchesEntityFilter(row.partyName, entityFilter)
+      ),
+    [fromDate, toDate, entityFilter]
   );
 
   const filteredExpenseGroups = useMemo(
@@ -140,16 +146,23 @@ export default function CashBankSummaryPanel({
         if (group.type === "vehicle" && group.vehicleItems) {
           return {
             ...group,
-            vehicleItems: group.vehicleItems.filter((item) =>
-              isWithinDateRange(item.date, fromDate, toDate)
+            vehicleItems: group.vehicleItems.filter(
+              (item) =>
+                isWithinDateRange(item.date, fromDate, toDate) &&
+                matchesEntityFilter(
+                  `${item.vehicleNo} ${item.destination} ${item.expenseDetail} ${item.accountHead}`,
+                  entityFilter
+                )
             ),
           };
         }
         if (group.type === "general" && group.generalItems) {
           return {
             ...group,
-            generalItems: group.generalItems.filter((item) =>
-              isWithinDateRange(item.date, fromDate, toDate)
+            generalItems: group.generalItems.filter(
+              (item) =>
+                isWithinDateRange(item.date, fromDate, toDate) &&
+                matchesEntityFilter(`${item.voucher} ${item.particulars}`, entityFilter)
             ),
           };
         }
@@ -158,7 +171,7 @@ export default function CashBankSummaryPanel({
         if (group.type === "vehicle") return (group.vehicleItems?.length ?? 0) > 0;
         return (group.generalItems?.length ?? 0) > 0;
       }),
-    [fromDate, toDate]
+    [fromDate, toDate, entityFilter]
   );
 
   const totalReceivedToday = useMemo(
@@ -189,18 +202,14 @@ export default function CashBankSummaryPanel({
 
   return (
     <div className="space-y-5" aria-label="Cash and Bank Summary Ledger">
-      <WorkspaceDateRangeFilter
-        fromDate={fromDate}
-        toDate={toDate}
-        onFromDateChange={onFromDateChange}
-        onToDateChange={onToDateChange}
-      />
-
-      <div className="flex items-center gap-2 border-b border-corporate-border pb-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-corporate-border pb-3">
         <Wallet className="h-5 w-5 text-corporate-brand" aria-hidden />
         <div>
           <h3 className="text-sm font-semibold text-corporate-text">Cash &amp; Bank Summary Ledger</h3>
-          <p className="text-xs text-corporate-muted">Daily Book — unified cash and bank movement register</p>
+          <p className="text-xs text-corporate-muted">
+            Daily Book — {reportSubType}
+            {entityFilter ? ` · Filter: ${entityFilter}` : ""}
+          </p>
         </div>
       </div>
 

@@ -1,14 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BookOpen, Landmark, Package, Scale, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DISPLAY_SUB_TYPE_OPTIONS,
+  matchesEntityFilter,
+  type DisplayReportCriteria,
+} from "@/constants/display-criteria-config";
 import CashBankSummaryPanel from "./cash-bank-summary-panel";
 import MaterialLedgerPanel from "./material-ledger-panel";
-import WorkspaceDateRangeFilter, {
-  getDefaultDateRange,
-  isWithinDateRange,
-} from "./workspace-date-range-filter";
+import DisplayReportCriteriaWizard, {
+  DisplayReportPlaceholder,
+} from "./display-report-criteria-wizard";
+import { getDefaultDateRange, isWithinDateRange } from "./workspace-date-range-filter";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
@@ -52,38 +57,239 @@ const TRIAL_BALANCE_ROWS = [
   { group: "Expenses", account: "Purchase & Diesel", debit: "4,95,000.00", credit: "0.00" },
 ];
 
+function createDraftCriteria(
+  viewId: DisplayViewId,
+  fromDate: string,
+  toDate: string
+): DisplayReportCriteria {
+  return {
+    fromDate,
+    toDate,
+    reportSubType: DISPLAY_SUB_TYPE_OPTIONS[viewId][0] ?? "Summary View",
+    entityFilter: "",
+  };
+}
+
+function AppliedCriteriaBanner({ criteria }: { criteria: DisplayReportCriteria }) {
+  return (
+    <div className="rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-2 text-xs text-corporate-text">
+      Generated report · {criteria.fromDate} to {criteria.toDate} · {criteria.reportSubType}
+      {criteria.entityFilter ? ` · Entity: ${criteria.entityFilter}` : ""}
+    </div>
+  );
+}
+
 export default function DisplayPanel() {
   const defaults = getDefaultDateRange();
-  const [fromDate, setFromDate] = useState(defaults.fromDate);
-  const [toDate, setToDate] = useState(defaults.toDate);
   const [activeView, setActiveView] = useState<DisplayViewId>("daybook");
-
-  const filteredDaybook = useMemo(
-    () => DAYBOOK_ROWS.filter((row) => isWithinDateRange(row.date, fromDate, toDate)),
-    [fromDate, toDate]
+  const [draftCriteria, setDraftCriteria] = useState<DisplayReportCriteria>(() =>
+    createDraftCriteria("daybook", defaults.fromDate, defaults.toDate)
   );
+  const [appliedCriteria, setAppliedCriteria] = useState<DisplayReportCriteria | null>(null);
+  const [hasGenerated, setHasGenerated] = useState(false);
 
-  const filteredLedgers = useMemo(
-    () => LEDGER_ROWS.filter((row) => isWithinDateRange(row.date, fromDate, toDate)),
-    [fromDate, toDate]
-  );
+  useEffect(() => {
+    setHasGenerated(false);
+    setAppliedCriteria(null);
+    setDraftCriteria(createDraftCriteria(activeView, defaults.fromDate, defaults.toDate));
+  }, [activeView, defaults.fromDate, defaults.toDate]);
+
+  const handleGenerate = () => {
+    setAppliedCriteria({ ...draftCriteria });
+    setHasGenerated(true);
+  };
+
+  const filteredDaybook = useMemo(() => {
+    if (!appliedCriteria) return [];
+    return DAYBOOK_ROWS.filter(
+      (row) =>
+        isWithinDateRange(row.date, appliedCriteria.fromDate, appliedCriteria.toDate) &&
+        matchesEntityFilter(
+          `${row.particulars} ${row.voucher} ${row.type}`,
+          appliedCriteria.entityFilter
+        )
+    );
+  }, [appliedCriteria]);
+
+  const filteredLedgers = useMemo(() => {
+    if (!appliedCriteria) return [];
+    return LEDGER_ROWS.filter(
+      (row) =>
+        isWithinDateRange(row.date, appliedCriteria.fromDate, appliedCriteria.toDate) &&
+        matchesEntityFilter(row.account, appliedCriteria.entityFilter)
+    );
+  }, [appliedCriteria]);
+
+  const filteredTrialBalance = useMemo(() => {
+    if (!appliedCriteria) return [];
+    return TRIAL_BALANCE_ROWS.filter((row) =>
+      matchesEntityFilter(`${row.group} ${row.account}`, appliedCriteria.entityFilter)
+    );
+  }, [appliedCriteria]);
+
+  const renderGeneratedContent = () => {
+    if (!hasGenerated || !appliedCriteria) {
+      return <DisplayReportPlaceholder />;
+    }
+
+    switch (activeView) {
+      case "daybook":
+        return (
+          <div className={MASTER_LIST_TABLE_WRAPPER_CLASS}>
+            <table className={MASTER_LIST_TABLE_CLASS}>
+              <thead className={MASTER_LIST_HEAD_CLASS}>
+                <tr>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Voucher</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Particulars</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Type</th>
+                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Debit</th>
+                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Credit</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-corporate-border">
+                {filteredDaybook.map((row) => (
+                  <tr key={`${row.voucher}-${row.date}`} className="hover:bg-corporate-bg/60">
+                    <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.date}</td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-medium text-corporate-brand")}>
+                      {row.voucher}
+                    </td>
+                    <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.particulars}</td>
+                    <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                      <span className="rounded-full border border-corporate-border bg-corporate-bg px-2.5 py-1 text-xs font-semibold">
+                        {row.type}
+                      </span>
+                    </td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-medium")}>
+                      {row.debit || "—"}
+                    </td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-medium")}>
+                      {row.credit || "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+
+      case "ledgers":
+        return (
+          <div className={MASTER_LIST_TABLE_WRAPPER_CLASS}>
+            <table className={MASTER_LIST_TABLE_CLASS}>
+              <thead className={MASTER_LIST_HEAD_CLASS}>
+                <tr>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Account</th>
+                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Opening</th>
+                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Debit</th>
+                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Credit</th>
+                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Closing</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-corporate-border">
+                {filteredLedgers.map((row) => (
+                  <tr key={`${row.account}-${row.date}`} className="hover:bg-corporate-bg/60">
+                    <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.date}</td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-semibold")}>{row.account}</td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right")}>{row.opening}</td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right text-emerald-700")}>
+                      {row.debit}
+                    </td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right text-red-700")}>
+                      {row.credit}
+                    </td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-semibold")}>
+                      {row.closing}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+
+      case "material-ledger":
+        return (
+          <MaterialLedgerPanel
+            fromDate={appliedCriteria.fromDate}
+            toDate={appliedCriteria.toDate}
+            entityFilter={appliedCriteria.entityFilter}
+            reportSubType={appliedCriteria.reportSubType}
+          />
+        );
+
+      case "cash-bank":
+        return (
+          <CashBankSummaryPanel
+            fromDate={appliedCriteria.fromDate}
+            toDate={appliedCriteria.toDate}
+            entityFilter={appliedCriteria.entityFilter}
+            reportSubType={appliedCriteria.reportSubType}
+          />
+        );
+
+      case "trial-balance":
+        return (
+          <div className={MASTER_LIST_TABLE_WRAPPER_CLASS}>
+            <table className={MASTER_LIST_TABLE_CLASS}>
+              <thead className={MASTER_LIST_HEAD_CLASS}>
+                <tr>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Group</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Account Head</th>
+                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Debit Total</th>
+                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Credit Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-corporate-border">
+                {filteredTrialBalance.map((row) => (
+                  <tr key={row.account} className="hover:bg-corporate-bg/60">
+                    <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                      <span className="rounded-full border border-corporate-border bg-corporate-bg px-2.5 py-1 text-xs font-semibold">
+                        {row.group}
+                      </span>
+                    </td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-semibold")}>{row.account}</td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-medium")}>
+                      {row.debit}
+                    </td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-medium")}>
+                      {row.credit}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-corporate-border bg-corporate-bg">
+                <tr>
+                  <td colSpan={2} className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-semibold")}>
+                    Trial Balance Totals
+                  </td>
+                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-bold text-corporate-text")}>
+                    23,20,000.00
+                  </td>
+                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-bold text-corporate-text")}>
+                    23,20,000.00
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        );
+
+      default:
+        return <DisplayReportPlaceholder />;
+    }
+  };
 
   return (
     <section className="flex min-w-0 flex-1 flex-col gap-5" aria-label="Display workspace">
       <div className="border-b border-corporate-border pb-3">
-        <h2 className="text-base font-semibold text-corporate-text">Universal Display Console</h2>
+        <h2 className="text-base font-semibold text-corporate-text">Universal Display Hub</h2>
         <p className="text-sm text-corporate-muted">
-          Professional ledger views including daybook, account ledgers, cash &amp; bank summary,
-          material movement, and trial balance grids.
+          Interactive criteria wizard with conditional loading for daybook, ledgers, cash &amp; bank,
+          material movement, and trial balance views.
         </p>
       </div>
-
-      <WorkspaceDateRangeFilter
-        fromDate={fromDate}
-        toDate={toDate}
-        onFromDateChange={setFromDate}
-        onToDateChange={setToDate}
-      />
 
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="Display views">
         {DISPLAY_VIEWS.map((view) => {
@@ -110,127 +316,28 @@ export default function DisplayPanel() {
         })}
       </div>
 
-      {activeView === "daybook" && (
-        <div className={MASTER_LIST_TABLE_WRAPPER_CLASS}>
-          <table className={MASTER_LIST_TABLE_CLASS}>
-            <thead className={MASTER_LIST_HEAD_CLASS}>
-              <tr>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Voucher</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Particulars</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Type</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Debit</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Credit</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-corporate-border">
-              {filteredDaybook.map((row) => (
-                <tr key={`${row.voucher}-${row.date}`} className="hover:bg-corporate-bg/60">
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.date}</td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-medium text-corporate-brand")}>{row.voucher}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.particulars}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    <span className="rounded-full border border-corporate-border bg-corporate-bg px-2.5 py-1 text-xs font-semibold">
-                      {row.type}
-                    </span>
-                  </td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-medium")}>{row.debit || "—"}</td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-medium")}>{row.credit || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <DisplayReportCriteriaWizard
+        viewId={activeView}
+        fromDate={draftCriteria.fromDate}
+        toDate={draftCriteria.toDate}
+        reportSubType={draftCriteria.reportSubType}
+        entityFilter={draftCriteria.entityFilter}
+        onFromDateChange={(value) =>
+          setDraftCriteria((current) => ({ ...current, fromDate: value }))
+        }
+        onToDateChange={(value) => setDraftCriteria((current) => ({ ...current, toDate: value }))}
+        onReportSubTypeChange={(value) =>
+          setDraftCriteria((current) => ({ ...current, reportSubType: value }))
+        }
+        onEntityFilterChange={(value) =>
+          setDraftCriteria((current) => ({ ...current, entityFilter: value }))
+        }
+        onGenerate={handleGenerate}
+      />
 
-      {activeView === "ledgers" && (
-        <div className={MASTER_LIST_TABLE_WRAPPER_CLASS}>
-          <table className={MASTER_LIST_TABLE_CLASS}>
-            <thead className={MASTER_LIST_HEAD_CLASS}>
-              <tr>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Account</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Opening</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Debit</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Credit</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Closing</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-corporate-border">
-              {filteredLedgers.map((row) => (
-                <tr key={`${row.account}-${row.date}`} className="hover:bg-corporate-bg/60">
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.date}</td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-semibold")}>{row.account}</td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right")}>{row.opening}</td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right text-emerald-700")}>{row.debit}</td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right text-red-700")}>{row.credit}</td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-semibold")}>{row.closing}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {hasGenerated && appliedCriteria && <AppliedCriteriaBanner criteria={appliedCriteria} />}
 
-      {activeView === "material-ledger" && (
-        <MaterialLedgerPanel
-          fromDate={fromDate}
-          toDate={toDate}
-          onFromDateChange={setFromDate}
-          onToDateChange={setToDate}
-        />
-      )}
-
-      {activeView === "cash-bank" && (
-        <CashBankSummaryPanel
-          fromDate={fromDate}
-          toDate={toDate}
-          onFromDateChange={setFromDate}
-          onToDateChange={setToDate}
-        />
-      )}
-
-      {activeView === "trial-balance" && (
-        <div className={MASTER_LIST_TABLE_WRAPPER_CLASS}>
-          <table className={MASTER_LIST_TABLE_CLASS}>
-            <thead className={MASTER_LIST_HEAD_CLASS}>
-              <tr>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Group</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Account Head</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Debit Total</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Credit Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-corporate-border">
-              {TRIAL_BALANCE_ROWS.map((row) => (
-                <tr key={row.account} className="hover:bg-corporate-bg/60">
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    <span className="rounded-full border border-corporate-border bg-corporate-bg px-2.5 py-1 text-xs font-semibold">
-                      {row.group}
-                    </span>
-                  </td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-semibold")}>{row.account}</td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-medium")}>{row.debit}</td>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-medium")}>{row.credit}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot className="border-t-2 border-corporate-border bg-corporate-bg">
-              <tr>
-                <td colSpan={2} className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-semibold")}>
-                  Trial Balance Totals
-                </td>
-                <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-bold text-corporate-text")}>
-                  23,20,000.00
-                </td>
-                <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-bold text-corporate-text")}>
-                  23,20,000.00
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
+      <div className="min-w-0 flex-1">{renderGeneratedContent()}</div>
     </section>
   );
 }

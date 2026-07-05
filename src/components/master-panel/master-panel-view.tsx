@@ -45,7 +45,12 @@ import ApiIntegrationGatewayPanel from "./api-integration-gateway-panel";
 import GeneralSettingsManagementPanel from "./general-settings-management-panel";
 import InventoryVoucherPanel from "./inventory-voucher-panel";
 import ManufacturingVoucherPanel from "./manufacturing-voucher-panel";
+import ExpenseReceiptPanel from "./expense-receipt-panel";
+import JournalEntryPanel from "./journal-entry-panel";
+import TransferVoucherPanel from "./transfer-voucher-panel";
+import PartsOrderPanel from "./parts-order-panel";
 import { INVENTORY_VOUCHER_CONFIGS } from "@/constants/inventory-voucher-configs";
+import { EXPENSE_RECEIPT_CONFIGS } from "@/constants/accounting-voucher-configs";
 
 type ErrorBoundaryState = {
   hasError: boolean;
@@ -215,6 +220,16 @@ function MasterPanelContent() {
           );
         case "manufacturing-production":
           return <ManufacturingVoucherPanel />;
+        case "expenses":
+          return <ExpenseReceiptPanel config={EXPENSE_RECEIPT_CONFIGS.expenses} />;
+        case "receipt":
+          return <ExpenseReceiptPanel config={EXPENSE_RECEIPT_CONFIGS.receipt} />;
+        case "journal-entry":
+          return <JournalEntryPanel />;
+        case "inventory-transfer":
+          return <TransferVoucherPanel />;
+        case "parts-order":
+          return <PartsOrderPanel />;
         default: {
           const moduleGroup = getGroupForModule(moduleId);
           if (

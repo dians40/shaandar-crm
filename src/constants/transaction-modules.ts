@@ -10,6 +10,11 @@ export const IMPLEMENTED_TRANSACTION_MODULE_IDS = new Set<MasterPanelModuleId>([
   "purchase-logs",
   "purchase-return-order",
   "manufacturing-production",
+  "expenses",
+  "receipt",
+  "journal-entry",
+  "inventory-transfer",
+  "parts-order",
 ]);
 
 export type TransactionListColumnLabels = {

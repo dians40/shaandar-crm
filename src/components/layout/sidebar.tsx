@@ -88,7 +88,7 @@ export default function Sidebar({
         "master-panel": (getGroupById("administration")?.moduleIds ?? []).filter((moduleId) =>
           canViewMasterPanelModule(selectedRole, moduleId)
         ),
-        // Transactions menu lists operational routes only (no labor attendance modules).
+        // Transactions menu — full operational routes; manual entry stays in Employee Management only.
         transactions: (getGroupById("transaction")?.moduleIds ?? []).filter(
           (moduleId) => !EMPLOYEE_EMBEDDED_MODULE_IDS.includes(moduleId)
         ),

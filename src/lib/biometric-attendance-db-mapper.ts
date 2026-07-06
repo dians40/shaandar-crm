@@ -166,11 +166,15 @@ export function mapToBiometricAttendanceRow(
   defaultDate?: string
 ): Record<string, unknown> {
   const prismaRow = mapToAttendanceCreate(row, employeeId, defaultDate);
+  const dateStr =
+    safeString(prismaRow.date) ||
+    (prismaRow.attendanceDate
+      ? new Date(prismaRow.attendanceDate).toISOString().slice(0, 10)
+      : todayIsoDateString());
+
   return {
     employee_id: prismaRow.employeeId,
-    attendance_date: prismaRow.attendanceDate
-      ? new Date(prismaRow.attendanceDate).toISOString().slice(0, 10)
-      : todayIsoDateString(),
+    attendance_date: dateStr,
     srl_number: prismaRow.srlNumber ?? "",
     pay_code: prismaRow.payCode ?? "",
     card_number: prismaRow.cardNumber ?? "",
@@ -178,7 +182,7 @@ export function mapToBiometricAttendanceRow(
     department: prismaRow.department ?? "",
     designation: prismaRow.designation ?? "",
     shift: prismaRow.shift ?? "",
-    date: prismaRow.date ?? todayIsoDateString(),
+    date: dateStr,
     start: prismaRow.start ?? "",
     in_time: prismaRow.inTime ?? "",
     lunch_out: prismaRow.lunchOut ?? "",

@@ -5,6 +5,7 @@ import { FileSpreadsheet, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   ATTENDANCE_BULK_IMPORT_COLUMNS,
+  normalizeAttendanceDateIso,
   type Biometric23ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 import {
@@ -78,12 +79,17 @@ export default function BiometricAttendanceRecordsPanel() {
   const [rows, setRows] = useState<BiometricLogRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [filterDate, setFilterDate] = useState("");
 
   const loadRows = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/v1/attendance/biometric?limit=300");
+      const params = new URLSearchParams({ limit: "300" });
+      if (filterDate.trim()) {
+        params.set("date", normalizeAttendanceDateIso(filterDate.trim()));
+      }
+      const response = await fetch(`/api/v1/attendance/biometric?${params.toString()}`);
       const body = (await response.json()) as {
         rows?: Record<string, unknown>[];
         error?: string;
@@ -103,7 +109,7 @@ export default function BiometricAttendanceRecordsPanel() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [filterDate]);
 
   useEffect(() => {
     void loadRows();
@@ -123,15 +129,26 @@ export default function BiometricAttendanceRecordsPanel() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => void loadRows()}
-          disabled={isLoading}
-          className="btn-secondary inline-flex h-10 items-center gap-2 px-4 text-sm"
-        >
-          <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} aria-hidden />
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-corporate-muted">
+            Filter by Date
+            <input
+              type="date"
+              value={filterDate}
+              onChange={(event) => setFilterDate(event.target.value)}
+              className="h-10 rounded-lg border border-corporate-border bg-white px-3 text-sm text-corporate-text"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void loadRows()}
+            disabled={isLoading}
+            className="btn-secondary inline-flex h-10 items-center gap-2 px-4 text-sm"
+          >
+            <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} aria-hidden />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error && (

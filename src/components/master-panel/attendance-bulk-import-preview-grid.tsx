@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   ATTENDANCE_BULK_IMPORT_COLUMNS,
+  normalizeAttendanceDateIso,
   normalizeBiometric22ColumnRecord,
   processBulkRowUpdate,
   type Biometric22ColumnRecord,
@@ -158,9 +159,14 @@ export default function AttendanceBulkImportPreviewGrid({
         const id = rowIdFromIndex(rowIndex) || localRows[rowIndex]?.id;
         if (!oldRow || !id) return;
 
+        const committedValue =
+          columnKey === "date"
+            ? normalizeAttendanceDateIso(value, oldRow.date)
+            : value;
+
         const updated = processRowUpdate(id, oldRow, {
           ...oldRow,
-          [columnKey]: value,
+          [columnKey]: committedValue,
         });
 
         const nextRows = localRows.map((row, index) =>

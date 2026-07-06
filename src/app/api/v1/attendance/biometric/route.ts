@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { mapAttendanceRecordFromDb } from "@/lib/biometric-attendance-db-mapper";
+import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
 import { isPrismaConfigured, prisma } from "@/lib/prisma";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -13,13 +14,17 @@ export async function GET(request: Request) {
     const date = searchParams.get("date")?.trim();
 
     if (isPrismaConfigured() && prisma) {
+      const normalizedDate = date ? normalizeAttendanceDateIso(date) : undefined;
       const rows = await prisma.attendance.findMany({
-        where: date
+        where: normalizedDate
           ? {
-              attendanceDate: new Date(`${date}T00:00:00.000Z`),
+              OR: [
+                { attendanceDate: new Date(`${normalizedDate}T00:00:00.000Z`) },
+                { date: normalizedDate },
+              ],
             }
           : undefined,
-        orderBy: [{ attendanceDate: "desc" }, { payCode: "asc" }],
+        orderBy: [{ attendanceDate: "desc" }, { date: "desc" }, { payCode: "asc" }],
         take: limit,
       });
 
@@ -66,7 +71,10 @@ export async function GET(request: Request) {
         .limit(limit);
 
       if (date) {
-        query = query.eq("attendance_date", date);
+        const normalizedDate = normalizeAttendanceDateIso(date);
+        query = query.or(
+          `attendance_date.eq.${normalizedDate},date.eq.${normalizedDate}`
+        );
       }
 
       const { data, error } = await query;

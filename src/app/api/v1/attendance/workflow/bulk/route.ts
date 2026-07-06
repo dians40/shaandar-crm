@@ -5,6 +5,7 @@ import {
   resolveOvertimeShiftFromBulkRow,
 } from "@/lib/attendance-bulk-employee-resolver";
 import { sanitizeIncomingBulkRow } from "@/lib/attendance-bulk-row-sanitizer";
+import { virtualBulkRowToDbPayload } from "@/lib/attendance-bulk-virtual-mapper";
 import {
   mapToAttendanceCreate,
   mapToBiometricAttendanceRow,
@@ -192,7 +193,12 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const normalized = sanitizeIncomingBulkRow(raw as Record<string, unknown>);
+      const rawRow = raw as Record<string, unknown>;
+      const defaultDate = todayIsoDate();
+
+      const normalized =
+        virtualBulkRowToDbPayload(rawRow, { defaultDate }) ??
+        sanitizeIncomingBulkRow(rawRow);
       if (!normalized) {
         rowErrors.push(`Row ${index + 1}: missing employee identity fields.`);
         continue;

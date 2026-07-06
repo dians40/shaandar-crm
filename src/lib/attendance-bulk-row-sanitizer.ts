@@ -1,3 +1,4 @@
+import { virtualBulkRowToDbPayload } from "@/lib/attendance-bulk-virtual-mapper";
 import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
 import {
   atomicFinalizeBulkDbPayload,
@@ -56,6 +57,23 @@ export function sanitizeIncomingBulkRow(
     if (!raw || typeof raw !== "object") return null;
 
     const normalizedKeys = normalizeRawRowKeys(raw);
+
+    const virtualPayload = virtualBulkRowToDbPayload(normalizedKeys);
+    if (virtualPayload) {
+      const punchIn =
+        fuzzyReadBulkField(normalizedKeys, ["punch_in", "punchIn", "in"]) ||
+        virtualPayload.punch_in ||
+        fallbackPunchIn(virtualPayload.attendance_date);
+
+      return atomicFinalizeBulkDbPayload({
+        ...virtualPayload,
+        punch_in: punchIn,
+        punch_out:
+          fuzzyReadBulkField(normalizedKeys, ["punch_out", "punchOut", "out"]) ||
+          virtualPayload.punch_out ||
+          "",
+      });
+    }
 
     const employeeId = fuzzyReadBulkField(normalizedKeys, [
       "employee_id",

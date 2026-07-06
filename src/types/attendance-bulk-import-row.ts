@@ -407,7 +407,11 @@ export function processBulkRowUpdate(
     if (!newRow || !oldRow || !id) {
       return normalizeBiometric23ColumnRecord(oldRow);
     }
-    return normalizeBiometric23ColumnRecord({ ...oldRow, ...newRow });
+    const merged = { ...oldRow, ...newRow };
+    if (newRow.date !== undefined) {
+      merged.date = normalizeAttendanceDateIso(newRow.date, oldRow.date);
+    }
+    return normalizeBiometric23ColumnRecord(merged);
   } catch (error) {
     console.error(error);
     return normalizeBiometric23ColumnRecord(oldRow);

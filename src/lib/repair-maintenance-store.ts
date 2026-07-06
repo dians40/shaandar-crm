@@ -2,6 +2,10 @@ import type {
   MachineRepairLogRow,
   VehicleRepairLogRow,
 } from "@/types/repair-maintenance-log";
+import {
+  normalizeMachineRepairLogRow,
+  normalizeVehicleRepairLogRow,
+} from "@/types/repair-maintenance-log";
 
 const MACHINE_LOGS_KEY = "shaandar-crm-machine-repair-logs";
 const VEHICLE_LOGS_KEY = "shaandar-crm-vehicle-repair-logs";
@@ -24,7 +28,9 @@ function writeRows<T>(key: string, rows: T[]) {
 }
 
 export function readMachineRepairLogs(): MachineRepairLogRow[] {
-  return readRows<MachineRepairLogRow>(MACHINE_LOGS_KEY);
+  return readRows<Partial<MachineRepairLogRow> & { id: string }>(MACHINE_LOGS_KEY)
+    .filter((row) => Boolean(row?.id))
+    .map((row) => normalizeMachineRepairLogRow(row));
 }
 
 export function appendMachineRepairLog(row: MachineRepairLogRow): MachineRepairLogRow[] {
@@ -34,7 +40,9 @@ export function appendMachineRepairLog(row: MachineRepairLogRow): MachineRepairL
 }
 
 export function readVehicleRepairLogs(): VehicleRepairLogRow[] {
-  return readRows<VehicleRepairLogRow>(VEHICLE_LOGS_KEY);
+  return readRows<Partial<VehicleRepairLogRow> & { id: string }>(VEHICLE_LOGS_KEY)
+    .filter((row) => Boolean(row?.id))
+    .map((row) => normalizeVehicleRepairLogRow(row));
 }
 
 export function appendVehicleRepairLog(row: VehicleRepairLogRow): VehicleRepairLogRow[] {

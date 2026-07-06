@@ -1,14 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Hammer, Plus, Save, Wrench } from "lucide-react";
+import { AlertTriangle, Hammer, Plus, Save, Wrench } from "lucide-react";
 import { SelectInput, TextInput, TextareaInput } from "@/components/forms/form-fields";
+import { useGeneralSettings } from "@/hooks/use-general-settings";
+import { usePreventiveMaintenance } from "@/hooks/use-preventive-maintenance";
+import { useVehiclesMaster } from "@/hooks/use-vehicles-master";
+import {
+  computeNextMaintenanceDate,
+  formatMaintenanceAlertLabel,
+  resolveMaintenanceAlertStatus,
+} from "@/lib/repair-maintenance-alerts";
 import {
   appendMachineRepairLog,
   appendVehicleRepairLog,
   readMachineRepairLogs,
   readVehicleRepairLogs,
 } from "@/lib/repair-maintenance-store";
+import { cn } from "@/lib/utils";
 import {
   EMPTY_MACHINE_REPAIR_FORM,
   EMPTY_VEHICLE_REPAIR_FORM,
@@ -35,6 +44,14 @@ function formatTimestamp(iso: string): string {
       dateStyle: "medium",
       timeStyle: "short",
     }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
+
+function formatDateLabel(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(iso));
   } catch {
     return iso;
   }
@@ -71,7 +88,33 @@ function EngineSection({ title, subtitle, icon, accentClass, children }: EngineS
   );
 }
 
+function MaintenanceAlertBadge({
+  nextMaintenanceDate,
+}: {
+  nextMaintenanceDate: string;
+}) {
+  const alertStatus = resolveMaintenanceAlertStatus(nextMaintenanceDate);
+  if (!alertStatus?.isUpcomingAlert) {
+    return (
+      <span className="text-xs text-corporate-muted">
+        Next service: {formatDateLabel(nextMaintenanceDate)}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm">
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      {formatMaintenanceAlertLabel(alertStatus.daysUntilDue)}
+    </span>
+  );
+}
+
 export default function RepairMaintenancePanel() {
+  const { machineOptions, isReady: machinesReady } = useGeneralSettings();
+  const { vehicles, isReady: vehiclesReady } = useVehiclesMaster();
+  const { rules: preventiveRules, isReady: preventiveReady } = usePreventiveMaintenance();
+
   const [machineLogs, setMachineLogs] = useState<MachineRepairLogRow[]>([]);
   const [vehicleLogs, setVehicleLogs] = useState<VehicleRepairLogRow[]>([]);
   const [machineForm, setMachineForm] = useState<MachineRepairFormState>(EMPTY_MACHINE_REPAIR_FORM);
@@ -82,6 +125,43 @@ export default function RepairMaintenancePanel() {
   const [vehicleSuccess, setVehicleSuccess] = useState<string | null>(null);
   const [showMachineForm, setShowMachineForm] = useState(false);
   const [showVehicleForm, setShowVehicleForm] = useState(false);
+
+  const activeMachineOptions = useMemo(
+    () => machineOptions.filter((option) => option.value.trim().length > 0),
+    [machineOptions]
+  );
+
+  const activeVehicleOptions = useMemo(
+    () =>
+      vehicles
+        .filter((vehicle) => vehicle.registrationNumber.trim().length > 0)
+        .map((vehicle) => ({
+          value: vehicle.id,
+          label: `${vehicle.registrationNumber}${vehicle.model ? ` — ${vehicle.model}` : ""}`,
+        })),
+    [vehicles]
+  );
+
+  const vehicleById = useMemo(
+    () => new Map(vehicles.map((vehicle) => [vehicle.id, vehicle])),
+    [vehicles]
+  );
+
+  const upcomingMachineAlerts = useMemo(
+    () =>
+      machineLogs.filter(
+        (row) => resolveMaintenanceAlertStatus(row.nextMaintenanceDate)?.isUpcomingAlert
+      ).length,
+    [machineLogs]
+  );
+
+  const upcomingVehicleAlerts = useMemo(
+    () =>
+      vehicleLogs.filter(
+        (row) => resolveMaintenanceAlertStatus(row.nextMaintenanceDate)?.isUpcomingAlert
+      ).length,
+    [vehicleLogs]
+  );
 
   useEffect(() => {
     setMachineLogs(readMachineRepairLogs());
@@ -116,6 +196,20 @@ export default function RepairMaintenancePanel() {
     []
   );
 
+  const handleVehicleSelect = useCallback(
+    (vehicleId: string) => {
+      const vehicle = vehicleById.get(vehicleId);
+      setVehicleForm((prev) => ({
+        ...prev,
+        vehicleId,
+        driverName: vehicle?.driverName?.trim() || prev.driverName,
+      }));
+      setVehicleError(null);
+      setVehicleSuccess(null);
+    },
+    [vehicleById]
+  );
+
   const submitMachineLog = () => {
     const validationError = validateMachineRepairForm(machineForm);
     if (validationError) {
@@ -124,15 +218,31 @@ export default function RepairMaintenancePanel() {
       return;
     }
 
+    const machineName =
+      activeMachineOptions.find((option) => option.value === machineForm.machineId)?.label ??
+      machineForm.machineId;
+    const loggedAt = new Date().toISOString();
+    const nextMaintenanceDate = preventiveReady
+      ? computeNextMaintenanceDate(
+          loggedAt,
+          "machine",
+          machineForm.machineId,
+          machineName,
+          preventiveRules
+        )
+      : computeNextMaintenanceDate(loggedAt, "machine", machineForm.machineId, machineName, []);
+
     const row: MachineRepairLogRow = {
       id: createId("machine"),
-      machineIdName: machineForm.machineIdName.trim(),
+      machineId: machineForm.machineId,
+      machineIdName: machineName,
       breakdownCause: machineForm.breakdownCause.trim(),
       workDone: machineForm.workDone.trim(),
       sparesUsed: machineForm.sparesUsed.trim(),
       vendorMechanic: machineForm.vendorMechanic.trim(),
       maintenanceCost: Number(machineForm.maintenanceCost),
-      loggedAt: new Date().toISOString(),
+      loggedAt,
+      nextMaintenanceDate,
     };
 
     const next = appendMachineRepairLog(row);
@@ -151,15 +261,30 @@ export default function RepairMaintenancePanel() {
       return;
     }
 
+    const vehicle = vehicleById.get(vehicleForm.vehicleId);
+    const vehicleNumber = vehicle?.registrationNumber ?? vehicleForm.vehicleId;
+    const loggedAt = new Date().toISOString();
+    const nextMaintenanceDate = preventiveReady
+      ? computeNextMaintenanceDate(
+          loggedAt,
+          "vehicle",
+          vehicleForm.vehicleId,
+          vehicleNumber,
+          preventiveRules
+        )
+      : computeNextMaintenanceDate(loggedAt, "vehicle", vehicleForm.vehicleId, vehicleNumber, []);
+
     const row: VehicleRepairLogRow = {
       id: createId("vehicle"),
-      vehicleNumber: vehicleForm.vehicleNumber.trim(),
+      vehicleId: vehicleForm.vehicleId,
+      vehicleNumber,
       driverName: vehicleForm.driverName.trim(),
       odometerKm: Number(vehicleForm.odometerKm),
       repairType: vehicleForm.repairType as VehicleRepairLogRow["repairType"],
       workshopDetails: vehicleForm.workshopDetails.trim(),
       totalAmount: Number(vehicleForm.totalAmount),
-      loggedAt: new Date().toISOString(),
+      loggedAt,
+      nextMaintenanceDate,
     };
 
     const next = appendVehicleRepairLog(row);
@@ -180,8 +305,8 @@ export default function RepairMaintenancePanel() {
           Operational Repair Logging Workspace
         </h3>
         <p className="mt-1 max-w-3xl text-sm leading-relaxed text-corporate-muted">
-          Record machine and vehicle repair events with validated entries. All submissions are
-          categorized under the Repair & Maintenance operational ledger.
+          Record machine and vehicle repair events with master-linked selections and proactive
+          preventive maintenance alerts within a 15-day service window.
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm">
@@ -198,6 +323,13 @@ export default function RepairMaintenancePanel() {
               {formatCurrency(machineTotalCost + vehicleTotalCost)}
             </span>
           </div>
+          {(upcomingMachineAlerts > 0 || upcomingVehicleAlerts > 0) && (
+            <div className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900">
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+              {upcomingMachineAlerts + upcomingVehicleAlerts} upcoming maintenance alert
+              {upcomingMachineAlerts + upcomingVehicleAlerts === 1 ? "" : "s"} (15-day window)
+            </div>
+          )}
         </div>
       </div>
 
@@ -235,11 +367,13 @@ export default function RepairMaintenancePanel() {
           <div className="mb-5 rounded-xl border border-amber-200/80 bg-amber-50/30 p-4 shadow-inner">
             <h4 className="mb-3 text-sm font-semibold text-corporate-text">New Machine Repair Entry</h4>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <TextInput
-                label="Machine ID / Name"
+              <SelectInput
+                label="Machine Selection"
                 required
-                value={machineForm.machineIdName}
-                onChange={(e) => handleMachineField("machineIdName", e.target.value)}
+                value={machineForm.machineId}
+                onChange={(event) => handleMachineField("machineId", event.target.value)}
+                placeholder={machinesReady ? "Select machine from master" : "Loading machines..."}
+                options={activeMachineOptions}
               />
               <TextInput
                 label="Breakdown Cause"
@@ -311,12 +445,14 @@ export default function RepairMaintenancePanel() {
             <thead className="bg-slate-50/90">
               <tr>
                 {[
-                  "Machine ID / Name",
+                  "Machine",
                   "Breakdown Cause",
                   "Detailed Work Done",
                   "Spares Used",
                   "Vendor / Mechanic",
                   "Cost",
+                  "Next Service",
+                  "Preventive Alert",
                   "Logged At",
                 ].map((heading) => (
                   <th
@@ -331,30 +467,45 @@ export default function RepairMaintenancePanel() {
             <tbody className="divide-y divide-corporate-border/60 bg-white">
               {machineLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-corporate-muted">
+                  <td colSpan={9} className="px-3 py-8 text-center text-corporate-muted">
                     No machine repair logs yet. Use Add Row to create the first entry.
                   </td>
                 </tr>
               ) : (
-                machineLogs.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/70">
-                    <td className="whitespace-nowrap px-3 py-2.5 font-medium text-corporate-text">
-                      {row.machineIdName}
-                    </td>
-                    <td className="max-w-[180px] px-3 py-2.5 text-corporate-text">{row.breakdownCause}</td>
-                    <td className="max-w-[220px] px-3 py-2.5 text-corporate-muted">{row.workDone}</td>
-                    <td className="max-w-[160px] px-3 py-2.5 text-corporate-muted">
-                      {row.sparesUsed || "—"}
-                    </td>
-                    <td className="max-w-[180px] px-3 py-2.5 text-corporate-text">{row.vendorMechanic}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-emerald-700">
-                      {formatCurrency(row.maintenanceCost)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-corporate-muted">
-                      {formatTimestamp(row.loggedAt)}
-                    </td>
-                  </tr>
-                ))
+                machineLogs.map((row) => {
+                  const alertStatus = resolveMaintenanceAlertStatus(row.nextMaintenanceDate);
+                  return (
+                    <tr
+                      key={row.id}
+                      className={cn(
+                        "hover:bg-slate-50/70",
+                        alertStatus?.isUpcomingAlert && "bg-amber-50/40"
+                      )}
+                    >
+                      <td className="whitespace-nowrap px-3 py-2.5 font-medium text-corporate-text">
+                        {row.machineIdName}
+                      </td>
+                      <td className="max-w-[180px] px-3 py-2.5 text-corporate-text">{row.breakdownCause}</td>
+                      <td className="max-w-[220px] px-3 py-2.5 text-corporate-muted">{row.workDone}</td>
+                      <td className="max-w-[160px] px-3 py-2.5 text-corporate-muted">
+                        {row.sparesUsed || "—"}
+                      </td>
+                      <td className="max-w-[180px] px-3 py-2.5 text-corporate-text">{row.vendorMechanic}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-emerald-700">
+                        {formatCurrency(row.maintenanceCost)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-corporate-text">
+                        {formatDateLabel(row.nextMaintenanceDate)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5">
+                        <MaintenanceAlertBadge nextMaintenanceDate={row.nextMaintenanceDate} />
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-corporate-muted">
+                        {formatTimestamp(row.loggedAt)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -395,11 +546,13 @@ export default function RepairMaintenancePanel() {
           <div className="mb-5 rounded-xl border border-sky-200/80 bg-sky-50/30 p-4 shadow-inner">
             <h4 className="mb-3 text-sm font-semibold text-corporate-text">New Vehicle Repair Entry</h4>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              <TextInput
-                label="Vehicle Number"
+              <SelectInput
+                label="Vehicle Selection"
                 required
-                value={vehicleForm.vehicleNumber}
-                onChange={(e) => handleVehicleField("vehicleNumber", e.target.value)}
+                value={vehicleForm.vehicleId}
+                onChange={(event) => handleVehicleSelect(event.target.value)}
+                placeholder={vehiclesReady ? "Select vehicle from master" : "Loading vehicles..."}
+                options={activeVehicleOptions}
               />
               <TextInput
                 label="Driver Name"
@@ -486,6 +639,8 @@ export default function RepairMaintenancePanel() {
                   "Repair Type",
                   "Workshop Details",
                   "Total Amount",
+                  "Next Service",
+                  "Preventive Alert",
                   "Logged At",
                 ].map((heading) => (
                   <th
@@ -500,34 +655,49 @@ export default function RepairMaintenancePanel() {
             <tbody className="divide-y divide-corporate-border/60 bg-white">
               {vehicleLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-corporate-muted">
+                  <td colSpan={9} className="px-3 py-8 text-center text-corporate-muted">
                     No vehicle repair logs yet. Use Add Row to create the first entry.
                   </td>
                 </tr>
               ) : (
-                vehicleLogs.map((row) => (
-                  <tr key={row.id} className="hover:bg-slate-50/70">
-                    <td className="whitespace-nowrap px-3 py-2.5 font-medium text-corporate-text">
-                      {row.vehicleNumber}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-corporate-text">{row.driverName}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-corporate-text">
-                      {row.odometerKm.toLocaleString("en-IN")}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5">
-                      <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800">
-                        {row.repairType}
-                      </span>
-                    </td>
-                    <td className="max-w-[220px] px-3 py-2.5 text-corporate-muted">{row.workshopDetails}</td>
-                    <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-sky-700">
-                      {formatCurrency(row.totalAmount)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-2.5 text-corporate-muted">
-                      {formatTimestamp(row.loggedAt)}
-                    </td>
-                  </tr>
-                ))
+                vehicleLogs.map((row) => {
+                  const alertStatus = resolveMaintenanceAlertStatus(row.nextMaintenanceDate);
+                  return (
+                    <tr
+                      key={row.id}
+                      className={cn(
+                        "hover:bg-slate-50/70",
+                        alertStatus?.isUpcomingAlert && "bg-amber-50/40"
+                      )}
+                    >
+                      <td className="whitespace-nowrap px-3 py-2.5 font-medium text-corporate-text">
+                        {row.vehicleNumber}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-corporate-text">{row.driverName}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-corporate-text">
+                        {row.odometerKm.toLocaleString("en-IN")}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5">
+                        <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-medium text-sky-800">
+                          {row.repairType}
+                        </span>
+                      </td>
+                      <td className="max-w-[220px] px-3 py-2.5 text-corporate-muted">{row.workshopDetails}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-sky-700">
+                        {formatCurrency(row.totalAmount)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-corporate-text">
+                        {formatDateLabel(row.nextMaintenanceDate)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5">
+                        <MaintenanceAlertBadge nextMaintenanceDate={row.nextMaintenanceDate} />
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-corporate-muted">
+                        {formatTimestamp(row.loggedAt)}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

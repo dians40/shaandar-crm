@@ -1,7 +1,11 @@
 import type {
   ManualAttendanceStatus,
   OvertimeShiftType,
-  WorkShift,
+} from "@/types/manual-attendance-entry";
+import {
+  BIOMETRIC_DAY_CODE,
+  BIOMETRIC_NIGHT_CODE,
+  normalizeBiometricCode,
 } from "@/types/manual-attendance-entry";
 
 export type AttendanceImportRow = {
@@ -33,12 +37,7 @@ async function loadXlsxModule(): Promise<XlsxModule> {
   return xlsxModulePromise;
 }
 
-const VALID_STATUSES = new Set<ManualAttendanceStatus>([
-  "Present Day Shift",
-  "Present Night Shift",
-  "Half Day Shift",
-  "Half Night Shift",
-]);
+const VALID_STATUSES = new Set<ManualAttendanceStatus>([BIOMETRIC_DAY_CODE, BIOMETRIC_NIGHT_CODE]);
 
 const CODE_HEADERS = new Set([
   "employeecode",
@@ -126,8 +125,7 @@ const BIOMETRIC_MAX_WIDTH = 32;
 
 const FALLBACK_EMPLOYEE_CODE = "TEMP_CODE";
 const FALLBACK_EMPLOYEE_NAME = "Unknown";
-const FALLBACK_STATUS_LABEL = "Absent";
-const DEFAULT_IMPORT_STATUS: ManualAttendanceStatus = "Present Day Shift";
+const DEFAULT_IMPORT_STATUS: ManualAttendanceStatus = BIOMETRIC_DAY_CODE;
 
 function safeString(value: unknown): string {
   try {
@@ -281,49 +279,37 @@ function parseBiometricOvertimeShift(
 ): OvertimeShiftType | "" {
   try {
     if (!hasOvertimeSignal(otValue, overtimeAmount, overStay)) return "";
-    return resolveBiometricShiftCode(shiftHint) === "night" ? "night" : "day";
+
+    const otToken = sanitizeBiometricShiftToken(`${otValue} ${overtimeAmount} ${overStay}`);
+    if (otToken.includes(BIOMETRIC_NIGHT_CODE) || otToken.includes(BIOMETRIC_DAY_CODE)) {
+      return normalizeBiometricCode(otToken);
+    }
+
+    return normalizeBiometricCode(shiftHint);
   } catch {
-    return "day";
+    return BIOMETRIC_DAY_CODE;
   }
 }
 
 function parseBiometricStatus(
   statusRaw: string,
   shiftRaw: string,
-  hoursWorked = ""
+  _hoursWorked = ""
 ): ManualAttendanceStatus {
   try {
-    const status = safeString(statusRaw);
-    const shiftBand = resolveBiometricShiftCode(shiftRaw);
-    const hours = safeString(hoursWorked);
+    const statusToken = sanitizeBiometricShiftToken(statusRaw);
+    const shiftToken = sanitizeBiometricShiftToken(shiftRaw);
 
-    if (!status && !shiftRaw && !hours) {
-      return parseStatus(FALLBACK_STATUS_LABEL, shiftBand);
+    if (statusToken.includes(BIOMETRIC_NIGHT_CODE) || statusToken.includes(BIOMETRIC_DAY_CODE)) {
+      return normalizeBiometricCode(statusRaw);
     }
-
-    if (/^p(resent)?$/i.test(status) || /^p$/i.test(status)) {
-      return shiftBand === "night" ? "Present Night Shift" : "Present Day Shift";
-    }
-    if (/^a(bs(ent)?)?$/i.test(status) || /^a$/i.test(status)) {
-      return parseStatus(FALLBACK_STATUS_LABEL, shiftBand);
-    }
-    if (/^h(alf)?$/i.test(status) || /^h$/i.test(status) || /half/i.test(status)) {
-      return shiftBand === "night" ? "Half Night Shift" : "Half Day Shift";
+    if (shiftToken) {
+      return normalizeBiometricCode(shiftRaw);
     }
 
-    if (!status && hours) {
-      const hoursNum = Number(hours.replace(/[^\d.-]/g, ""));
-      if (Number.isFinite(hoursNum) && hoursNum > 0 && hoursNum < 4) {
-        return shiftBand === "night" ? "Half Night Shift" : "Half Day Shift";
-      }
-      if (Number.isFinite(hoursNum) && hoursNum >= 4) {
-        return shiftBand === "night" ? "Present Night Shift" : "Present Day Shift";
-      }
-    }
-
-    return parseStatus(status || FALLBACK_STATUS_LABEL, shiftBand);
+    return DEFAULT_IMPORT_STATUS;
   } catch {
-    return parseStatus(FALLBACK_STATUS_LABEL, "day");
+    return DEFAULT_IMPORT_STATUS;
   }
 }
 
@@ -348,17 +334,18 @@ function processBiometricImportRow(
 
     const statusRaw = resolveMatrixCell(matrix, columnMap.statusIndex);
     const shiftToken = sanitizeBiometricShiftToken(resolveMatrixCell(matrix, columnMap.shiftIndex));
-    const shiftLabel = formatBiometricShiftLabel(shiftToken);
     const hoursWorked = resolveMatrixCell(matrix, columnMap.hoursWorkedIndex);
-    const otValue = resolveMatrixCell(matrix, columnMap.otIndex);
-    const otAmount = resolveMatrixCell(matrix, columnMap.overtimeAmountIndex);
-    const overStay = resolveMatrixCell(matrix, columnMap.overStayIndex);
+    const otValue = sanitizeBiometricShiftToken(resolveMatrixCell(matrix, columnMap.otIndex));
+    const otAmount = sanitizeBiometricShiftToken(
+      resolveMatrixCell(matrix, columnMap.overtimeAmountIndex)
+    );
+    const overStay = sanitizeBiometricShiftToken(resolveMatrixCell(matrix, columnMap.overStayIndex));
 
     const status = parseBiometricStatus(statusRaw, shiftToken, hoursWorked);
     const overtimeShift = parseBiometricOvertimeShift(otValue, otAmount, shiftToken, overStay);
 
     const remarks = [
-      shiftToken ? `Shift: ${shiftToken} → ${shiftLabel}` : `Shift: ${shiftLabel}`,
+      shiftToken ? `Shift: ${normalizeBiometricCode(shiftToken)}` : `Shift: ${BIOMETRIC_DAY_CODE}`,
       buildBiometricRemarks(matrix, columnMap),
       resolveMatrixCell(matrix, columnMap.remarksIndex),
     ]
@@ -377,7 +364,7 @@ function processBiometricImportRow(
     return {
       employeeCode: FALLBACK_EMPLOYEE_CODE,
       employeeName: FALLBACK_EMPLOYEE_NAME,
-      status: parseStatus(FALLBACK_STATUS_LABEL),
+      status: DEFAULT_IMPORT_STATUS,
       remarks: "Recovered by biometric sanitization matrix.",
     };
   }
@@ -398,7 +385,7 @@ function processRowThroughSanitizationMatrix(
     return finalizeImportRow({
       employeeCode: FALLBACK_EMPLOYEE_CODE,
       employeeName: FALLBACK_EMPLOYEE_NAME,
-      status: parseStatus(FALLBACK_STATUS_LABEL),
+      status: DEFAULT_IMPORT_STATUS,
       remarks: "Recovered by sanitization matrix.",
     });
   }
@@ -535,34 +522,18 @@ function cellToString(cell: unknown, xlsx?: XlsxModule, depth = 0): string {
   }
 }
 
-const BIOMETRIC_DAY_SHIFT_CODE = "DY1";
-const BIOMETRIC_NIGHT_SHIFT_CODE = "G11";
-
-/** Safe uppercase intercept for biometric Shift column tokens (DY1 / G11). */
+/** Safe uppercase intercept for biometric Shift / OT column tokens (DY1 / G11). */
 function sanitizeBiometricShiftToken(value: unknown): string {
   try {
     if (value == null) return "";
-    return safeString(value).trim().toUpperCase();
+    return String(value).trim().toUpperCase();
   } catch {
     return "";
   }
 }
 
-function resolveBiometricShiftCode(value: unknown): WorkShift {
-  try {
-    const token = sanitizeBiometricShiftToken(value);
-    if (token === BIOMETRIC_NIGHT_SHIFT_CODE) return "night";
-    if (token === BIOMETRIC_DAY_SHIFT_CODE) return "day";
-    if (token.includes("NIGHT") || token.includes("G11")) return "night";
-    if (token.includes("DAY") || token.includes("DY1")) return "day";
-    return "day";
-  } catch {
-    return "day";
-  }
-}
-
 export function formatBiometricShiftLabel(value: unknown): string {
-  return resolveBiometricShiftCode(value) === "night" ? "Night Shift" : "Day Shift";
+  return normalizeBiometricCode(value);
 }
 
 function parseCsvLine(line: string): string[] {
@@ -592,56 +563,14 @@ function parseCsvLine(line: string): string[] {
   }
 }
 
-function parseWorkShift(value: string): WorkShift | "" {
-  try {
-    const token = sanitizeBiometricShiftToken(value);
-    if (!token) return "";
-    if (token === BIOMETRIC_NIGHT_SHIFT_CODE) return "night";
-    if (token === BIOMETRIC_DAY_SHIFT_CODE) return "day";
-
-    const normalized = token.toLowerCase();
-    if (normalized.includes("night") || normalized.includes("g11")) return "night";
-    if (normalized.includes("day") || normalized.includes("dy1")) return "day";
-    return "day";
-  } catch {
-    return "day";
-  }
-}
-
 function parseStatus(value: string, shiftHint = ""): ManualAttendanceStatus {
   try {
-    const trimmed = safeString(value);
-    const hint = safeString(shiftHint);
-    const combined = `${trimmed} ${hint}`.trim().toLowerCase();
-
-    if (!trimmed && !hint) {
-      return DEFAULT_IMPORT_STATUS;
+    const combined = `${sanitizeBiometricShiftToken(value)} ${sanitizeBiometricShiftToken(shiftHint)}`.trim();
+    if (!combined) return DEFAULT_IMPORT_STATUS;
+    if (VALID_STATUSES.has(value.trim() as ManualAttendanceStatus)) {
+      return value.trim() as ManualAttendanceStatus;
     }
-
-    if (VALID_STATUSES.has(trimmed as ManualAttendanceStatus)) {
-      return trimmed as ManualAttendanceStatus;
-    }
-
-    if (combined.includes("present") && combined.includes("night")) {
-      return "Present Night Shift";
-    }
-    if (combined.includes("present") && combined.includes("day")) {
-      return "Present Day Shift";
-    }
-    if (combined.includes("half") && combined.includes("night")) {
-      return "Half Night Shift";
-    }
-    if (combined.includes("half")) {
-      return "Half Day Shift";
-    }
-    if (combined.includes("absent") || combined.includes("a/l") || combined.includes("leave")) {
-      return "Half Day Shift";
-    }
-    if (combined.includes("present") || combined === "p") {
-      return parseWorkShift(hint) === "night" ? "Present Night Shift" : "Present Day Shift";
-    }
-
-    return DEFAULT_IMPORT_STATUS;
+    return normalizeBiometricCode(combined);
   } catch {
     return DEFAULT_IMPORT_STATUS;
   }
@@ -649,14 +578,10 @@ function parseStatus(value: string, shiftHint = ""): ManualAttendanceStatus {
 
 function parseOvertimeShift(value: string): OvertimeShiftType | "" {
   try {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized || normalized === "none" || normalized === "n/a" || normalized === "-") {
-      return "";
-    }
-    if (/^\d+(\.\d+)?$/.test(normalized)) return "";
-    if (normalized.includes("night")) return "night";
-    if (normalized.includes("day")) return "day";
-    return "";
+    const token = sanitizeBiometricShiftToken(value);
+    if (!token || token === "NONE" || token === "N/A" || token === "-") return "";
+    if (/^\d+(\.\d+)?$/.test(token)) return "";
+    return normalizeBiometricCode(token);
   } catch {
     return "";
   }
@@ -680,7 +605,7 @@ function createSafeImportRow(partial: Partial<AttendanceImportRow> = {}): Attend
   const appliedDefaults: string[] = [];
   if (!safeString(partial.employeeCode)) appliedDefaults.push(`code=${FALLBACK_EMPLOYEE_CODE}`);
   if (!safeString(partial.employeeName)) appliedDefaults.push(`name=${FALLBACK_EMPLOYEE_NAME}`);
-  if (!statusRaw) appliedDefaults.push(`status=${FALLBACK_STATUS_LABEL}`);
+  if (!statusRaw) appliedDefaults.push(`status=${BIOMETRIC_DAY_CODE}`);
 
   const remarks = [
     safeString(partial.remarks),
@@ -1439,7 +1364,7 @@ function parseGenericImportRow(
       employeeCode: employeeCode || FALLBACK_EMPLOYEE_CODE,
       employeeName: employeeName || FALLBACK_EMPLOYEE_NAME,
       attendanceDate: normalizeAttendanceDate(safeCell(rowCells, columnMap.dateIndex)),
-      status: parseStatus(statusRaw || FALLBACK_STATUS_LABEL, shiftRaw),
+      status: parseStatus(statusRaw || BIOMETRIC_DAY_CODE, shiftRaw),
       overtimeShift: parseOvertimeShift(otShiftRaw),
       remarks: safeCell(rowCells, columnMap.remarksIndex),
     };
@@ -1516,7 +1441,7 @@ export function parseAttendanceImportMatrixSafe(
           finalizeImportRow({
             employeeCode: FALLBACK_EMPLOYEE_CODE,
             employeeName: FALLBACK_EMPLOYEE_NAME,
-            status: parseStatus(FALLBACK_STATUS_LABEL),
+            status: DEFAULT_IMPORT_STATUS,
             remarks: "Recovered during bulk row sanitization.",
           })
         );

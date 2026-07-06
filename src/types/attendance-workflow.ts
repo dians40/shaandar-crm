@@ -35,7 +35,7 @@ export type AttendanceWorkflowNotesPayload = {
   employeeName?: string;
   manualStatus?: string;
   overtimeHours?: number;
-  overtimeShift?: "day" | "night" | null;
+  overtimeShift?: "DY1" | "G11" | null;
   shiftRemarks?: string;
 };
 

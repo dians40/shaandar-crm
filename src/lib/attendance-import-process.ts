@@ -3,7 +3,7 @@ import {
   buildAttendanceShiftPunchTimes,
   formatAttendanceStatusLabel,
   formatOvertimeShiftLabel,
-  resolveAttendanceStatusParts,
+  normalizeBiometricCode,
   type ManualAttendanceStatus,
   type OvertimeShiftType,
 } from "@/types/manual-attendance-entry";
@@ -41,12 +41,10 @@ export function formatImportStatusLabel(status: ManualAttendanceStatus): string 
 }
 
 export function formatImportOvertimeShiftLabel(shift: OvertimeShiftType | ""): string {
-  if (!shift) return "None";
   return formatOvertimeShiftLabel(shift);
 }
 
-/** @deprecated Shift is encoded in attendance status label. */
+/** @deprecated Shift is encoded as DY1/G11 on attendance status. */
 export function formatImportShiftLabel(status: ManualAttendanceStatus): string {
-  const { workShift } = resolveAttendanceStatusParts(status);
-  return workShift === "night" ? "Night Shift" : "Day Shift";
+  return normalizeBiometricCode(status);
 }

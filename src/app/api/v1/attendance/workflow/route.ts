@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { ManualAttendanceStatus } from "@/types/manual-attendance-entry";
+import { BIOMETRIC_DAY_CODE } from "@/types/manual-attendance-entry";
 import {
   buildDefaultAttendanceWorkflowNotes,
   normalizeAttendanceWorkflowRecord,
@@ -168,7 +169,7 @@ type ManualEntryBody = {
   attendanceDate?: string;
   status?: ManualAttendanceStatus;
   overtimeHours?: number;
-  overtimeShift?: "day" | "night";
+  overtimeShift?: "DY1" | "G11";
   remarks?: string;
   punchIn?: string;
   punchOut?: string;
@@ -190,7 +191,7 @@ export async function POST(request: Request) {
   const employeeId = String(payload.employeeId ?? "").trim();
   const attendanceDate = String(payload.attendanceDate ?? "").trim();
   const punchIn = String(payload.punchIn ?? "").trim();
-  const status = payload.status ?? "Present Day Shift";
+  const status = payload.status ?? BIOMETRIC_DAY_CODE;
 
   if (!employeeId) {
     return NextResponse.json({ error: "employeeId is required." }, { status: 400 });

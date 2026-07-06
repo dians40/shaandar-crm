@@ -1,12 +1,13 @@
-export type ManualAttendanceStatus =
-  | "Present Day Shift"
-  | "Present Night Shift"
-  | "Half Day Shift"
-  | "Half Night Shift";
+export type BiometricShiftCode = "DY1" | "G11";
+
+export type ManualAttendanceStatus = BiometricShiftCode;
+
+export type OvertimeShiftType = BiometricShiftCode;
 
 export type WorkShift = "day" | "night";
 
-export type OvertimeShiftType = "day" | "night";
+export const BIOMETRIC_DAY_CODE: BiometricShiftCode = "DY1";
+export const BIOMETRIC_NIGHT_CODE: BiometricShiftCode = "G11";
 
 export type ManualAttendanceFormState = {
   employeeId: string;
@@ -21,15 +22,13 @@ export const MANUAL_ATTENDANCE_STATUS_OPTIONS: {
   value: ManualAttendanceStatus;
   label: string;
 }[] = [
-  { value: "Present Day Shift", label: "Present Day Shift" },
-  { value: "Present Night Shift", label: "Present Night Shift" },
-  { value: "Half Day Shift", label: "Half Day Shift" },
-  { value: "Half Night Shift", label: "Half Night Shift" },
+  { value: "DY1", label: "DY1" },
+  { value: "G11", label: "G11" },
 ];
 
 export const OVERTIME_SHIFT_OPTIONS: { value: OvertimeShiftType; label: string }[] = [
-  { value: "day", label: "Day Shift" },
-  { value: "night", label: "Night Shift" },
+  { value: "DY1", label: "DY1" },
+  { value: "G11", label: "G11" },
 ];
 
 export const EMPTY_MANUAL_ATTENDANCE_FORM: ManualAttendanceFormState = {
@@ -41,38 +40,46 @@ export const EMPTY_MANUAL_ATTENDANCE_FORM: ManualAttendanceFormState = {
   remarks: "",
 };
 
+export function normalizeBiometricCode(value: unknown): BiometricShiftCode {
+  try {
+    const token = String(value ?? "")
+      .trim()
+      .toUpperCase();
+    if (!token) return BIOMETRIC_DAY_CODE;
+    if (token.includes(BIOMETRIC_NIGHT_CODE)) return BIOMETRIC_NIGHT_CODE;
+    if (token.includes(BIOMETRIC_DAY_CODE)) return BIOMETRIC_DAY_CODE;
+    if (token.includes("NIGHT") || token.includes("G11")) return BIOMETRIC_NIGHT_CODE;
+    if (token.includes("DAY") || token.includes("DY1")) return BIOMETRIC_DAY_CODE;
+    return BIOMETRIC_DAY_CODE;
+  } catch {
+    return BIOMETRIC_DAY_CODE;
+  }
+}
+
 export function resolveAttendanceStatusParts(status: ManualAttendanceStatus): {
   workShift: WorkShift;
   isHalfDay: boolean;
 } {
-  switch (status) {
-    case "Present Night Shift":
-      return { workShift: "night", isHalfDay: false };
-    case "Half Day Shift":
-      return { workShift: "day", isHalfDay: true };
-    case "Half Night Shift":
-      return { workShift: "night", isHalfDay: true };
-    case "Present Day Shift":
-    default:
-      return { workShift: "day", isHalfDay: false };
+  if (status === BIOMETRIC_NIGHT_CODE) {
+    return { workShift: "night", isHalfDay: false };
   }
+  return { workShift: "day", isHalfDay: false };
 }
 
 export function formatAttendanceStatusLabel(status: ManualAttendanceStatus | string): string {
-  return (
-    MANUAL_ATTENDANCE_STATUS_OPTIONS.find((option) => option.value === status)?.label ??
-    String(status)
-  );
+  const normalized = normalizeBiometricCode(status);
+  return normalized;
 }
 
 export function formatOvertimeShiftLabel(shift: OvertimeShiftType | ""): string {
-  return OVERTIME_SHIFT_OPTIONS.find((option) => option.value === shift)?.label ?? "—";
+  if (!shift) return "None";
+  return normalizeBiometricCode(shift);
 }
 
-/** @deprecated Legacy helper — work shift is encoded in attendance status. */
+/** @deprecated Legacy helper — shift is encoded as DY1/G11. */
 export function formatWorkShiftLabel(shift: WorkShift | ""): string {
-  if (shift === "night") return "Night Shift";
-  if (shift === "day") return "Day Shift";
+  if (shift === "night") return BIOMETRIC_NIGHT_CODE;
+  if (shift === "day") return BIOMETRIC_DAY_CODE;
   return "—";
 }
 
@@ -90,24 +97,18 @@ export function buildAttendanceShiftPunchTimes(
   status: ManualAttendanceStatus,
   overtimeShift: OvertimeShiftType | ""
 ): { punchIn: string; punchOut?: string } {
-  const { workShift, isHalfDay } = resolveAttendanceStatusParts(status);
-
-  if (isHalfDay) {
-    if (workShift === "night") {
-      return { punchIn: `${date}T21:00:00.000Z`, punchOut: `${date}T01:00:00.000Z` };
-    }
-    return { punchIn: `${date}T09:00:00.000Z`, punchOut: `${date}T13:00:00.000Z` };
-  }
+  const { workShift } = resolveAttendanceStatusParts(status);
+  const otBand = overtimeShift ? normalizeBiometricCode(overtimeShift) : null;
 
   if (workShift === "night") {
-    const endHour = overtimeShift === "night" ? 8 : 6;
+    const endHour = otBand === BIOMETRIC_NIGHT_CODE ? 8 : 6;
     return {
       punchIn: `${date}T21:00:00.000Z`,
       punchOut: `${date}T${String(endHour).padStart(2, "0")}:00:00.000Z`,
     };
   }
 
-  const endHour = overtimeShift === "day" ? 20 : 18;
+  const endHour = otBand === BIOMETRIC_DAY_CODE ? 20 : 18;
   return {
     punchIn: `${date}T09:00:00.000Z`,
     punchOut: `${date}T${String(Math.min(23, endHour)).padStart(2, "0")}:00:00.000Z`,
@@ -122,15 +123,18 @@ export function buildAttendanceSyncPayload(
   if (!form.attendanceDate) return { payload: {} as AttendanceSyncPayload, error: "Attendance date is required." };
   if (!form.status) return { payload: {} as AttendanceSyncPayload, error: "Select an attendance status." };
 
+  const status = normalizeBiometricCode(form.status);
+  const overtimeShift = form.overtimeShift ? normalizeBiometricCode(form.overtimeShift) : "";
+
   const { punchIn, punchOut } = buildAttendanceShiftPunchTimes(
     form.attendanceDate,
-    form.status,
-    form.overtimeShift
+    status,
+    overtimeShift
   );
 
   const remarkParts = [
     form.remarks.trim(),
-    form.overtimeShift ? `Overtime Shift: ${formatOvertimeShiftLabel(form.overtimeShift)}` : "",
+    overtimeShift ? `Overtime Shift: ${overtimeShift}` : "",
     employeeName ? `Staff: ${employeeName}` : "",
   ].filter(Boolean);
 
@@ -139,8 +143,8 @@ export function buildAttendanceSyncPayload(
       employee_id: form.employeeId,
       punch_in: punchIn,
       ...(punchOut ? { punch_out: punchOut } : {}),
-      status: form.status,
-      overtime_hours: form.overtimeShift ? 1 : 0,
+      status,
+      overtime_hours: overtimeShift ? 1 : 0,
       remarks: remarkParts.join(" · "),
     },
     error: null,

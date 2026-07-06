@@ -78,7 +78,7 @@ export default function ManualAttendanceEntryPanel() {
         id: record.id,
         employeeName: record.employeeName,
         attendanceDate: record.attendanceDate,
-        status: wageRow?.status ?? "Present Day Shift",
+        status: wageRow?.status ?? "DY1",
         overtimeShift: wageRow?.overtimeShift ?? "",
         dailyWage: wageRow?.dailyWage ?? 0,
         remarks: wageRow?.remarks ?? record.assignedMachine,

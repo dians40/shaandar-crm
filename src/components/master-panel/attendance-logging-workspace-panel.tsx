@@ -14,7 +14,8 @@ import {
 import {
   buildImportAttendanceRemarks,
   buildImportPunchTimes,
-  formatImportShiftLabel,
+  formatImportOvertimeShiftLabel,
+  formatImportStatusLabel,
 } from "@/lib/attendance-import-process";
 import {
   parseAttendanceImportFileSafe,
@@ -72,7 +73,7 @@ export default function AttendanceLoggingWorkspacePanel() {
       if (parsedRows.length === 0) {
         setImportPreview(null);
         setImportError(
-          "No valid attendance rows found. Include Employee Code, Employee Name, Attendance Status, Shift, and Overtime Hours columns."
+          "No valid attendance rows found. Include Employee Code, Employee Name, Attendance Status, and Overtime Shift columns."
         );
         return;
       }
@@ -153,6 +154,8 @@ export default function AttendanceLoggingWorkspacePanel() {
         const { punchIn, punchOut } = buildImportPunchTimes(row);
         const remarks = buildImportAttendanceRemarks(row, employee.name);
 
+        const overtimeHours = row.overtimeShift ? 1 : 0;
+
         try {
           const response = await fetch("/api/v1/attendance/workflow", {
             method: "POST",
@@ -162,7 +165,8 @@ export default function AttendanceLoggingWorkspacePanel() {
               employeeName: employee.name,
               attendanceDate: row.attendanceDate,
               status: row.status,
-              overtimeHours: row.overtimeHours,
+              overtimeHours,
+              overtimeShift: row.overtimeShift || undefined,
               remarks,
               punchIn,
               punchOut: punchOut || undefined,
@@ -188,7 +192,7 @@ export default function AttendanceLoggingWorkspacePanel() {
             punchOut,
             remarks,
             status: row.status,
-            overtimeHours: row.overtimeHours,
+            overtimeHours,
           });
 
           result.imported += 1;
@@ -334,8 +338,7 @@ export default function AttendanceLoggingWorkspacePanel() {
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee Code</th>
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee Name</th>
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Attendance Status</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Shift</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Overtime Hours</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Overtime Shift</th>
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Match</th>
                   </tr>
@@ -361,11 +364,12 @@ export default function AttendanceLoggingWorkspacePanel() {
                           {employeeCode}
                         </td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.employeeName}</td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.status}</td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                          {formatImportShiftLabel(row.workShift)}
+                          {formatImportStatusLabel(row.status)}
                         </td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.overtimeHours}</td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                          {formatImportOvertimeShiftLabel(row.overtimeShift)}
+                        </td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.attendanceDate}</td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>
                           <span

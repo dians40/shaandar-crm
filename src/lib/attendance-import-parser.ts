@@ -9,8 +9,6 @@ export type AttendanceImportRow = {
   employeeName: string;
   attendanceDate: string;
   status: ManualAttendanceStatus;
-  workShift: WorkShift | "";
-  overtimeHours: number;
   overtimeShift: OvertimeShiftType | "";
   remarks: string;
 };
@@ -36,10 +34,10 @@ async function loadXlsxModule(): Promise<XlsxModule> {
 }
 
 const VALID_STATUSES = new Set<ManualAttendanceStatus>([
-  "present",
-  "absent",
-  "half_day",
-  "paid_leave",
+  "Present Day Shift",
+  "Present Night Shift",
+  "Half Day Shift",
+  "Half Night Shift",
 ]);
 
 const CODE_HEADERS = new Set([
@@ -187,36 +185,38 @@ function parseWorkShift(value: string): WorkShift | "" {
   return "";
 }
 
-function parseOvertimeShift(value: string): OvertimeShiftType | "" {
-  const normalized = value.toLowerCase();
-  if (normalized.includes("night")) return "night_overtime";
-  if (normalized.includes("day")) return "day_overtime";
-  return "";
-}
+function parseStatus(value: string, shiftHint = ""): ManualAttendanceStatus {
+  const combined = `${value} ${shiftHint}`.trim().toLowerCase();
 
-function parseStatus(value: string): ManualAttendanceStatus {
-  const normalized = value
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-
-  if (VALID_STATUSES.has(normalized as ManualAttendanceStatus)) {
-    return normalized as ManualAttendanceStatus;
+  if (VALID_STATUSES.has(value.trim() as ManualAttendanceStatus)) {
+    return value.trim() as ManualAttendanceStatus;
   }
 
-  if (normalized.includes("half")) return "half_day";
-  if (normalized.includes("leave")) return "paid_leave";
-  if (normalized.includes("absent")) return "absent";
-  if (normalized.includes("present") || normalized === "p") return "present";
+  if (combined.includes("present") && combined.includes("night")) {
+    return "Present Night Shift";
+  }
+  if (combined.includes("present") && combined.includes("day")) {
+    return "Present Day Shift";
+  }
+  if (combined.includes("half") && combined.includes("night")) {
+    return "Half Night Shift";
+  }
+  if (combined.includes("half")) {
+    return "Half Day Shift";
+  }
+  if (combined.includes("present") || combined === "p") {
+    return parseWorkShift(shiftHint) === "night" ? "Present Night Shift" : "Present Day Shift";
+  }
 
-  return "present";
+  return "Present Day Shift";
 }
 
-function parseOvertimeHours(value: string): number {
-  const cleaned = value.replace(/[^\d.-]/g, "").trim();
-  if (!cleaned) return 0;
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+function parseOvertimeShift(value: string): OvertimeShiftType | "" {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return "";
+  if (normalized.includes("night")) return "night";
+  if (normalized.includes("day")) return "day";
+  return "";
 }
 
 function splitDelimitedLine(line: string): string[] {
@@ -535,11 +535,12 @@ function parseImportRow(
   }
 
   const attendanceDate = safeCell(cells, columnMap.dateIndex) || todayIsoDate();
-  const statusRaw = safeCell(cells, columnMap.statusIndex) || "present";
-  const status = parseStatus(statusRaw);
-  const workShift = parseWorkShift(safeCell(cells, columnMap.shiftIndex));
-  const overtimeHours = parseOvertimeHours(safeCell(cells, columnMap.otIndex));
-  const overtimeShift = parseOvertimeShift(safeCell(cells, columnMap.otShiftIndex));
+  const statusRaw = safeCell(cells, columnMap.statusIndex);
+  const shiftRaw = safeCell(cells, columnMap.shiftIndex);
+  const otShiftRaw =
+    safeCell(cells, columnMap.otShiftIndex) || safeCell(cells, columnMap.otIndex);
+  const status = parseStatus(statusRaw || "Present Day Shift", shiftRaw);
+  const overtimeShift = parseOvertimeShift(otShiftRaw);
   const remarks = safeCell(cells, columnMap.remarksIndex);
 
   return {
@@ -547,9 +548,6 @@ function parseImportRow(
     employeeName: employeeName || employeeCode,
     attendanceDate,
     status,
-    workShift:
-      workShift || (status === "present" || status === "half_day" ? ("day" as WorkShift) : ""),
-    overtimeHours,
     overtimeShift,
     remarks,
   };

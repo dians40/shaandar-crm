@@ -9,15 +9,12 @@ import { useEmployees } from "@/hooks/use-employees";
 import {
   buildAttendanceSyncPayload,
   EMPTY_MANUAL_ATTENDANCE_FORM,
+  formatAttendanceStatusLabel,
   formatOvertimeShiftLabel,
-  formatWorkShiftLabel,
   MANUAL_ATTENDANCE_STATUS_OPTIONS,
   OVERTIME_SHIFT_OPTIONS,
-  statusRequiresWorkShift,
-  WORK_SHIFT_OPTIONS,
   type ManualAttendanceFormState,
   type OvertimeShiftType,
-  type WorkShift,
 } from "@/types/manual-attendance-entry";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
@@ -33,18 +30,10 @@ type ManualAttendanceLogRow = {
   employeeName: string;
   attendanceDate: string;
   status: string;
-  workShift: WorkShift | "";
-  overtimeHours: number;
   overtimeShift: OvertimeShiftType | "";
   dailyWage: number;
   remarks: string;
 };
-
-function formatStatusLabel(status: string): string {
-  return (
-    MANUAL_ATTENDANCE_STATUS_OPTIONS.find((option) => option.value === status)?.label ?? status
-  );
-}
 
 function formatRupee(value: number): string {
   return value.toLocaleString("en-IN", {
@@ -73,20 +62,6 @@ export default function ManualAttendanceEntryPanel() {
 
   const selectedEmployee = employees.find((row) => row.id === form.employeeId);
 
-  const showWorkShift = statusRequiresWorkShift(form.status);
-  const overtimeHoursValue = Number(form.overtimeHours) || 0;
-  const showOvertimeShift = overtimeHoursValue > 0;
-
-  const handleStatusChange = (status: ManualAttendanceFormState["status"]) => {
-    setForm((current) => ({
-      ...current,
-      status,
-      workShift: statusRequiresWorkShift(status) ? current.workShift : "",
-      overtimeShift:
-        status === "absent" || status === "paid_leave" ? "" : current.overtimeShift,
-    }));
-  };
-
   const manualRecords = useMemo(
     () =>
       records
@@ -103,9 +78,7 @@ export default function ManualAttendanceEntryPanel() {
         id: record.id,
         employeeName: record.employeeName,
         attendanceDate: record.attendanceDate,
-        status: wageRow?.status ?? "present",
-        workShift: wageRow?.workShift ?? "",
-        overtimeHours: wageRow?.overtimeHours ?? 0,
+        status: wageRow?.status ?? "Present Day Shift",
         overtimeShift: wageRow?.overtimeShift ?? "",
         dailyWage: wageRow?.dailyWage ?? 0,
         remarks: wageRow?.remarks ?? record.assignedMachine,
@@ -145,6 +118,7 @@ export default function ManualAttendanceEntryPanel() {
           attendanceDate: form.attendanceDate,
           status: payload.status,
           overtimeHours: payload.overtime_hours,
+          overtimeShift: form.overtimeShift || undefined,
           remarks: payload.remarks,
           punchIn: payload.punch_in,
           punchOut: payload.punch_out,
@@ -183,8 +157,6 @@ export default function ManualAttendanceEntryPanel() {
           employeeName: selectedEmployee?.name ?? "",
           attendanceDate: form.attendanceDate,
           status: payload.status,
-          overtimeHours: payload.overtime_hours,
-          workShift: form.workShift,
           overtimeShift: form.overtimeShift,
           dailyWage,
           remarks: form.remarks.trim(),
@@ -216,7 +188,7 @@ export default function ManualAttendanceEntryPanel() {
               Manual Attendance &amp; Wage Entry
             </h3>
             <p className="text-sm text-corporate-muted">
-              Log labor and staff attendance, overtime, and daily wages in one sheet.
+              Log labor and staff attendance, overtime shift, and daily wages in one sheet.
             </p>
           </div>
         </div>
@@ -257,7 +229,7 @@ export default function ManualAttendanceEntryPanel() {
           />
         </FormGrid>
 
-        <FormGrid cols={2}>
+        <FormGrid cols={3}>
           <SelectInput
             label="Attendance Status"
             required
@@ -268,82 +240,27 @@ export default function ManualAttendanceEntryPanel() {
               label: option.label,
             }))}
             onChange={(event) =>
-              handleStatusChange(event.target.value as ManualAttendanceFormState["status"])
+              setForm((current) => ({
+                ...current,
+                status: event.target.value as ManualAttendanceFormState["status"],
+              }))
             }
           />
-          {showWorkShift ? (
-            <SelectInput
-              label="Work Shift"
-              required
-              value={form.workShift}
-              placeholder="Select Day or Night Shift"
-              options={WORK_SHIFT_OPTIONS.map((option) => ({
-                value: option.value,
-                label: option.label,
-              }))}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  workShift: event.target.value as WorkShift,
-                }))
-              }
-            />
-          ) : (
-            <div className="flex min-h-[48px] items-end">
-              <p className="rounded-lg border border-corporate-border bg-corporate-bg px-3 py-2.5 text-xs text-corporate-muted">
-                Shift selection not required for Absent / Paid Leave.
-              </p>
-            </div>
-          )}
-        </FormGrid>
-
-        <FormGrid cols={3}>
-          <div className="flex min-w-0 flex-col gap-2 sm:col-span-2 sm:flex-row">
-            <div className="min-w-0 flex-1">
-              <TextInput
-                label="Overtime Hours"
-                type="number"
-                min="0"
-                step="0.5"
-                value={form.overtimeHours}
-                onChange={(event) => {
-                  const nextHours = event.target.value;
-                  setForm((current) => ({
-                    ...current,
-                    overtimeHours: nextHours,
-                    overtimeShift:
-                      (Number(nextHours) || 0) > 0 ? current.overtimeShift : "",
-                  }));
-                }}
-              />
-            </div>
-            {showOvertimeShift ? (
-              <div className="min-w-0 flex-1">
-                <SelectInput
-                  label="Overtime Shift"
-                  required
-                  value={form.overtimeShift}
-                  placeholder="Select overtime shift"
-                  options={OVERTIME_SHIFT_OPTIONS.map((option) => ({
-                    value: option.value,
-                    label: option.label,
-                  }))}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      overtimeShift: event.target.value as OvertimeShiftType,
-                    }))
-                  }
-                />
-              </div>
-            ) : (
-              <div className="flex min-h-[48px] flex-1 items-end">
-                <p className="text-xs text-corporate-muted">
-                  Enter overtime hours to select Day or Night Shift Overtime.
-                </p>
-              </div>
-            )}
-          </div>
+          <SelectInput
+            label="Overtime Shift"
+            value={form.overtimeShift}
+            placeholder="Select overtime shift"
+            options={OVERTIME_SHIFT_OPTIONS.map((option) => ({
+              value: option.value,
+              label: option.label,
+            }))}
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                overtimeShift: event.target.value as OvertimeShiftType | "",
+              }))
+            }
+          />
           <TextInput
             label="Daily Wage (₹)"
             type="number"
@@ -394,9 +311,7 @@ export default function ManualAttendanceEntryPanel() {
                 <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
                 <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee</th>
                 <th className={MASTER_LIST_HEADER_CELL_CLASS}>Status</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Work Shift</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>OT Hours</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>OT Shift</th>
+                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Overtime Shift</th>
                 <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Daily Wage</th>
                 <th className={MASTER_LIST_HEADER_CELL_CLASS}>Remarks</th>
               </tr>
@@ -404,13 +319,13 @@ export default function ManualAttendanceEntryPanel() {
             <tbody className="divide-y divide-corporate-border">
               {!isReady ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-corporate-muted">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-corporate-muted">
                     Loading attendance log...
                   </td>
                 </tr>
               ) : displayLog.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-corporate-muted">
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-corporate-muted">
                     No manual attendance entries yet. Use the form above to log staff attendance.
                   </td>
                 </tr>
@@ -425,14 +340,8 @@ export default function ManualAttendanceEntryPanel() {
                     </td>
                     <td className={MASTER_LIST_BODY_CELL_CLASS}>
                       <span className="rounded-full border border-corporate-border bg-corporate-bg px-2.5 py-1 text-xs font-semibold">
-                        {formatStatusLabel(row.status)}
+                        {formatAttendanceStatusLabel(row.status)}
                       </span>
-                    </td>
-                    <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                      {row.workShift ? formatWorkShiftLabel(row.workShift) : "—"}
-                    </td>
-                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right")}>
-                      {row.overtimeHours.toFixed(1)}
                     </td>
                     <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-xs")}>
                       {row.overtimeShift ? formatOvertimeShiftLabel(row.overtimeShift) : "—"}

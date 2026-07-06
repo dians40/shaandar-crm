@@ -1,12 +1,11 @@
 import type { AttendanceImportRow } from "@/lib/attendance-import-parser";
 import {
   buildAttendanceShiftPunchTimes,
+  formatAttendanceStatusLabel,
   formatOvertimeShiftLabel,
-  formatWorkShiftLabel,
-  statusRequiresWorkShift,
+  resolveAttendanceStatusParts,
   type ManualAttendanceStatus,
   type OvertimeShiftType,
-  type WorkShift,
 } from "@/types/manual-attendance-entry";
 
 export function buildImportAttendanceRemarks(
@@ -15,14 +14,8 @@ export function buildImportAttendanceRemarks(
 ): string {
   const parts = [
     row.remarks.trim(),
-    statusRequiresWorkShift(row.status) && row.workShift
-      ? `Work Shift: ${formatWorkShiftLabel(row.workShift)}`
-      : "",
-    row.overtimeHours > 0 && row.overtimeShift
-      ? `${formatOvertimeShiftLabel(row.overtimeShift)}: ${row.overtimeHours}h`
-      : row.overtimeHours > 0
-        ? `Overtime: ${row.overtimeHours}h`
-        : "",
+    row.overtimeShift ? `Overtime Shift: ${formatOvertimeShiftLabel(row.overtimeShift)}` : "",
+    `Status: ${formatAttendanceStatusLabel(row.status)}`,
     `Staff: ${employeeName}`,
     row.employeeCode ? `Code: ${row.employeeCode}` : "",
   ].filter(Boolean);
@@ -34,21 +27,25 @@ export function buildImportPunchTimes(row: AttendanceImportRow): {
   punchIn: string;
   punchOut: string;
 } {
-  const workShift: WorkShift = row.workShift || "day";
   const { punchIn, punchOut } = buildAttendanceShiftPunchTimes(
     row.attendanceDate,
-    row.status as ManualAttendanceStatus,
-    statusRequiresWorkShift(row.status) ? workShift : "day",
-    row.overtimeHours
+    row.status,
+    row.overtimeShift
   );
 
   return { punchIn, punchOut: punchOut ?? "" };
 }
 
-export function formatImportShiftLabel(shift: WorkShift | ""): string {
-  return formatWorkShiftLabel(shift);
+export function formatImportStatusLabel(status: ManualAttendanceStatus): string {
+  return formatAttendanceStatusLabel(status);
 }
 
 export function formatImportOvertimeShiftLabel(shift: OvertimeShiftType | ""): string {
   return formatOvertimeShiftLabel(shift);
+}
+
+/** @deprecated Shift is encoded in attendance status label. */
+export function formatImportShiftLabel(status: ManualAttendanceStatus): string {
+  const { workShift } = resolveAttendanceStatusParts(status);
+  return workShift === "night" ? "Night Shift" : "Day Shift";
 }

@@ -168,10 +168,15 @@ type ManualEntryBody = {
   attendanceDate?: string;
   status?: ManualAttendanceStatus;
   overtimeHours?: number;
+  overtimeShift?: "day" | "night";
   remarks?: string;
   punchIn?: string;
   punchOut?: string;
 };
+
+function mapManualStatusToDbStatus(_status: ManualAttendanceStatus): string {
+  return "present";
+}
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -185,7 +190,7 @@ export async function POST(request: Request) {
   const employeeId = String(payload.employeeId ?? "").trim();
   const attendanceDate = String(payload.attendanceDate ?? "").trim();
   const punchIn = String(payload.punchIn ?? "").trim();
-  const status = payload.status ?? "present";
+  const status = payload.status ?? "Present Day Shift";
 
   if (!employeeId) {
     return NextResponse.json({ error: "employeeId is required." }, { status: 400 });
@@ -200,13 +205,16 @@ export async function POST(request: Request) {
   const punchOut = String(payload.punchOut ?? "").trim();
   const employeeName = String(payload.employeeName ?? "").trim();
   const remarks = String(payload.remarks ?? "").trim();
-  const overtimeHours = Number(payload.overtimeHours) || 0;
+  const overtimeHours =
+    Number(payload.overtimeHours) || (payload.overtimeShift ? 1 : 0);
+  const overtimeShift = payload.overtimeShift ?? null;
 
   const workflowNotes = {
     ...buildDefaultAttendanceWorkflowNotes(punchIn, punchOut, employeeName || undefined),
     source: "manual" as const,
     manualStatus: status,
     overtimeHours,
+    overtimeShift,
     shiftRemarks: remarks,
   };
 
@@ -240,12 +248,7 @@ export async function POST(request: Request) {
 
   try {
     const supabase = createAdminClient();
-    const dbStatus =
-      status === "present" || status === "half_day"
-        ? "present"
-        : status === "paid_leave"
-          ? "leave"
-          : "absent";
+    const dbStatus = mapManualStatusToDbStatus(status);
 
     const { data, error } = await supabase
       .from(ATTENDANCE_TABLE)

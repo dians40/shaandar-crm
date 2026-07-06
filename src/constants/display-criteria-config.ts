@@ -1,23 +1,21 @@
+import type { TransactionFilterMode } from "./display-report-types";
+import { getDefaultReportTypeForView } from "./display-report-types";
+
 export type DisplayCriteriaViewId =
   | "daybook"
   | "ledgers"
   | "material-ledger"
   | "cash-bank"
-  | "trial-balance";
+  | "daily-production";
 
 export type DisplayReportCriteria = {
   fromDate: string;
   toDate: string;
-  reportSubType: string;
+  reportTypeId: string;
   entityFilter: string;
-};
-
-export const DISPLAY_SUB_TYPE_OPTIONS: Record<DisplayCriteriaViewId, string[]> = {
-  daybook: ["Summary View", "Detailed Voucher Log", "Vehicle Cost Comparison"],
-  ledgers: ["Summary View", "Detailed Voucher Log", "Account Head Comparison"],
-  "material-ledger": ["Summary View", "Detailed Voucher Log", "Vehicle Cost Comparison"],
-  "cash-bank": ["Summary View", "Detailed Voucher Log", "Party Receipt Analysis"],
-  "trial-balance": ["Summary View", "Detailed Voucher Log", "Group Comparison"],
+  transactionFilterMode: TransactionFilterMode;
+  accountGroupFilter: string;
+  specificAccountFilter: string;
 };
 
 export const DISPLAY_ENTITY_LABELS: Record<DisplayCriteriaViewId, string> = {
@@ -25,7 +23,7 @@ export const DISPLAY_ENTITY_LABELS: Record<DisplayCriteriaViewId, string> = {
   ledgers: "Account Head Search",
   "material-ledger": "Vehicle Number / Supplier Search",
   "cash-bank": "Party Name Search",
-  "trial-balance": "Account Group Search",
+  "daily-production": "Production Line / Shift Search",
 };
 
 export const DISPLAY_ENTITY_SUGGESTIONS: Record<DisplayCriteriaViewId, string[]> = {
@@ -43,13 +41,31 @@ export const DISPLAY_ENTITY_SUGGESTIONS: Record<DisplayCriteriaViewId, string[]>
     "HDFC Bank Transfer — ABC Traders",
     "MH-12-AB-4521",
   ],
-  "trial-balance": ["Assets", "Liabilities", "Income", "Expenses", "Cash & Bank"],
+  "daily-production": [
+    "Casting Line A",
+    "Machining Bay 2",
+    "Morning Shift",
+    "Finished Goods Dispatch",
+  ],
 };
 
-export function matchesEntityFilter(
-  haystack: string,
-  entityFilter: string
-): boolean {
+export function createDefaultDisplayCriteria(
+  viewId: DisplayCriteriaViewId,
+  fromDate: string,
+  toDate: string
+): DisplayReportCriteria {
+  return {
+    fromDate,
+    toDate,
+    reportTypeId: getDefaultReportTypeForView(viewId),
+    entityFilter: "",
+    transactionFilterMode: "all",
+    accountGroupFilter: "",
+    specificAccountFilter: "",
+  };
+}
+
+export function matchesEntityFilter(haystack: string, entityFilter: string): boolean {
   const query = entityFilter.trim().toLowerCase();
   if (!query) return true;
   return haystack.toLowerCase().includes(query);

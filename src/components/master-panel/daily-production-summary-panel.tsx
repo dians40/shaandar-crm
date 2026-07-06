@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+import { Factory } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { matchesEntityFilter } from "@/constants/display-criteria-config";
 import { isWithinDateRange } from "./workspace-date-range-filter";
@@ -9,51 +11,120 @@ import {
   MASTER_LIST_HEADER_CELL_CLASS,
   MASTER_LIST_HEADER_CELL_RIGHT_CLASS,
   MASTER_LIST_TABLE_CLASS,
-  MASTER_LIST_TABLE_WRAPPER_CLASS,
 } from "./universal-master-list";
 
-const PRODUCTION_ROWS = [
+type ProductionBalanceRow = {
+  date: string;
+  itemName: string;
+  openingStock: number;
+  received: number;
+  consumed: number;
+  manufacturingDay: number;
+  manufacturingNight: number;
+  sales: number;
+  transfer: number;
+};
+
+const PRODUCTION_BALANCE_ROWS: ProductionBalanceRow[] = [
   {
     date: "2026-07-05",
-    shift: "Morning",
-    line: "Casting Line A",
-    outputItem: "Finished Casting Lot #A-18",
-    plannedQty: 150,
-    actualQty: 142,
-    efficiency: "94.7%",
-    status: "On Target",
+    itemName: "Finished Casting Lot #A-18",
+    openingStock: 320,
+    received: 0,
+    consumed: 48,
+    manufacturingDay: 96,
+    manufacturingNight: 46,
+    sales: 142,
+    transfer: 12,
   },
   {
     date: "2026-07-05",
-    shift: "Morning",
-    line: "Machining Bay 2",
-    outputItem: "Machined Gear Assembly",
-    plannedQty: 40,
-    actualQty: 36,
-    efficiency: "90.0%",
-    status: "Minor Shortfall",
+    itemName: "Machined Gear Assembly",
+    openingStock: 84,
+    received: 36,
+    consumed: 18,
+    manufacturingDay: 22,
+    manufacturingNight: 14,
+    sales: 36,
+    transfer: 8,
   },
   {
     date: "2026-07-05",
-    shift: "Evening",
-    line: "Assembly Unit 1",
-    outputItem: "Hydraulic Pump Assembly",
-    plannedQty: 28,
-    actualQty: 28,
-    efficiency: "100%",
-    status: "Complete",
+    itemName: "Hydraulic Pump Assembly",
+    openingStock: 52,
+    received: 0,
+    consumed: 12,
+    manufacturingDay: 16,
+    manufacturingNight: 12,
+    sales: 28,
+    transfer: 0,
+  },
+  {
+    date: "2026-07-05",
+    itemName: "MS Round Bar 12mm (WIP)",
+    openingStock: 1240,
+    received: 2400,
+    consumed: 860,
+    manufacturingDay: 0,
+    manufacturingNight: 0,
+    sales: 0,
+    transfer: 320,
   },
   {
     date: "2026-07-04",
-    shift: "Morning",
-    line: "Casting Line A",
-    outputItem: "Foundry Sand Cast Block",
-    plannedQty: 200,
-    actualQty: 188,
-    efficiency: "94.0%",
-    status: "On Target",
+    itemName: "Foundry Sand Cast Block",
+    openingStock: 410,
+    received: 0,
+    consumed: 62,
+    manufacturingDay: 112,
+    manufacturingNight: 76,
+    sales: 188,
+    transfer: 24,
+  },
+  {
+    date: "2026-07-04",
+    itemName: "Corrugated Carton Boxes",
+    openingStock: 2800,
+    received: 500,
+    consumed: 0,
+    manufacturingDay: 0,
+    manufacturingNight: 0,
+    sales: 420,
+    transfer: 180,
   },
 ];
+
+function computeClosingBalance(row: ProductionBalanceRow): number {
+  return (
+    row.openingStock +
+    row.received +
+    row.manufacturingDay +
+    row.manufacturingNight -
+    row.consumed -
+    row.sales -
+    row.transfer
+  );
+}
+
+function formatQty(value: number): string {
+  return value.toLocaleString("en-IN");
+}
+
+const INPUT_HEAD_CLASS =
+  "border-b border-emerald-200 bg-emerald-50/90 px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-emerald-900";
+const INPUT_CELL_CLASS = "bg-emerald-50/40";
+
+const PROCESS_HEAD_CLASS =
+  "border-b border-amber-200 bg-amber-50/90 px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-amber-900";
+const PROCESS_CELL_CLASS = "bg-amber-50/35";
+
+const OUTWARD_HEAD_CLASS =
+  "border-b border-red-200 bg-red-50/90 px-3 py-2.5 text-left text-xs font-bold uppercase tracking-wide text-red-900";
+const OUTWARD_CELL_CLASS = "bg-red-50/35";
+
+const CLOSING_HEAD_CLASS =
+  "border-b border-corporate-brand/30 bg-corporate-brand-light px-3 py-2.5 text-right text-xs font-bold uppercase tracking-wide text-corporate-brand";
+const CLOSING_CELL_CLASS = "bg-corporate-brand-light/50 font-bold text-corporate-brand";
 
 type DailyProductionSummaryPanelProps = {
   fromDate: string;
@@ -66,68 +137,270 @@ export default function DailyProductionSummaryPanel({
   toDate,
   entityFilter = "",
 }: DailyProductionSummaryPanelProps) {
-  const filteredRows = PRODUCTION_ROWS.filter(
-    (row) =>
-      isWithinDateRange(row.date, fromDate, toDate) &&
-      matchesEntityFilter(
-        `${row.line} ${row.shift} ${row.outputItem} ${row.status}`,
-        entityFilter
-      )
+  const filteredRows = useMemo(
+    () =>
+      PRODUCTION_BALANCE_ROWS.filter(
+        (row) =>
+          isWithinDateRange(row.date, fromDate, toDate) &&
+          matchesEntityFilter(`${row.itemName} ${row.date}`, entityFilter)
+      ),
+    [entityFilter, fromDate, toDate]
   );
 
+  const totals = useMemo(() => {
+    const sum = {
+      openingStock: 0,
+      received: 0,
+      consumed: 0,
+      manufacturingDay: 0,
+      manufacturingNight: 0,
+      sales: 0,
+      transfer: 0,
+      closingBalance: 0,
+    };
+    for (const row of filteredRows) {
+      sum.openingStock += row.openingStock;
+      sum.received += row.received;
+      sum.consumed += row.consumed;
+      sum.manufacturingDay += row.manufacturingDay;
+      sum.manufacturingNight += row.manufacturingNight;
+      sum.sales += row.sales;
+      sum.transfer += row.transfer;
+      sum.closingBalance += computeClosingBalance(row);
+    }
+    return sum;
+  }, [filteredRows]);
+
   return (
-    <article className="rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
-      <header className="border-b border-corporate-border px-4 py-3">
-        <h3 className="text-sm font-bold text-corporate-text">Daily Production Summary</h3>
-        <p className="text-xs text-corporate-muted">
-          Shift-wise output, efficiency, and floor production logs
-        </p>
-      </header>
-      <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "rounded-none border-0 shadow-none")}>
-        <table className={MASTER_LIST_TABLE_CLASS}>
+    <div className="w-full space-y-4" aria-label="Daily production input-output balance chart">
+      <div className="flex flex-col gap-3 border-b border-corporate-border pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <Factory className="h-5 w-5 text-corporate-brand" aria-hidden />
+          <div>
+            <h3 className="text-sm font-semibold text-corporate-text">
+              Daily Production Summary — Input / Output Balance Chart
+            </h3>
+            <p className="text-xs text-corporate-muted">
+              Full-width stock movement across opening, processing, and outward flows
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-wide">
+          <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-800">
+            Input
+          </span>
+          <span className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">
+            Processing
+          </span>
+          <span className="rounded border border-red-200 bg-red-50 px-2 py-1 text-red-800">
+            Outward
+          </span>
+          <span className="rounded border border-corporate-brand/30 bg-corporate-brand-light px-2 py-1 text-corporate-brand">
+            Closing
+          </span>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
+        <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[1100px] w-full")}>
           <thead className={MASTER_LIST_HEAD_CLASS}>
             <tr>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Shift</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Production Line</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Output Item</th>
-              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Planned</th>
-              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actual</th>
-              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Efficiency</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Status</th>
+              <th className={cn(MASTER_LIST_HEADER_CELL_CLASS, "min-w-[180px]")}>Item Name</th>
+              <th className={cn(INPUT_HEAD_CLASS, "text-right")}>Opening Stock</th>
+              <th className={cn(INPUT_HEAD_CLASS, "text-right")}>Received</th>
+              <th className={cn(PROCESS_HEAD_CLASS, "text-right")}>Consumed</th>
+              <th className={cn(PROCESS_HEAD_CLASS, "text-right")}>Manufacturing Day</th>
+              <th className={cn(PROCESS_HEAD_CLASS, "text-right")}>Manufacturing Night</th>
+              <th className={cn(OUTWARD_HEAD_CLASS, "text-right")}>Sales</th>
+              <th className={cn(OUTWARD_HEAD_CLASS, "text-right")}>Transfer</th>
+              <th className={CLOSING_HEAD_CLASS}>Closing Balance</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {filteredRows.map((row) => (
-              <tr key={`${row.date}-${row.line}-${row.shift}`}>
-                <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.date}</td>
-                <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.shift}</td>
-                <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-medium")}>{row.line}</td>
-                <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.outputItem}</td>
-                <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right")}>{row.plannedQty}</td>
-                <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-semibold")}>
-                  {row.actualQty}
-                </td>
-                <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right")}>{row.efficiency}</td>
-                <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                  <span
-                    className={cn(
-                      "rounded-full border px-2.5 py-1 text-xs font-semibold",
-                      row.status === "Complete"
-                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                        : row.status === "Minor Shortfall"
-                          ? "border-amber-200 bg-amber-50 text-amber-800"
-                          : "border-corporate-border bg-corporate-bg text-corporate-text"
-                    )}
-                  >
-                    {row.status}
-                  </span>
+            {filteredRows.length === 0 ? (
+              <tr>
+                <td colSpan={10} className="px-4 py-10 text-center text-sm text-corporate-muted">
+                  No production balance rows match the selected criteria.
                 </td>
               </tr>
-            ))}
+            ) : (
+              filteredRows.map((row) => {
+                const closingBalance = computeClosingBalance(row);
+                return (
+                  <tr
+                    key={`${row.date}-${row.itemName}`}
+                    className="hover:bg-corporate-bg/40"
+                  >
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "whitespace-nowrap text-xs")}>
+                      {row.date}
+                    </td>
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "min-w-[180px] font-medium")}>
+                      {row.itemName}
+                    </td>
+                    <td
+                      className={cn(
+                        MASTER_LIST_BODY_CELL_CLASS,
+                        INPUT_CELL_CLASS,
+                        "text-right font-medium"
+                      )}
+                    >
+                      {formatQty(row.openingStock)}
+                    </td>
+                    <td
+                      className={cn(
+                        MASTER_LIST_BODY_CELL_CLASS,
+                        INPUT_CELL_CLASS,
+                        "text-right font-medium text-emerald-700"
+                      )}
+                    >
+                      {formatQty(row.received)}
+                    </td>
+                    <td
+                      className={cn(
+                        MASTER_LIST_BODY_CELL_CLASS,
+                        PROCESS_CELL_CLASS,
+                        "text-right font-medium text-amber-800"
+                      )}
+                    >
+                      {formatQty(row.consumed)}
+                    </td>
+                    <td
+                      className={cn(
+                        MASTER_LIST_BODY_CELL_CLASS,
+                        PROCESS_CELL_CLASS,
+                        "text-right font-medium"
+                      )}
+                    >
+                      {formatQty(row.manufacturingDay)}
+                    </td>
+                    <td
+                      className={cn(
+                        MASTER_LIST_BODY_CELL_CLASS,
+                        PROCESS_CELL_CLASS,
+                        "text-right font-medium"
+                      )}
+                    >
+                      {formatQty(row.manufacturingNight)}
+                    </td>
+                    <td
+                      className={cn(
+                        MASTER_LIST_BODY_CELL_CLASS,
+                        OUTWARD_CELL_CLASS,
+                        "text-right font-semibold text-red-700"
+                      )}
+                    >
+                      {formatQty(row.sales)}
+                    </td>
+                    <td
+                      className={cn(
+                        MASTER_LIST_BODY_CELL_CLASS,
+                        OUTWARD_CELL_CLASS,
+                        "text-right font-medium text-red-700"
+                      )}
+                    >
+                      {formatQty(row.transfer)}
+                    </td>
+                    <td
+                      className={cn(
+                        MASTER_LIST_BODY_CELL_CLASS,
+                        CLOSING_CELL_CLASS,
+                        MASTER_LIST_HEADER_CELL_RIGHT_CLASS
+                      )}
+                    >
+                      {formatQty(closingBalance)}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
+          {filteredRows.length > 0 && (
+            <tfoot className="border-t-2 border-corporate-border bg-corporate-bg">
+              <tr>
+                <td
+                  colSpan={2}
+                  className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-bold text-corporate-text")}
+                >
+                  Totals ({filteredRows.length} items)
+                </td>
+                <td
+                  className={cn(
+                    MASTER_LIST_BODY_CELL_CLASS,
+                    INPUT_CELL_CLASS,
+                    "text-right font-bold"
+                  )}
+                >
+                  {formatQty(totals.openingStock)}
+                </td>
+                <td
+                  className={cn(
+                    MASTER_LIST_BODY_CELL_CLASS,
+                    INPUT_CELL_CLASS,
+                    "text-right font-bold text-emerald-700"
+                  )}
+                >
+                  {formatQty(totals.received)}
+                </td>
+                <td
+                  className={cn(
+                    MASTER_LIST_BODY_CELL_CLASS,
+                    PROCESS_CELL_CLASS,
+                    "text-right font-bold text-amber-800"
+                  )}
+                >
+                  {formatQty(totals.consumed)}
+                </td>
+                <td
+                  className={cn(
+                    MASTER_LIST_BODY_CELL_CLASS,
+                    PROCESS_CELL_CLASS,
+                    "text-right font-bold"
+                  )}
+                >
+                  {formatQty(totals.manufacturingDay)}
+                </td>
+                <td
+                  className={cn(
+                    MASTER_LIST_BODY_CELL_CLASS,
+                    PROCESS_CELL_CLASS,
+                    "text-right font-bold"
+                  )}
+                >
+                  {formatQty(totals.manufacturingNight)}
+                </td>
+                <td
+                  className={cn(
+                    MASTER_LIST_BODY_CELL_CLASS,
+                    OUTWARD_CELL_CLASS,
+                    "text-right font-bold text-red-700"
+                  )}
+                >
+                  {formatQty(totals.sales)}
+                </td>
+                <td
+                  className={cn(
+                    MASTER_LIST_BODY_CELL_CLASS,
+                    OUTWARD_CELL_CLASS,
+                    "text-right font-bold text-red-700"
+                  )}
+                >
+                  {formatQty(totals.transfer)}
+                </td>
+                <td
+                  className={cn(
+                    MASTER_LIST_BODY_CELL_CLASS,
+                    CLOSING_CELL_CLASS,
+                    "text-right text-base"
+                  )}
+                >
+                  {formatQty(totals.closingBalance)}
+                </td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
-    </article>
+    </div>
   );
 }

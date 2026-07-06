@@ -11,10 +11,8 @@ import {
   upsertAutoProvisionedEmployee,
   type PendingAutoEmployee,
 } from "@/lib/attendance-auto-provision";
-import {
-  buildImportAttendanceRemarks,
-  buildImportPunchTimes,
-} from "@/lib/attendance-import-process";
+import { buildBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
+import { bulkRecordToWorkflowFields } from "@/types/attendance-bulk-import-row";
 import {
   finalizeImportRow,
   parseAttendanceImportFileSafe,
@@ -46,6 +44,18 @@ type ImportResult = {
   createdEmployees: number;
   errors: string[];
 };
+
+function mappedStatusFromRecord(record: {
+  assignedMachine?: string;
+}): import("@/types/manual-attendance-entry").ManualAttendanceStatus {
+  try {
+    const token = record.assignedMachine ?? "";
+    if (token.includes("G11")) return "G11";
+    return "DY1";
+  } catch {
+    return "DY1";
+  }
+}
 
 export default function AttendanceLoggingWorkspacePanel() {
   const { employees, prependEmployee } = useEmployees();
@@ -178,78 +188,107 @@ export default function AttendanceLoggingWorkspacePanel() {
         result.createdEmployees += 1;
       }
 
-      for (const row of importPreview.rows) {
-        const safeRow = finalizeImportRow(row);
-        const employeeCode = safeRow.employeeCode.trim() || "TEMP_CODE";
-        const employeeName = safeRow.employeeName.trim() || "Unknown Worker";
+      const bulkPayloadRows: Record<string, unknown>[] = [];
 
-        let employee = resolveImportEmployee(
-          employeeCode,
-          employeeName,
-          employees,
-          registry
-        );
-
-        if (!employee) {
-          const created = createAutoProvisionedEmployee(employeeCode, employeeName);
-          registry = upsertAutoProvisionedEmployee(created);
-          prependEmployee(created);
-          employee = created;
-          result.createdEmployees += 1;
-        }
-
-        const { punchIn, punchOut } = buildImportPunchTimes(safeRow);
-        const remarks = buildImportAttendanceRemarks(safeRow, employee.name);
-
-        const overtimeHours = safeRow.overtimeShift ? 1 : 0;
-
+      for (const bulkRow of importPreview.bulkRows) {
         try {
-          const response = await fetch("/api/v1/attendance/workflow", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              employeeId: employee.id,
-              employeeName: employee.name,
-              attendanceDate: safeRow.attendanceDate,
-              status: safeRow.status,
-              overtimeHours,
-              overtimeShift: safeRow.overtimeShift || undefined,
-              remarks,
-              punchIn,
-              punchOut: punchOut || undefined,
-            }),
-          });
+          const safeBulk = normalizeBiometric22ColumnRecord(bulkRow);
+          const mapped = bulkRecordToWorkflowFields(safeBulk);
+          const employeeCode = mapped.employeeCode.trim() || "TEMP_CODE";
+          const employeeName = mapped.employeeName.trim() || "Unknown Worker";
 
-          if (!response.ok) {
-            const body = (await response.json()) as { error?: string };
-            throw new Error(body.error ?? "Failed to save attendance row.");
+          let employee = resolveImportEmployee(
+            employeeCode,
+            employeeName,
+            employees,
+            registry
+          );
+
+          if (!employee) {
+            const created = createAutoProvisionedEmployee(employeeCode, employeeName);
+            registry = upsertAutoProvisionedEmployee(created);
+            prependEmployee(created);
+            employee = created;
+            result.createdEmployees += 1;
           }
 
-          const body = (await response.json()) as { record?: { id: string } };
-          const recordId =
-            body.record?.id ??
-            `att-import-${employee.id}-${safeRow.attendanceDate}-${Date.now()}-${result.imported}`;
-
-          ingestManualEntry({
-            id: recordId,
+          const dbPayload = buildBulkDbPayload({
+            row: safeBulk,
             employeeId: employee.id,
-            employeeName: employee.name,
-            attendanceDate: safeRow.attendanceDate,
-            punchIn,
-            punchOut,
-            remarks,
-            status: safeRow.status,
-            overtimeHours,
           });
 
-          result.imported += 1;
+          bulkPayloadRows.push({
+            ...dbPayload,
+            employee_id: employee.id,
+            employee_name: employee.name,
+            employeeId: employee.id,
+            employeeName: employee.name,
+            "SRL number": dbPayload.srl_number,
+            "pay code": dbPayload.pay_code,
+            "hours worked": dbPayload.hours_worked,
+          });
         } catch (rowError) {
+          console.error(rowError);
           result.skipped += 1;
           result.errors.push(
-            rowError instanceof Error
-              ? `${employeeName}: ${rowError.message}`
-              : `${employeeName}: Import failed`
+            rowError instanceof Error ? rowError.message : "Row sanitization failed."
           );
+        }
+      }
+
+      if (bulkPayloadRows.length === 0) {
+        setImportError("No valid rows available for bulk submission.");
+        return;
+      }
+
+      const response = await fetch("/api/v1/attendance/workflow/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: bulkPayloadRows }),
+      });
+
+      const body = (await response.json()) as {
+        error?: string;
+        imported?: number;
+        skipped?: number;
+        errors?: string[];
+        records?: Array<{
+          id: string;
+          employeeId: string;
+          employeeName: string;
+          attendanceDate: string;
+          punchIn: string;
+          punchOut: string;
+          assignedMachine: string;
+        }>;
+      };
+
+      if (!response.ok) {
+        throw new Error(body.error ?? "Bulk attendance submission failed.");
+      }
+
+      result.imported = body.imported ?? 0;
+      result.skipped += body.skipped ?? 0;
+      if (Array.isArray(body.errors)) {
+        result.errors.push(...body.errors);
+      }
+
+      for (const record of body.records ?? []) {
+        try {
+          if (!record?.id || !record.employeeId) continue;
+          ingestManualEntry({
+            id: record.id,
+            employeeId: record.employeeId,
+            employeeName: record.employeeName,
+            attendanceDate: record.attendanceDate,
+            punchIn: record.punchIn,
+            punchOut: record.punchOut ?? "",
+            remarks: record.assignedMachine ?? "",
+            status: mappedStatusFromRecord(record),
+            overtimeHours: 0,
+          });
+        } catch (entryError) {
+          console.error(entryError);
         }
       }
 
@@ -269,6 +308,7 @@ export default function AttendanceLoggingWorkspacePanel() {
       setImportPreview(null);
       setSelectedBulkRowIndex(0);
     } catch (error) {
+      console.error(error);
       const message =
         error instanceof Error ? error.message : "Bulk attendance processing failed.";
       setImportError(message);

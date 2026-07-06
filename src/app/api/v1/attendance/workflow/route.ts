@@ -206,8 +206,11 @@ export async function POST(request: Request) {
   const punchOut = String(payload.punchOut ?? "").trim();
   const employeeName = String(payload.employeeName ?? "").trim();
   const remarks = String(payload.remarks ?? "").trim();
-  const overtimeHours =
-    Number(payload.overtimeHours) || (payload.overtimeShift ? 1 : 0);
+  const overtimeHours = Number.isFinite(Number(payload.overtimeHours))
+    ? Number(payload.overtimeHours)
+    : payload.overtimeShift
+      ? 1
+      : 0;
   const overtimeShift = payload.overtimeShift ?? null;
 
   const workflowNotes = {

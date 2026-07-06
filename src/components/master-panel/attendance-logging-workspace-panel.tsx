@@ -1,93 +1,208 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { CalendarCheck, FileSpreadsheet, Upload } from "lucide-react";
+import { CalendarCheck, FileSpreadsheet, Save, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { parseAttendanceImportFile } from "@/lib/attendance-import-parser";
+import {
+  createAutoProvisionedEmployee,
+  detectPendingAutoEmployees,
+  readAutoProvisionedEmployees,
+  resolveImportEmployee,
+  upsertAutoProvisionedEmployee,
+  type PendingAutoEmployee,
+} from "@/lib/attendance-auto-provision";
+import {
+  buildImportAttendanceRemarks,
+  buildImportPunchTimes,
+  formatImportOvertimeShiftLabel,
+  formatImportShiftLabel,
+} from "@/lib/attendance-import-process";
+import {
+  parseAttendanceImportFile,
+  type AttendanceImportRow,
+} from "@/lib/attendance-import-parser";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
 import { useEmployees } from "@/hooks/use-employees";
+import {
+  MASTER_LIST_BODY_CELL_CLASS,
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_TABLE_CLASS,
+  MASTER_LIST_TABLE_WRAPPER_CLASS,
+} from "./universal-master-list";
 import AttendanceSystemPanel from "./attendance-system-panel";
 import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
+
+type ImportPreviewState = {
+  fileName: string;
+  rows: AttendanceImportRow[];
+  pendingNewEmployees: PendingAutoEmployee[];
+};
 
 type ImportResult = {
   imported: number;
   skipped: number;
+  createdEmployees: number;
   errors: string[];
 };
 
 export default function AttendanceLoggingWorkspacePanel() {
-  const { employees } = useEmployees();
+  const { employees, prependEmployee } = useEmployees();
   const { ingestManualEntry } = useAttendanceWorkflow();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreviewState | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const resolveEmployee = useCallback(
-    (name: string) =>
-      employees.find(
-        (employee) => employee.name.toLowerCase() === name.toLowerCase()
-      ) ??
-      employees.find((employee) =>
-        employee.name.toLowerCase().includes(name.toLowerCase())
-      ),
-    [employees]
-  );
+  const autoProvisioned = readAutoProvisionedEmployees();
+  const mergedEmployees = [...autoProvisioned, ...employees];
 
-  const handleFileImport = async (file: File) => {
+  const handleFileSelect = async (file: File) => {
     setImportMessage(null);
     setImportError(null);
-    setIsImporting(true);
+    setIsParsing(true);
 
     try {
       const parsedRows = await parseAttendanceImportFile(file);
 
       if (parsedRows.length === 0) {
+        setImportPreview(null);
         setImportError(
-          "No valid attendance rows found. Check column headers: Employee Name, Date, Status, Overtime Hours, Remarks."
+          "No valid attendance rows found. Include Employee Code, Employee Name, Date, Status, Work Shift, Overtime Hours, and Overtime Shift columns."
         );
         return;
       }
 
-      const result: ImportResult = { imported: 0, skipped: 0, errors: [] };
+      const registry = readAutoProvisionedEmployees();
+      const pendingNewEmployees = detectPendingAutoEmployees(
+        parsedRows,
+        employees,
+        registry
+      );
 
-      for (const row of parsedRows) {
-        const employee = resolveEmployee(row.employeeName);
+      setImportPreview({
+        fileName: file.name,
+        rows: parsedRows,
+        pendingNewEmployees,
+      });
+    } catch (error) {
+      setImportPreview(null);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to read the selected file. Check the Excel or CSV structure and try again.";
+      setImportError(message);
+    } finally {
+      setIsParsing(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const processBulkImport = useCallback(async () => {
+    if (!importPreview) return;
+
+    setImportMessage(null);
+    setImportError(null);
+    setIsProcessing(true);
+
+    try {
+      let registry = readAutoProvisionedEmployees();
+      const result: ImportResult = {
+        imported: 0,
+        skipped: 0,
+        createdEmployees: 0,
+        errors: [],
+      };
+
+      for (const pending of importPreview.pendingNewEmployees) {
+        const created = createAutoProvisionedEmployee(
+          pending.employeeCode,
+          pending.employeeName
+        );
+        registry = upsertAutoProvisionedEmployee(created);
+        prependEmployee(created);
+        result.createdEmployees += 1;
+      }
+
+      for (const row of importPreview.rows) {
+        const employeeCode =
+          row.employeeCode.trim() ||
+          `AUTO-${row.employeeName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12)}`;
+
+        let employee = resolveImportEmployee(
+          employeeCode,
+          row.employeeName,
+          employees,
+          registry
+        );
+
         if (!employee) {
-          result.skipped += 1;
-          result.errors.push(`Employee not found: ${row.employeeName}`);
-          continue;
+          const created = createAutoProvisionedEmployee(employeeCode, row.employeeName);
+          registry = upsertAutoProvisionedEmployee(created);
+          prependEmployee(created);
+          employee = created;
+          result.createdEmployees += 1;
         }
 
-        const date = row.attendanceDate;
-        const punchIn =
-          row.status === "absent" || row.status === "paid_leave"
-            ? `${date}T00:00:00.000Z`
-            : `${date}T09:00:00.000Z`;
-        const punchOut =
-          row.status === "absent" || row.status === "paid_leave"
-            ? ""
-            : row.status === "half_day"
-              ? `${date}T13:00:00.000Z`
-              : `${date}T18:00:00.000Z`;
+        const { punchIn, punchOut } = buildImportPunchTimes(row);
+        const remarks = buildImportAttendanceRemarks(row, employee.name);
 
-        ingestManualEntry({
-          id: `att-import-${employee.id}-${date}-${Date.now()}-${result.imported}`,
-          employeeId: employee.id,
-          employeeName: employee.name,
-          attendanceDate: date,
-          punchIn,
-          punchOut,
-          remarks: row.remarks,
-          status: row.status,
-          overtimeHours: row.overtimeHours,
-        });
+        try {
+          const response = await fetch("/api/v1/attendance/workflow", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              employeeId: employee.id,
+              employeeName: employee.name,
+              attendanceDate: row.attendanceDate,
+              status: row.status,
+              overtimeHours: row.overtimeHours,
+              remarks,
+              punchIn,
+              punchOut: punchOut || undefined,
+            }),
+          });
 
-        result.imported += 1;
+          if (!response.ok) {
+            const body = (await response.json()) as { error?: string };
+            throw new Error(body.error ?? "Failed to save attendance row.");
+          }
+
+          const body = (await response.json()) as { record?: { id: string } };
+          const recordId =
+            body.record?.id ??
+            `att-import-${employee.id}-${row.attendanceDate}-${Date.now()}-${result.imported}`;
+
+          ingestManualEntry({
+            id: recordId,
+            employeeId: employee.id,
+            employeeName: employee.name,
+            attendanceDate: row.attendanceDate,
+            punchIn,
+            punchOut,
+            remarks,
+            status: row.status,
+            overtimeHours: row.overtimeHours,
+          });
+
+          result.imported += 1;
+        } catch (rowError) {
+          result.skipped += 1;
+          result.errors.push(
+            rowError instanceof Error
+              ? `${row.employeeName}: ${rowError.message}`
+              : `${row.employeeName}: Import failed`
+          );
+        }
       }
 
       setImportMessage(
-        `Imported ${result.imported} row(s) from ${file.name}` +
+        `Processed ${result.imported} attendance row(s)` +
+          (result.createdEmployees > 0
+            ? ` · New employees auto-created: ${result.createdEmployees}`
+            : "") +
           (result.skipped > 0 ? ` · Skipped ${result.skipped}` : "") +
           "."
       );
@@ -95,17 +210,16 @@ export default function AttendanceLoggingWorkspacePanel() {
       if (result.errors.length > 0) {
         setImportError(result.errors.slice(0, 3).join(" · "));
       }
+
+      setImportPreview(null);
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to read the selected file. Check the Excel or CSV structure and try again.";
+        error instanceof Error ? error.message : "Bulk attendance processing failed.";
       setImportError(message);
     } finally {
-      setIsImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setIsProcessing(false);
     }
-  };
+  }, [employees, importPreview, ingestManualEntry, prependEmployee]);
 
   return (
     <div className="w-full space-y-6">
@@ -115,7 +229,8 @@ export default function AttendanceLoggingWorkspacePanel() {
           <div>
             <h2 className="text-lg font-semibold text-corporate-text">Attendance Logging</h2>
             <p className="text-sm text-corporate-muted">
-              Direct Excel import, manual entry, and the four-stage verification workflow
+              Direct Excel import with auto employee provisioning, manual entry, and verification
+              workflow
             </p>
           </div>
         </div>
@@ -129,9 +244,9 @@ export default function AttendanceLoggingWorkspacePanel() {
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-bold text-corporate-text">Bulk Import — Excel / CSV</h3>
             <p className="mt-1 text-xs text-corporate-muted">
-              Upload .xlsx, .xls, or .csv files with columns: Employee Name, Date, Status,
-              Overtime Hours, Remarks. Excel workbooks are parsed directly — no manual CSV
-              conversion required.
+              Upload .xlsx, .xls, or .csv with Employee Code, Employee Name, Date, Status, Work
+              Shift, Overtime Hours, and Overtime Shift. Missing employee codes are auto-created
+              when you process the import.
             </p>
           </div>
         </div>
@@ -139,7 +254,7 @@ export default function AttendanceLoggingWorkspacePanel() {
         <div
           className={cn(
             "mt-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-corporate-border bg-corporate-bg px-4 py-8 text-center",
-            isImporting && "opacity-70"
+            (isParsing || isProcessing) && "opacity-70"
           )}
         >
           <Upload className="mb-2 h-8 w-8 text-corporate-muted" aria-hidden />
@@ -153,14 +268,115 @@ export default function AttendanceLoggingWorkspacePanel() {
               type="file"
               accept=".xlsx,.xls,.csv"
               className="sr-only"
-              disabled={isImporting}
+              disabled={isParsing || isProcessing}
               onChange={(event) => {
                 const file = event.target.files?.[0];
-                if (file) void handleFileImport(file);
+                if (file) void handleFileSelect(file);
               }}
             />
           </label>
         </div>
+
+        {importPreview && (
+          <div className="mt-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-3">
+              <div>
+                <p className="text-sm font-bold text-corporate-brand">
+                  New Employees Auto-Detected &amp; Created: {importPreview.pendingNewEmployees.length}
+                </p>
+                <p className="text-xs text-corporate-muted">
+                  Preview for {importPreview.fileName} — {importPreview.rows.length} attendance
+                  row(s) ready to process
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void processBulkImport()}
+                disabled={isProcessing}
+                className="btn-primary inline-flex h-11 min-h-[44px] items-center gap-2 px-5 text-sm"
+              >
+                <Save className="h-4 w-4" aria-hidden />
+                {isProcessing ? "Processing..." : "Process & Save Bulk Attendance"}
+              </button>
+            </div>
+
+            {importPreview.pendingNewEmployees.length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                <p className="font-semibold">Pending auto-provision profiles</p>
+                <p className="mt-1">
+                  {importPreview.pendingNewEmployees
+                    .map((row) => `${row.employeeCode} — ${row.employeeName}`)
+                    .join(" · ")}
+                </p>
+              </div>
+            )}
+
+            <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "max-h-[360px] overflow-auto")}>
+              <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[960px]")}>
+                <thead className={MASTER_LIST_HEAD_CLASS}>
+                  <tr>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Code</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Status</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Work Shift</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>OT Hours</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>OT Shift</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Match</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-corporate-border">
+                  {importPreview.rows.map((row, index) => {
+                    const employeeCode =
+                      row.employeeCode.trim() ||
+                      `AUTO-${row.employeeName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12)}`;
+                    const matched = resolveImportEmployee(
+                      employeeCode,
+                      row.employeeName,
+                      mergedEmployees,
+                      autoProvisioned
+                    );
+                    const isNew = importPreview.pendingNewEmployees.some(
+                      (pending) => pending.employeeCode === employeeCode.toUpperCase()
+                    );
+
+                    return (
+                      <tr key={`${employeeCode}-${row.attendanceDate}-${index}`}>
+                        <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-medium")}>
+                          {employeeCode}
+                        </td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.employeeName}</td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.attendanceDate}</td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.status}</td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                          {formatImportShiftLabel(row.workShift)}
+                        </td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.overtimeHours}</td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                          {formatImportOvertimeShiftLabel(row.overtimeShift)}
+                        </td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                          <span
+                            className={cn(
+                              "rounded-full px-2 py-1 text-[10px] font-semibold",
+                              isNew
+                                ? "bg-amber-100 text-amber-900"
+                                : matched
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-corporate-bg text-corporate-muted"
+                            )}
+                          >
+                            {isNew ? "Auto-Create" : matched ? "Existing" : "Pending"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {importMessage && (
           <p className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">

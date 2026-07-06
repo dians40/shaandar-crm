@@ -67,7 +67,7 @@ export type AttendanceSyncPayload = {
   remarks: string;
 };
 
-function buildShiftPunchTimes(
+export function buildAttendanceShiftPunchTimes(
   date: string,
   status: ManualAttendanceStatus,
   workShift: WorkShift,
@@ -128,7 +128,7 @@ export function buildAttendanceSyncPayload(
   }
 
   const workShift = form.workShift || "day";
-  const { punchIn, punchOut } = buildShiftPunchTimes(
+  const { punchIn, punchOut } = buildAttendanceShiftPunchTimes(
     form.attendanceDate,
     form.status,
     workShift,

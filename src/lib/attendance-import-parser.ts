@@ -1,11 +1,18 @@
 import * as XLSX from "xlsx";
-import type { ManualAttendanceStatus } from "@/types/manual-attendance-entry";
+import type {
+  ManualAttendanceStatus,
+  OvertimeShiftType,
+  WorkShift,
+} from "@/types/manual-attendance-entry";
 
 export type AttendanceImportRow = {
+  employeeCode: string;
   employeeName: string;
   attendanceDate: string;
   status: ManualAttendanceStatus;
+  workShift: WorkShift | "";
   overtimeHours: number;
+  overtimeShift: OvertimeShiftType | "";
   remarks: string;
 };
 
@@ -58,6 +65,20 @@ function parseCsvLine(line: string): string[] {
   return cells;
 }
 
+function parseWorkShift(value: string): WorkShift | "" {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("night")) return "night";
+  if (normalized.includes("day")) return "day";
+  return "";
+}
+
+function parseOvertimeShift(value: string): OvertimeShiftType | "" {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("night")) return "night_overtime";
+  if (normalized.includes("day")) return "day_overtime";
+  return "";
+}
+
 function matrixFromCsvText(text: string): string[][] {
   return text
     .split(/\r?\n/)
@@ -94,6 +115,9 @@ export function parseAttendanceImportMatrix(matrix: string[][]): AttendanceImpor
   if (matrix.length === 0) return [];
 
   const headerCells = matrix[0].map(normalizeHeader);
+  const codeIndex = headerCells.findIndex((cell) =>
+    ["employeecode", "employeeid", "staffcode", "code", "empid"].includes(cell)
+  );
   const nameIndex = headerCells.findIndex((cell) =>
     ["employeename", "staffname", "name", "employee"].includes(cell)
   );
@@ -101,34 +125,61 @@ export function parseAttendanceImportMatrix(matrix: string[][]): AttendanceImpor
     ["attendancedate", "date", "workdate"].includes(cell)
   );
   const statusIndex = headerCells.findIndex((cell) => cell === "status");
+  const shiftIndex = headerCells.findIndex((cell) =>
+    ["workshift", "shift", "dayshift"].includes(cell)
+  );
   const otIndex = headerCells.findIndex((cell) =>
     ["overtimehours", "overtime", "othours"].includes(cell)
+  );
+  const otShiftIndex = headerCells.findIndex((cell) =>
+    ["overtimeshift", "otshift", "overtimeband"].includes(cell)
   );
   const remarksIndex = headerCells.findIndex((cell) =>
     ["remarks", "notes", "shiftinfo"].includes(cell)
   );
 
-  if (nameIndex < 0 && dateIndex < 0) {
+  if (nameIndex < 0 && codeIndex < 0) {
     throw new Error(
-      "Invalid file structure. Include at least Employee Name and Date column headers."
+      "Invalid file structure. Include Employee Code and/or Employee Name column headers."
     );
+  }
+
+  if (dateIndex < 0) {
+    throw new Error("Invalid file structure. Include a Date column header.");
   }
 
   const rows: AttendanceImportRow[] = [];
 
   for (const cells of matrix.slice(1)) {
-    const employeeName = cells[nameIndex >= 0 ? nameIndex : 0]?.trim() ?? "";
-    const attendanceDate = cells[dateIndex >= 0 ? dateIndex : 1]?.trim() ?? "";
-    const statusRaw = (cells[statusIndex >= 0 ? statusIndex : 2]?.trim() ?? "present")
+    const employeeCode = cells[codeIndex >= 0 ? codeIndex : -1]?.trim() ?? "";
+    const employeeName =
+      cells[nameIndex >= 0 ? nameIndex : codeIndex >= 0 ? codeIndex + 1 : 0]?.trim() ?? "";
+    const attendanceDate = cells[dateIndex]?.trim() ?? "";
+    const statusRaw = (cells[statusIndex >= 0 ? statusIndex : -1]?.trim() ?? "present")
       .toLowerCase()
       .replace(/\s+/g, "_") as ManualAttendanceStatus;
     const status = VALID_STATUSES.has(statusRaw) ? statusRaw : "present";
-    const overtimeHours = Number(cells[otIndex >= 0 ? otIndex : 3]) || 0;
-    const remarks = cells[remarksIndex >= 0 ? remarksIndex : 4]?.trim() ?? "";
+    const workShift = parseWorkShift(cells[shiftIndex >= 0 ? shiftIndex : -1]?.trim() ?? "");
+    const overtimeHours = Number(cells[otIndex >= 0 ? otIndex : -1]) || 0;
+    const overtimeShift = parseOvertimeShift(
+      cells[otShiftIndex >= 0 ? otShiftIndex : -1]?.trim() ?? ""
+    );
+    const remarks = cells[remarksIndex >= 0 ? remarksIndex : -1]?.trim() ?? "";
 
-    if (!employeeName || !attendanceDate) continue;
+    if ((!employeeName && !employeeCode) || !attendanceDate) continue;
 
-    rows.push({ employeeName, attendanceDate, status, overtimeHours, remarks });
+    rows.push({
+      employeeCode,
+      employeeName: employeeName || employeeCode,
+      attendanceDate,
+      status,
+      workShift:
+        workShift ||
+        (status === "present" || status === "half_day" ? ("day" as WorkShift) : ""),
+      overtimeHours,
+      overtimeShift,
+      remarks,
+    });
   }
 
   return rows;

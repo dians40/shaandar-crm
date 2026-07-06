@@ -36,6 +36,25 @@ export function updateManagedUser(
   return next;
 }
 
+export function renameRoleInManagedUsers(oldRole: string, newRole: string): ManagedUserRecord[] {
+  const next = readManagedUsers().map((row) =>
+    row.role === oldRole ? { ...row, role: newRole } : row
+  );
+  writeManagedUsers(next);
+  return next;
+}
+
+export function reassignManagedUsersFromRole(
+  removedRole: string,
+  fallbackRole: string
+): ManagedUserRecord[] {
+  const next = readManagedUsers().map((row) =>
+    row.role === removedRole ? { ...row, role: fallbackRole } : row
+  );
+  writeManagedUsers(next);
+  return next;
+}
+
 export function findManagedUserByUsername(username: string): ManagedUserRecord | undefined {
   const normalized = username.trim().toLowerCase();
   return readManagedUsers().find(

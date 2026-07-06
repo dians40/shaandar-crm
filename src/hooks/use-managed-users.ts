@@ -35,11 +35,16 @@ export function useManagedUsers() {
     setUsers(records);
   }, []);
 
+  const reload = useCallback(() => {
+    setUsers(readManagedUsers());
+  }, []);
+
   return {
     users,
     isReady,
     addUser,
     setOtpEnabled,
     replaceAll,
+    reload,
   };
 }

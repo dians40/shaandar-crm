@@ -12,15 +12,16 @@ import {
   type ManagedUserFormState,
   type ManagedUserRecord,
 } from "@/types/managed-user";
-import { USER_ROLES, type UserRoleName } from "@/types/user-permissions";
+import type { UserRoleName } from "@/types/user-permissions";
 
 type AddUserModalProps = {
   open: boolean;
   onClose: () => void;
   onCreate: (user: ManagedUserRecord) => void;
+  roles: string[];
 };
 
-export default function AddUserModal({ open, onClose, onCreate }: AddUserModalProps) {
+export default function AddUserModal({ open, onClose, onCreate, roles }: AddUserModalProps) {
   const [form, setForm] = useState<ManagedUserFormState>(EMPTY_MANAGED_USER_FORM);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,7 +104,7 @@ export default function AddUserModal({ open, onClose, onCreate }: AddUserModalPr
             required
             value={form.role}
             placeholder="Select role"
-            options={USER_ROLES.map((role) => ({ value: role, label: role }))}
+            options={roles.map((role) => ({ value: role, label: role }))}
             onChange={(event) =>
               setForm((current) => ({
                 ...current,

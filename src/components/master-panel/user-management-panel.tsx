@@ -4,15 +4,17 @@ import { useState } from "react";
 import { Plus, Shield, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AddUserModal from "./add-user-modal";
+import RoleModelWorkspace from "./role-model-workspace";
+import RoleSelectorWithActions from "./role-selector-with-actions";
 import { useManagedUsers } from "@/hooks/use-managed-users";
+import { useRoleModels } from "@/hooks/use-role-models";
 import { useUserPermissions } from "@/contexts/user-permissions-context";
 import {
   PERMISSION_LABELS,
   PERMISSION_MODULES,
-  USER_ROLES,
+  isProtectedRole,
   type PermissionKey,
   type PermissionModuleId,
-  type UserRoleName,
 } from "@/types/user-permissions";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
@@ -27,10 +29,38 @@ const PERMISSIONS = (
 ).map(([key, label]) => ({ key, label }));
 
 export default function UserManagementPanel() {
-  const { matrix, selectedRole, setSelectedRole, setPermission } = useUserPermissions();
-  const { users, isReady, addUser, setOtpEnabled } = useManagedUsers();
+  const {
+    matrix,
+    roles,
+    selectedRole,
+    setSelectedRole,
+    setPermission,
+    addRole,
+    editRole,
+    removeRole,
+  } = useUserPermissions();
+  const { users, isReady, addUser, setOtpEnabled, reload } = useManagedUsers();
+  const { syncAfterRoleRename, syncAfterRoleRemove } = useRoleModels();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const isSuperAdmin = selectedRole === "Super Admin";
+  const isSuperAdmin = isProtectedRole(selectedRole);
+
+  const handleEditRole = (currentName: string, nextName: string) => {
+    const result = editRole(currentName, nextName);
+    if (!result) {
+      syncAfterRoleRename(currentName, nextName.trim());
+      reload();
+    }
+    return result;
+  };
+
+  const handleRemoveRole = (name: string) => {
+    const result = removeRole(name);
+    if (!result) {
+      syncAfterRoleRemove(name);
+      reload();
+    }
+    return result;
+  };
 
   return (
     <section className="flex min-w-0 flex-1 flex-col gap-5" aria-label="User management workspace">
@@ -130,6 +160,8 @@ export default function UserManagementPanel() {
         </div>
       </div>
 
+      <RoleModelWorkspace />
+
       <div className="w-full min-w-0 flex-1 rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-corporate-border bg-corporate-bg px-5 py-4">
           <div>
@@ -143,26 +175,15 @@ export default function UserManagementPanel() {
             )}
           </div>
 
-          <div className="min-w-[240px]">
-            <label
-              htmlFor="select-role"
-              className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-corporate-muted"
-            >
-              Select Role
-            </label>
-            <select
-              id="select-role"
-              value={selectedRole}
-              onChange={(event) => setSelectedRole(event.target.value as UserRoleName)}
-              className="input-field w-full font-semibold"
-            >
-              {USER_ROLES.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
-          </div>
+          <RoleSelectorWithActions
+            roles={roles}
+            value={selectedRole}
+            onChange={setSelectedRole}
+            onAddRole={addRole}
+            onEditRole={handleEditRole}
+            onRemoveRole={handleRemoveRole}
+            selectId="permissions-select-role"
+          />
         </div>
 
         <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "rounded-none border-0 shadow-none")}>
@@ -192,7 +213,7 @@ export default function UserManagementPanel() {
                   {PERMISSIONS.map((permission) => {
                     const checked =
                       isSuperAdmin ||
-                      matrix[selectedRole][module.id as PermissionModuleId][permission.key];
+                      matrix[selectedRole]?.[module.id as PermissionModuleId]?.[permission.key];
 
                     return (
                       <td
@@ -202,7 +223,7 @@ export default function UserManagementPanel() {
                         <label className="inline-flex cursor-pointer items-center justify-center gap-2">
                           <input
                             type="checkbox"
-                            checked={checked}
+                            checked={Boolean(checked)}
                             disabled={isSuperAdmin}
                             onChange={(event) =>
                               setPermission(
@@ -236,6 +257,7 @@ export default function UserManagementPanel() {
         open={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onCreate={addUser}
+        roles={roles}
       />
     </section>
   );

@@ -1,4 +1,4 @@
-export const USER_ROLES = [
+export const BUILTIN_USER_ROLES = [
   "Super Admin",
   "Manager",
   "Accountant",
@@ -7,7 +7,22 @@ export const USER_ROLES = [
   "Operator",
 ] as const;
 
-export type UserRoleName = (typeof USER_ROLES)[number];
+/** @deprecated Use roles from useUserPermissions(). Kept for default seeding. */
+export const USER_ROLES = BUILTIN_USER_ROLES;
+
+export type UserRoleName = string;
+
+export const ROLES_LIST_STORAGE_KEY = "shaandar-crm-user-roles-list";
+
+export const PROTECTED_USER_ROLES = ["Super Admin"] as const;
+
+export function isProtectedRole(role: string): boolean {
+  return (PROTECTED_USER_ROLES as readonly string[]).includes(role);
+}
+
+export function getDefaultRolesList(): string[] {
+  return [...BUILTIN_USER_ROLES];
+}
 
 export const PERMISSION_MODULES = [
   { id: "masters", label: "Masters", description: "Administration and master data" },
@@ -39,7 +54,7 @@ export const PERMISSION_LABELS: Record<PermissionKey, string> = {
 };
 
 export type RolePermissionMatrix = Record<
-  UserRoleName,
+  string,
   Record<PermissionModuleId, Record<PermissionKey, boolean>>
 >;
 

@@ -25,8 +25,8 @@ import {
 } from "@/lib/attendance-import-parser";
 import {
   bulkRecordHasContent,
-  normalizeBiometric22ColumnRecord,
-  type Biometric22ColumnRecord,
+  normalizeBiometric23ColumnRecord,
+  type Biometric23ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 import AttendanceBulkImportPreviewGrid from "./attendance-bulk-import-preview-grid";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
@@ -37,7 +37,7 @@ import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 type ImportPreviewState = {
   fileName: string;
   rows: AttendanceImportRow[];
-  bulkRows: Biometric22ColumnRecord[];
+  bulkRows: Biometric23ColumnRecord[];
   pendingNewEmployees: PendingAutoEmployee[];
   skippedRows: number;
   warnings: string[];
@@ -129,7 +129,9 @@ export default function AttendanceLoggingWorkspacePanel() {
         ? parsedRows.map((row) => finalizeImportRow(row))
         : [];
       const sanitizedBulkRows = Array.isArray(parsedBulkRows)
-        ? parsedBulkRows.map((row) => normalizeBiometric22ColumnRecord(row))
+        ? parsedBulkRows.map((row) =>
+            normalizeBiometric23ColumnRecord(row, { defaultDate: reportDate })
+          )
         : [];
 
       if (sanitizedRows.length === 0) {
@@ -213,7 +215,9 @@ export default function AttendanceLoggingWorkspacePanel() {
 
       for (const bulkRow of importPreview.bulkRows) {
         try {
-          const safeBulk = normalizeBiometric22ColumnRecord(bulkRow);
+          const safeBulk = normalizeBiometric23ColumnRecord(bulkRow, {
+            defaultDate: importPreview.reportDate,
+          });
           if (!bulkRecordHasContent(safeBulk)) {
             result.skipped += 1;
             continue;
@@ -241,14 +245,16 @@ export default function AttendanceLoggingWorkspacePanel() {
             buildBulkDbPayload({
               row: safeBulk,
               employeeId: employee.id,
-              attendanceDate: importPreview.reportDate,
+              attendanceDate: safeBulk.date || importPreview.reportDate || "",
             })
           );
 
           bulkPayloadRows.push({
             ...dbPayload,
+            date: safeBulk.date || importPreview.reportDate || "",
             employee_id: employee.id,
             employee_name: employee.name,
+            attendance_date: safeBulk.date || importPreview.reportDate || dbPayload.attendance_date,
           });
         } catch (rowError) {
           console.error(rowError);
@@ -358,12 +364,14 @@ export default function AttendanceLoggingWorkspacePanel() {
     }
   }, [importPreview?.bulkRows]);
 
-  const handleBulkRowsChange = useCallback((nextRows: Biometric22ColumnRecord[]) => {
+  const handleBulkRowsChange = useCallback((nextRows: Biometric23ColumnRecord[]) => {
     try {
       if (!importPreview) return;
       if (!Array.isArray(nextRows)) return;
 
-      const bulkRows = nextRows.map((row) => normalizeBiometric22ColumnRecord(row));
+      const bulkRows = nextRows.map((row) =>
+        normalizeBiometric23ColumnRecord(row, { defaultDate: importPreview.reportDate })
+      );
       setImportPreview((current) => {
         if (!current) return current;
         return { ...current, bulkRows };
@@ -396,9 +404,10 @@ export default function AttendanceLoggingWorkspacePanel() {
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-bold text-corporate-text">Bulk Import — Excel / PDF / CSV</h3>
             <p className="mt-1 text-xs text-corporate-muted">
-              Upload the biometric Daily Performance export (.xls/.xlsx) with all 22 columns —
-              Srl No., Pay Code, Card No, Employee Name through Manual. Missing employee codes are
-              auto-created when you process the import.
+              Upload the biometric Daily Performance export (.xls/.xlsx) with 22 Excel columns —
+              the grid adds an explicit Date column (23 total). Srl No., Pay Code, Card No,
+              Employee Name through Manual. Missing employee codes are auto-created when you
+              process the import.
             </p>
           </div>
         </div>
@@ -483,7 +492,7 @@ export default function AttendanceLoggingWorkspacePanel() {
             />
             <p className="text-xs text-corporate-muted">
               Press Enter on a row to move focus to the next row. Use arrow keys or click to select
-              rows in the 22-column preview.
+              rows in the 23-column preview.
             </p>
           </div>
         )}

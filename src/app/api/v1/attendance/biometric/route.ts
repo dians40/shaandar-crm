@@ -36,6 +36,7 @@ export async function GET(request: Request) {
             department: row.department,
             designation: row.designation,
             shift: row.shift,
+            date: row.date,
             start: row.start,
             in_time: row.inTime,
             lunch_out: row.lunchOut,

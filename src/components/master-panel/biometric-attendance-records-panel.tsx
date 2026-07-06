@@ -5,7 +5,7 @@ import { FileSpreadsheet, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   ATTENDANCE_BULK_IMPORT_COLUMNS,
-  type Biometric22ColumnRecord,
+  type Biometric23ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
@@ -15,12 +15,11 @@ import {
   MASTER_LIST_TABLE_WRAPPER_CLASS,
 } from "./universal-master-list";
 
-type BiometricLogRow = Biometric22ColumnRecord & {
+type BiometricLogRow = Biometric23ColumnRecord & {
   id: string;
-  attendanceDate: string;
 };
 
-const API_KEY_TO_RECORD: Record<keyof Biometric22ColumnRecord, keyof BiometricLogRow> = {
+const API_KEY_TO_RECORD: Record<keyof Biometric23ColumnRecord, keyof BiometricLogRow> = {
   serialNumber: "serialNumber",
   payCode: "payCode",
   cardNumber: "cardNumber",
@@ -28,6 +27,7 @@ const API_KEY_TO_RECORD: Record<keyof Biometric22ColumnRecord, keyof BiometricLo
   department: "department",
   designation: "designation",
   shift: "shift",
+  date: "date",
   start: "start",
   in: "in",
   lunchOut: "lunchOut",
@@ -48,7 +48,6 @@ const API_KEY_TO_RECORD: Record<keyof Biometric22ColumnRecord, keyof BiometricLo
 function mapApiRow(raw: Record<string, unknown>): BiometricLogRow {
   return {
     id: String(raw.id ?? ""),
-    attendanceDate: String(raw.attendanceDate ?? raw.attendance_date ?? ""),
     serialNumber: String(raw.srlNumber ?? raw.srl_number ?? ""),
     payCode: String(raw.payCode ?? raw.pay_code ?? ""),
     cardNumber: String(raw.cardNumber ?? raw.card_number ?? ""),
@@ -56,6 +55,7 @@ function mapApiRow(raw: Record<string, unknown>): BiometricLogRow {
     department: String(raw.department ?? ""),
     designation: String(raw.designation ?? ""),
     shift: String(raw.shift ?? ""),
+    date: String(raw.date ?? raw.attendanceDate ?? raw.attendance_date ?? ""),
     start: String(raw.start ?? ""),
     in: String(raw.inTime ?? raw.in_time ?? ""),
     lunchOut: String(raw.lunchOut ?? raw.lunch_out ?? ""),
@@ -119,7 +119,7 @@ export default function BiometricAttendanceRecordsPanel() {
               Biometric Attendance Log
             </h2>
             <p className="text-sm text-corporate-muted">
-              Saved Daily Performance records with all 22 independent database columns
+              Saved Daily Performance records with all 23 independent database columns
             </p>
           </div>
         </div>
@@ -144,7 +144,6 @@ export default function BiometricAttendanceRecordsPanel() {
         <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[2400px]")}>
           <thead className={MASTER_LIST_HEAD_CLASS}>
             <tr>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
               {ATTENDANCE_BULK_IMPORT_COLUMNS.map((column) => (
                 <th key={column.key} className={MASTER_LIST_HEADER_CELL_CLASS}>
                   {column.label}
@@ -156,7 +155,7 @@ export default function BiometricAttendanceRecordsPanel() {
             {isLoading ? (
               <tr>
                 <td
-                  colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 1}
+                  colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length}
                   className="px-3 py-8 text-center text-corporate-muted"
                 >
                   Loading biometric attendance records...
@@ -165,7 +164,7 @@ export default function BiometricAttendanceRecordsPanel() {
             ) : rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 1}
+                  colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length}
                   className="px-3 py-8 text-center text-corporate-muted"
                 >
                   No biometric attendance records saved yet. Import an Excel file from Transactions
@@ -174,10 +173,7 @@ export default function BiometricAttendanceRecordsPanel() {
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id || `${row.payCode}-${row.attendanceDate}`}>
-                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "whitespace-nowrap text-xs")}>
-                    {row.attendanceDate || "—"}
-                  </td>
+                <tr key={row.id || `${row.payCode}-${row.date}`}>
                   {ATTENDANCE_BULK_IMPORT_COLUMNS.map((column) => {
                     const key = API_KEY_TO_RECORD[column.key];
                     const value = row[key] ?? "";

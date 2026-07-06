@@ -2,8 +2,10 @@ import type { Prisma } from "@prisma/client";
 import type { AttendanceBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
 import { sanitizeBulkRowInput } from "@/lib/attendance-bulk-payload-bridge";
 import {
-  normalizeBiometric22ColumnRecord,
-  type Biometric22ColumnRecord,
+  applyDateFallback,
+  normalizeBiometric23ColumnRecord,
+  todayIsoDateString,
+  type Biometric23ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 
 export type AttendanceCreateManyInput = Prisma.AttendanceCreateManyInput;
@@ -28,31 +30,28 @@ function safeNumericString(value: unknown): string {
   }
 }
 
-function todayIsoDate(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function parseAttendanceDate(value: unknown): Date {
   try {
     const token = safeString(value);
-    if (!token) return new Date(`${todayIsoDate()}T00:00:00.000Z`);
+    if (!token) return new Date(`${todayIsoDateString()}T00:00:00.000Z`);
     if (/^\d{4}-\d{2}-\d{2}$/.test(token)) {
       return new Date(`${token}T00:00:00.000Z`);
     }
     const parsed = Date.parse(token);
     if (!Number.isNaN(parsed)) return new Date(parsed);
-    return new Date(`${todayIsoDate()}T00:00:00.000Z`);
+    return new Date(`${todayIsoDateString()}T00:00:00.000Z`);
   } catch {
-    return new Date(`${todayIsoDate()}T00:00:00.000Z`);
+    return new Date(`${todayIsoDateString()}T00:00:00.000Z`);
   }
 }
 
 function emptyAttendanceRow(
   employeeId: string | null | undefined
 ): AttendanceCreateManyInput {
+  const today = todayIsoDateString();
   return {
     employeeId: safeString(employeeId) || null,
-    attendanceDate: new Date(`${todayIsoDate()}T00:00:00.000Z`),
+    attendanceDate: new Date(`${today}T00:00:00.000Z`),
     srlNumber: "",
     payCode: "",
     cardNumber: "",
@@ -60,6 +59,7 @@ function emptyAttendanceRow(
     department: "",
     designation: "",
     shift: "",
+    date: today,
     start: "",
     inTime: "",
     lunchOut: "",
@@ -75,37 +75,48 @@ function emptyAttendanceRow(
     overtime: "",
     overstay: "",
     manual: "",
-    punchIn: `${todayIsoDate()}T09:00:00.000Z`,
+    punchIn: `${today}T09:00:00.000Z`,
     punchOut: "",
     remarks: "",
   };
 }
 
 function toBiometricRecord(
-  row: AttendanceBulkDbPayload | Biometric22ColumnRecord | Record<string, unknown>
-): Biometric22ColumnRecord {
+  row: AttendanceBulkDbPayload | Biometric23ColumnRecord | Record<string, unknown>,
+  defaultDate?: string
+): Biometric23ColumnRecord {
   if ("serialNumber" in row && typeof row.serialNumber === "string") {
-    return normalizeBiometric22ColumnRecord(row as Biometric22ColumnRecord);
+    return normalizeBiometric23ColumnRecord(row as Biometric23ColumnRecord, { defaultDate });
   }
   if ("srl_number" in row) {
-    return sanitizeBulkRowInput(row as Record<string, unknown>);
+    return normalizeBiometric23ColumnRecord(
+      sanitizeBulkRowInput(row as Record<string, unknown>),
+      { defaultDate }
+    );
   }
-  return normalizeBiometric22ColumnRecord(row as Record<string, unknown>);
+  return normalizeBiometric23ColumnRecord(row as Record<string, unknown>, { defaultDate });
 }
 
-/** Map preview grid row → Prisma Attendance create input (22 independent columns). */
+/** Map preview grid row → Prisma Attendance create input (23 independent columns). */
 export function mapToAttendanceCreate(
-  row: AttendanceBulkDbPayload | Biometric22ColumnRecord | Record<string, unknown>,
-  employeeId: string | null | undefined
+  row: AttendanceBulkDbPayload | Biometric23ColumnRecord | Record<string, unknown>,
+  employeeId: string | null | undefined,
+  defaultDate?: string
 ): AttendanceCreateManyInput {
   try {
-    const biometric = toBiometricRecord(row);
     const payload =
       "srl_number" in row && typeof (row as AttendanceBulkDbPayload).srl_number === "string"
         ? (row as AttendanceBulkDbPayload)
         : null;
 
-    const attendanceDate = parseAttendanceDate(payload?.attendance_date);
+    const fallbackDate =
+      defaultDate ||
+      safeString(payload?.attendance_date) ||
+      applyDateFallback(row as Biometric23ColumnRecord, defaultDate);
+
+    const biometric = toBiometricRecord(row, fallbackDate);
+    const resolvedDate = applyDateFallback(biometric, fallbackDate);
+    const attendanceDate = parseAttendanceDate(resolvedDate);
 
     return {
       employeeId: safeString(employeeId) || null,
@@ -117,6 +128,7 @@ export function mapToAttendanceCreate(
       department: safeString(biometric.department),
       designation: safeString(biometric.designation),
       shift: safeString(biometric.shift),
+      date: resolvedDate,
       start: safeString(biometric.start),
       inTime: safeString(biometric.in),
       lunchOut: safeString(biometric.lunchOut),
@@ -129,9 +141,9 @@ export function mapToAttendanceCreate(
       shiftEarly: safeNumericString(biometric.shiftEarly),
       excessLunch: safeNumericString(biometric.excessLunch),
       ot: safeNumericString(biometric.ot),
-      overtime: safeNumericString(biometric.overtimeAmount),
-      overstay: safeNumericString(biometric.overStay),
-      manual: safeNumericString(biometric.manual),
+      overtime: safeNumericString(biometric.overtimeAmount) || "",
+      overstay: safeNumericString(biometric.overStay) || "",
+      manual: safeNumericString(biometric.manual) || "",
       punchIn:
         safeString(payload?.punch_in) ||
         `${attendanceDate.toISOString().slice(0, 10)}T09:00:00.000Z`,
@@ -147,17 +159,18 @@ export function mapToAttendanceCreate(
 /** @deprecated Use mapToAttendanceCreate */
 export const mapToBiometricAttendanceCreate = mapToAttendanceCreate;
 
-/** Map to Supabase snake_case row (same 22 columns). */
+/** Map to Supabase snake_case row (23 columns). */
 export function mapToBiometricAttendanceRow(
   row: AttendanceBulkDbPayload,
-  employeeId: string | null | undefined
+  employeeId: string | null | undefined,
+  defaultDate?: string
 ): Record<string, unknown> {
-  const prismaRow = mapToAttendanceCreate(row, employeeId);
+  const prismaRow = mapToAttendanceCreate(row, employeeId, defaultDate);
   return {
     employee_id: prismaRow.employeeId,
     attendance_date: prismaRow.attendanceDate
       ? new Date(prismaRow.attendanceDate).toISOString().slice(0, 10)
-      : todayIsoDate(),
+      : todayIsoDateString(),
     srl_number: prismaRow.srlNumber ?? "",
     pay_code: prismaRow.payCode ?? "",
     card_number: prismaRow.cardNumber ?? "",
@@ -165,6 +178,7 @@ export function mapToBiometricAttendanceRow(
     department: prismaRow.department ?? "",
     designation: prismaRow.designation ?? "",
     shift: prismaRow.shift ?? "",
+    date: prismaRow.date ?? todayIsoDateString(),
     start: prismaRow.start ?? "",
     in_time: prismaRow.inTime ?? "",
     lunch_out: prismaRow.lunchOut ?? "",
@@ -198,6 +212,7 @@ export function mapAttendanceRecordFromDb(row: Record<string, unknown>) {
     department: safeString(row.department),
     designation: safeString(row.designation),
     shift: safeString(row.shift),
+    date: safeString(row.date) || safeString(row.attendance_date ?? row.attendanceDate),
     start: safeString(row.start),
     inTime: safeString(row.in_time ?? row.inTime),
     lunchOut: safeString(row.lunch_out ?? row.lunchOut),

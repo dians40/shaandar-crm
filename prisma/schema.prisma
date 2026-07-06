@@ -1,6 +1,6 @@
-// Shaandar CRM — Attendance model with 22 independent biometric Excel columns
+// Shaandar CRM — Attendance model with 23 structural grid columns (includes explicit date)
 // Generate client: npx prisma generate
-// Apply SQL: supabase/migrations/007_biometric_attendance_22_columns.sql
+// Apply SQL: supabase/migrations/007 + 008
 
 generator client {
   provider = "prisma-client-js"
@@ -11,8 +11,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Master Panel attendance layer — one row per biometric Daily Performance import line.
-/// All 22 Excel grid columns are stored as separate optional string fields.
+/// Master Panel attendance layer — 23 independent optional string fields + metadata.
 model Attendance {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   employeeId     String?   @map("employee_id") @db.Uuid
@@ -25,6 +24,7 @@ model Attendance {
   department   String? @default("")
   designation  String? @default("")
   shift        String? @default("")
+  date         String? @default("")
   start        String? @default("")
   inTime       String? @default("") @map("in_time")
   lunchOut     String? @default("") @map("lunch_out")

@@ -86,7 +86,7 @@ export function sanitizeIncomingBulkRow(
     }
 
     const attendanceDate =
-      fuzzyReadBulkField(normalizedKeys, ["attendance_date", "attendanceDate"]) ||
+      fuzzyReadBulkField(normalizedKeys, ["date", "attendance_date", "attendanceDate"]) ||
       todayIsoDate();
 
     const biometric = sanitizeBulkRowInput(normalizedKeys);
@@ -127,6 +127,7 @@ export function sanitizeIncomingBulkRow(
       pay_code: payload.pay_code || payCode,
       card_number: payload.card_number || cardNumber,
       attendance_date: attendanceDate,
+      date: attendanceDate,
       punch_in: punchIn,
       punch_out: punchOut,
       overtime_hours: overtimeHours,

@@ -1,10 +1,12 @@
 import {
-  BIOMETRIC_EXCEL_HEADER_LABELS,
-  normalizeBiometric22ColumnRecord,
-  type Biometric22ColumnRecord,
+  applyDateFallback,
+  BIOMETRIC_GRID_HEADER_LABELS,
+  normalizeBiometric23ColumnRecord,
+  todayIsoDateString,
+  type Biometric23ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 
-export type BiometricColumnKey = keyof Biometric22ColumnRecord;
+export type BiometricColumnKey = keyof Biometric23ColumnRecord;
 
 /** Collapse embedded newlines and extra spaces from Excel header cells. */
 export function collapseHeaderWhitespace(value: unknown): string {
@@ -39,138 +41,144 @@ export type BulkHeaderPattern = {
   tokens: string[];
 };
 
-/** Exact + fuzzy patterns aligned with 06-07-2026.xls biometric export. */
+/** Exact + fuzzy patterns — 23-column grid (date after shift). Excel headers omit date. */
 export const BULK_HEADER_FUZZY_PATTERNS: BulkHeaderPattern[] = [
   {
     key: "serialNumber",
     snake: "srl_number",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[0],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[0],
     tokens: ["srlno", "srlnumber", "serialno", "serialnumber", "srno", "sno"],
   },
   {
     key: "payCode",
     snake: "pay_code",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[1],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[1],
     tokens: ["paycode", "paycd", "empcode", "employeecode"],
   },
   {
     key: "cardNumber",
     snake: "card_number",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[2],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[2],
     tokens: ["cardno", "cardnumber", "cardid", "badgeno"],
   },
   {
     key: "employeeName",
     snake: "employee_name",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[3],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[3],
     tokens: ["employeename", "empname", "staffname", "workername", "fullname"],
   },
   {
     key: "department",
     snake: "department",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[4],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[4],
     tokens: ["department", "dept", "division"],
   },
   {
     key: "designation",
     snake: "designation",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[5],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[5],
     tokens: ["designation", "designations", "desig", "jobtitle", "title"],
   },
   {
     key: "shift",
     snake: "shift",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[6],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[6],
     tokens: ["shift", "workshift", "shiftcode"],
+  },
+  {
+    key: "date",
+    snake: "date",
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[7],
+    tokens: ["date", "workdate", "attdate", "attendancedate"],
   },
   {
     key: "start",
     snake: "start",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[7],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[8],
     tokens: ["start", "starttime", "shiftstart"],
   },
   {
     key: "in",
     snake: "in",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[8],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[9],
     tokens: ["in", "intime", "timein", "clockin", "punchin"],
   },
   {
     key: "lunchOut",
     snake: "lunch_out",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[9],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[10],
     tokens: ["lunchout", "lout"],
   },
   {
     key: "lunchIn",
     snake: "lunch_in",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[10],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[11],
     tokens: ["lunchin", "lin"],
   },
   {
     key: "out",
     snake: "out",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[11],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[12],
     tokens: ["out", "outtime", "timeout", "clockout", "punchout"],
   },
   {
     key: "hoursWorked",
     snake: "hours_worked",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[12],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[13],
     tokens: ["hoursworked", "workedhours", "totalhours", "duration", "workhours"],
   },
   {
     key: "status",
     snake: "status",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[13],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[14],
     tokens: ["status", "attendancestatus", "attstatus"],
   },
   {
     key: "earlyArrival",
     snake: "early_arrival",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[14],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[15],
     tokens: ["earlyarrival", "earlyin", "early"],
   },
   {
     key: "shiftLate",
     snake: "shift_late",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[15],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[16],
     tokens: ["shiftlate", "late", "lateness"],
   },
   {
     key: "shiftEarly",
     snake: "shift_early",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[16],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[17],
     tokens: ["shiftearly", "earlyout"],
   },
   {
     key: "excessLunch",
     snake: "excess_lunch",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[17],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[18],
     tokens: ["excesslunch", "lunchexcess", "extralunch"],
   },
   {
     key: "ot",
     snake: "ot",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[18],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[19],
     tokens: ["ot", "othours", "otshift"],
   },
   {
     key: "overtimeAmount",
     snake: "overtime_amount",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[19],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[20],
     tokens: ["overtimeamount", "overtime", "overtimehours", "othr"],
   },
   {
     key: "overStay",
     snake: "over_stay",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[20],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[21],
     tokens: ["overstay", "overstayhours", "stayover"],
   },
   {
     key: "manual",
     snake: "manual",
-    exactLabel: BIOMETRIC_EXCEL_HEADER_LABELS[21],
+    exactLabel: BIOMETRIC_GRID_HEADER_LABELS[22],
     tokens: ["manual", "manualentry", "manualmark", "remark", "remarks"],
   },
 ];
@@ -260,11 +268,12 @@ function safeCell(value: unknown): string {
 /** Build a biometric record from a row using header column mapping. */
 export function bulkRecordFromHeaderMap(
   rawRow: unknown,
-  columnMap: Partial<Record<BiometricColumnKey, number>>
-): Biometric22ColumnRecord {
+  columnMap: Partial<Record<BiometricColumnKey, number>>,
+  defaultDate?: string
+): Biometric23ColumnRecord {
   try {
     const cells = Array.isArray(rawRow) ? rawRow : [];
-    const partial: Partial<Biometric22ColumnRecord> = {};
+    const partial: Partial<Biometric23ColumnRecord> = {};
 
     for (const pattern of BULK_HEADER_FUZZY_PATTERNS) {
       const index = columnMap[pattern.key];
@@ -272,10 +281,14 @@ export function bulkRecordFromHeaderMap(
       partial[pattern.key] = safeCell(cells[index]);
     }
 
-    return normalizeBiometric22ColumnRecord(partial);
+    if (!partial.date) {
+      partial.date = defaultDate || todayIsoDateString();
+    }
+
+    return normalizeBiometric23ColumnRecord(partial, { defaultDate });
   } catch (error) {
     console.error(error);
-    return normalizeBiometric22ColumnRecord(null);
+    return normalizeBiometric23ColumnRecord(null, { defaultDate });
   }
 }
 

@@ -175,32 +175,46 @@ export async function POST(request: Request) {
   const prismaConfigured = isPrismaConfigured();
   const supabase = supabaseConfigured ? createAdminClient() : null;
 
+  const employeeCache = new Map<string, string>();
+
   for (const row of normalizedRows) {
     try {
       let resolvedEmployeeId: string | null = null;
+      const cacheKey = `${row.pay_code}|${row.employee_name}`.toLowerCase();
 
       if (supabase) {
-        const resolution = await resolveOrProvisionEmployeeId(supabase, row, {
-          autoProvision: true,
-        });
-        if (!resolution.employeeId) {
-          skipped += 1;
-          rowErrors.push(
-            resolution.error ??
-              `${row.employee_name || row.pay_code || row.employee_id}: employee not found.`
-          );
-          continue;
+        const cached = employeeCache.get(cacheKey);
+        if (cached) {
+          resolvedEmployeeId = cached;
+        } else {
+          const resolution = await resolveOrProvisionEmployeeId(supabase, row, {
+            autoProvision: true,
+          });
+          if (!resolution.employeeId) {
+            skipped += 1;
+            rowErrors.push(
+              resolution.error ??
+                `${row.employee_name || row.pay_code || row.employee_id}: employee not found.`
+            );
+            continue;
+          }
+          resolvedEmployeeId = resolution.employeeId;
+          employeeCache.set(cacheKey, resolvedEmployeeId);
+          if (resolution.provisioned) provisionedEmployees += 1;
         }
-        resolvedEmployeeId = resolution.employeeId;
-        if (resolution.provisioned) provisionedEmployees += 1;
       } else {
         resolvedEmployeeId =
           safeString(row.employee_id) || safeString(row.pay_code) || null;
       }
 
-      const prismaRow = mapToAttendanceCreate(row, resolvedEmployeeId);
+      const rowDate =
+        safeString(row.date) ||
+        safeString(row.attendance_date) ||
+        todayIsoDate();
+
+      const prismaRow = mapToAttendanceCreate(row, resolvedEmployeeId, rowDate);
       prismaAttendanceRows.push(prismaRow);
-      supabaseBiometricRows.push(mapToBiometricAttendanceRow(row, resolvedEmployeeId));
+      supabaseBiometricRows.push(mapToBiometricAttendanceRow(row, resolvedEmployeeId, rowDate));
 
       if (!supabaseConfigured) {
         const mapped = bulkRecordToWorkflowFields(sanitizeBulkRowInput(row));

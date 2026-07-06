@@ -40,6 +40,7 @@ export type AttendanceBulkDbPayload = {
   overtime_amount: string;
   over_stay: string;
   manual: string;
+  date?: string;
   employee_id: string;
   attendance_date: string;
   punch_in: string;
@@ -178,6 +179,7 @@ export function atomicFinalizeBulkDbPayload(
       department: safeString(payload.department),
       designation: safeString(payload.designation),
       shift: safeString(payload.shift),
+      date: safeString(payload.date) || safeString(payload.attendance_date) || todayIsoDate(),
       start: safeString(payload.start),
       in: safeString(payload.in),
       lunch_out: safeString(payload.lunch_out),
@@ -212,6 +214,7 @@ export function atomicFinalizeBulkDbPayload(
       department: "",
       designation: "",
       shift: "",
+      date: date,
       start: "",
       in: "",
       lunch_out: "",
@@ -342,6 +345,7 @@ export function biometricRecordToSnakeCase(
     department: safe.department,
     designation: safe.designation,
     shift: safe.shift,
+    date: safe.date,
     start: safe.start,
     in: safe.in,
     lunch_out: safe.lunchOut,
@@ -368,7 +372,8 @@ export function buildBulkDbPayload(input: {
   try {
     const safe = sanitizeBulkRowInput(input.row as Record<string, unknown>);
     const mapped = bulkRecordToWorkflowFields(safe);
-    const attendanceDate = safeString(input.attendanceDate) || todayIsoDate();
+    const attendanceDate =
+      safeString(input.attendanceDate) || safeString(safe.date) || todayIsoDate();
     const { punchIn, punchOut } = buildBulkPunchTimes(safe, attendanceDate);
     const status = normalizeBiometricCode(mapped.status) as ManualAttendanceStatus;
     const overtimeShift = normalizeBiometricCode(mapped.overtimeShift) as OvertimeShiftType;
@@ -377,6 +382,7 @@ export function buildBulkDbPayload(input: {
       ...biometricRecordToSnakeCase(safe),
       employee_id: safeString(input.employeeId),
       attendance_date: attendanceDate,
+      date: safe.date || attendanceDate,
       punch_in: punchIn,
       punch_out: punchOut || "",
       overtime_hours: resolveBulkOvertimeHours(safe),
@@ -394,6 +400,7 @@ export function buildBulkDbPayload(input: {
       department: "",
       designation: "",
       shift: "",
+      date: date,
       start: "",
       in: "",
       lunch_out: "",

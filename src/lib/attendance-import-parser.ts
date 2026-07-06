@@ -10,7 +10,7 @@ import {
   bulkRecordFromCells,
   bulkRecordHasContent,
   bulkRecordToWorkflowFields,
-  normalizeBiometric22ColumnRecord,
+  normalizeBiometric23ColumnRecord,
   type Biometric22ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 import {
@@ -254,7 +254,7 @@ function bulkRecordToImportRow(
   attendanceDate?: string
 ): AttendanceImportRow {
   try {
-    const safe = normalizeBiometric22ColumnRecord(record);
+    const safe = normalizeBiometric23ColumnRecord(record);
     const mapped = bulkRecordToWorkflowFields(safe);
     return createSafeImportRow({
       employeeCode: mapped.employeeCode,
@@ -532,8 +532,8 @@ export function parseAttendanceImportMatrixSafe(
       for (const rawRow of dataRows) {
         try {
           const bulkRecord = useHeaderMapping
-            ? bulkRecordFromHeaderMap(rawRow, columnMap)
-            : bulkRecordFromCells(rawRow);
+            ? bulkRecordFromHeaderMap(rawRow, columnMap, reportDate)
+            : bulkRecordFromCells(rawRow, reportDate);
           const hasBulkContent = bulkRecordHasContent(bulkRecord);
 
           if (!hasBulkContent) {
@@ -541,11 +541,13 @@ export function parseAttendanceImportMatrixSafe(
             continue;
           }
 
-          bulkRows.push(normalizeBiometric22ColumnRecord(bulkRecord));
+          bulkRows.push(
+            normalizeBiometric23ColumnRecord(bulkRecord, { defaultDate: reportDate })
+          );
           rows.push(bulkRecordToImportRow(bulkRecord, reportDate));
         } catch (rowError) {
           console.error(rowError);
-          bulkRows.push(normalizeBiometric22ColumnRecord(null));
+          bulkRows.push(normalizeBiometric23ColumnRecord(null, { defaultDate: reportDate }));
           rows.push(finalizeImportRow({ status: DEFAULT_STATUS, attendanceDate: reportDate }));
           warnings.push("One row was recovered with default DY1 status.");
         }
@@ -561,7 +563,7 @@ export function parseAttendanceImportMatrixSafe(
 
     if (useHeaderMapping) {
       warnings.push(
-        `Header mapping aligned ${Object.keys(columnMap).length} of 22 biometric columns from the attached Excel structure.`
+        `Header mapping aligned ${Object.keys(columnMap).length} of 23 biometric columns from the attached Excel structure.`
       );
     }
 

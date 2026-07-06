@@ -329,7 +329,7 @@ export default function AttendanceBulkImportPreviewGrid({
       ref={gridRef}
       tabIndex={-1}
       role="grid"
-      aria-label="22-column attendance bulk import preview"
+      aria-label="23-column attendance bulk import preview"
       onKeyDownCapture={handleGridKeyDownCapture}
       onKeyDown={handleGridKeyDown}
       className={cn(

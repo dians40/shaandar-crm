@@ -14,30 +14,25 @@ import {
 import {
   buildImportAttendanceRemarks,
   buildImportPunchTimes,
-  formatImportOvertimeShiftLabel,
-  formatImportStatusLabel,
 } from "@/lib/attendance-import-process";
 import {
   finalizeImportRow,
   parseAttendanceImportFileSafe,
   PDF_UPLOAD_SUCCESS_TOKEN,
+  type AttendanceBulkImportRecord,
   type AttendanceImportRow,
 } from "@/lib/attendance-import-parser";
+import { finalizeBulkImportRecord } from "@/types/attendance-bulk-import-row";
+import AttendanceBulkImportPreviewGrid from "./attendance-bulk-import-preview-grid";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
 import { useEmployees } from "@/hooks/use-employees";
-import {
-  MASTER_LIST_BODY_CELL_CLASS,
-  MASTER_LIST_HEAD_CLASS,
-  MASTER_LIST_HEADER_CELL_CLASS,
-  MASTER_LIST_TABLE_CLASS,
-  MASTER_LIST_TABLE_WRAPPER_CLASS,
-} from "./universal-master-list";
 import AttendanceSystemPanel from "./attendance-system-panel";
 import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 
 type ImportPreviewState = {
   fileName: string;
   rows: AttendanceImportRow[];
+  bulkRows: AttendanceBulkImportRecord[];
   pendingNewEmployees: PendingAutoEmployee[];
   skippedRows: number;
   warnings: string[];
@@ -55,13 +50,11 @@ export default function AttendanceLoggingWorkspacePanel() {
   const { ingestManualEntry } = useAttendanceWorkflow();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importPreview, setImportPreview] = useState<ImportPreviewState | null>(null);
+  const [selectedBulkRowIndex, setSelectedBulkRowIndex] = useState(0);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-
-  const autoProvisioned = readAutoProvisionedEmployees();
-  const mergedEmployees = [...autoProvisioned, ...employees];
 
   const autoProvisionMissingEmployees = (
     rows: AttendanceImportRow[],
@@ -98,14 +91,18 @@ export default function AttendanceLoggingWorkspacePanel() {
         return;
       }
 
-      const { rows: parsedRows, skippedRows, warnings } = outcome;
+      const { rows: parsedRows, bulkRows: parsedBulkRows, skippedRows, warnings } = outcome;
 
       const sanitizedRows = Array.isArray(parsedRows)
         ? parsedRows.map((row) => finalizeImportRow(row))
         : [];
+      const sanitizedBulkRows = Array.isArray(parsedBulkRows)
+        ? parsedBulkRows.map((row) => finalizeBulkImportRecord(row))
+        : [];
 
       if (sanitizedRows.length === 0) {
         setImportPreview(null);
+        setSelectedBulkRowIndex(0);
         setImportError(
           warnings.length > 0
             ? warnings.join(" ")
@@ -120,9 +117,11 @@ export default function AttendanceLoggingWorkspacePanel() {
         registry
       );
 
+      setSelectedBulkRowIndex(0);
       setImportPreview({
         fileName: file.name,
         rows: sanitizedRows,
+        bulkRows: sanitizedBulkRows,
         pendingNewEmployees,
         skippedRows,
         warnings:
@@ -266,6 +265,7 @@ export default function AttendanceLoggingWorkspacePanel() {
       }
 
       setImportPreview(null);
+      setSelectedBulkRowIndex(0);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Bulk attendance processing failed.";
@@ -274,6 +274,17 @@ export default function AttendanceLoggingWorkspacePanel() {
       setIsProcessing(false);
     }
   }, [employees, importPreview, ingestManualEntry, prependEmployee]);
+
+  const handleBulkRowIndexChange = useCallback((index: number) => {
+    try {
+      if (index == null || !Number.isFinite(index) || index < 0) return;
+      if (!importPreview?.bulkRows?.length) return;
+      if (index >= importPreview.bulkRows.length) return;
+      setSelectedBulkRowIndex(index);
+    } catch (error) {
+      console.error(error);
+    }
+  }, [importPreview?.bulkRows]);
 
   return (
     <div className="w-full space-y-6">
@@ -377,66 +388,15 @@ export default function AttendanceLoggingWorkspacePanel() {
               </div>
             )}
 
-            <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "max-h-[360px] overflow-auto")}>
-              <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[960px]")}>
-                <thead className={MASTER_LIST_HEAD_CLASS}>
-                  <tr>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee Code</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee Name</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Attendance Status</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Overtime Shift</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Match</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-corporate-border">
-                  {importPreview.rows.map((row, index) => {
-                    const safeRow = finalizeImportRow(row);
-                    const employeeCode = safeRow.employeeCode.trim() || "TEMP_CODE";
-                    const employeeName = safeRow.employeeName.trim() || "Unknown Worker";
-                    const matched = resolveImportEmployee(
-                      employeeCode,
-                      employeeName,
-                      mergedEmployees,
-                      autoProvisioned
-                    );
-                    const isNew = importPreview.pendingNewEmployees.some(
-                      (pending) => pending.employeeCode === employeeCode.toUpperCase()
-                    );
-
-                    return (
-                      <tr key={`${employeeCode}-${safeRow.attendanceDate}-${index}`}>
-                        <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-medium")}>
-                          {employeeCode}
-                        </td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{employeeName}</td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                          {formatImportStatusLabel(safeRow.status)}
-                        </td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                          {formatImportOvertimeShiftLabel(safeRow.overtimeShift)}
-                        </td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{safeRow.attendanceDate}</td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                          <span
-                            className={cn(
-                              "rounded-full px-2 py-1 text-[10px] font-semibold",
-                              isNew
-                                ? "bg-amber-100 text-amber-900"
-                                : matched
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : "bg-corporate-bg text-corporate-muted"
-                            )}
-                          >
-                            {isNew ? "Auto-Create" : matched ? "Existing" : "Pending"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <AttendanceBulkImportPreviewGrid
+              rows={importPreview.bulkRows}
+              selectedRowIndex={selectedBulkRowIndex}
+              onSelectedRowIndexChange={handleBulkRowIndexChange}
+            />
+            <p className="text-xs text-corporate-muted">
+              Press Enter on a row to move focus to the next row. Use arrow keys or click to select
+              rows in the 22-column preview.
+            </p>
           </div>
         )}
 

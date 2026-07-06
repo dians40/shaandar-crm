@@ -6,6 +6,15 @@ import {
   BIOMETRIC_DAY_CODE,
   normalizeBiometricCode,
 } from "@/types/manual-attendance-entry";
+import {
+  bulkRecordFromCells,
+  bulkRecordHasContent,
+  bulkRecordToWorkflowFields,
+  finalizeBulkImportRecord,
+  type AttendanceBulkImportRecord,
+} from "@/types/attendance-bulk-import-row";
+
+export type { AttendanceBulkImportRecord };
 
 export type AttendanceImportRow = {
   employeeCode: string;
@@ -18,6 +27,7 @@ export type AttendanceImportRow = {
 
 export type AttendanceImportParseOutcome = {
   rows: AttendanceImportRow[];
+  bulkRows: AttendanceBulkImportRecord[];
   skippedRows: number;
   warnings: string[];
   pdfDocumentUploaded?: boolean;
@@ -227,6 +237,23 @@ function pickByHints(
     console.error(error);
   }
   return "";
+}
+
+function bulkRecordToImportRow(record: AttendanceBulkImportRecord): AttendanceImportRow {
+  try {
+    const safe = finalizeBulkImportRecord(record);
+    const mapped = bulkRecordToWorkflowFields(safe);
+    return createSafeImportRow({
+      employeeCode: mapped.employeeCode,
+      employeeName: mapped.employeeName,
+      status: mapped.status,
+      overtimeShift: mapped.overtimeShift,
+      remarks: mapped.remarks,
+    });
+  } catch (error) {
+    console.error(error);
+    return createSafeImportRow();
+  }
 }
 
 function extractRowFields(rawRow: unknown, headers: string[]): RowFields {
@@ -469,7 +496,7 @@ export function parseAttendanceImportMatrixSafe(
 
   try {
     if (!Array.isArray(matrix) || matrix.length === 0) {
-      return { rows: [], skippedRows: 0, warnings };
+      return { rows: [], bulkRows: [], skippedRows: 0, warnings };
     }
 
     const headerIndex = findHeaderRowIndex(matrix);
@@ -477,20 +504,24 @@ export function parseAttendanceImportMatrixSafe(
     const headers = headerRow.map((cell) => safeText(cell));
     const dataRows = matrix.slice(headerIndex + 1);
     const rows: AttendanceImportRow[] = [];
+    const bulkRows: AttendanceBulkImportRecord[] = [];
 
     try {
       for (const rawRow of dataRows) {
         try {
-          const hasContent = Array.isArray(rawRow)
-            ? rawRow.some((cell) => safeText(cell).length > 0)
-            : false;
-          if (!hasContent) {
+          const bulkRecord = bulkRecordFromCells(rawRow);
+          const hasBulkContent = bulkRecordHasContent(bulkRecord);
+
+          if (!hasBulkContent) {
             skippedRows += 1;
             continue;
           }
-          rows.push(finalizeImportRow(extractRowFields(rawRow, headers)));
+
+          bulkRows.push(finalizeBulkImportRecord(bulkRecord));
+          rows.push(bulkRecordToImportRow(bulkRecord));
         } catch (rowError) {
           console.error(rowError);
+          bulkRows.push(finalizeBulkImportRecord(null));
           rows.push(finalizeImportRow({ status: DEFAULT_STATUS }));
           warnings.push("One row was recovered with default DY1 status.");
         }
@@ -504,11 +535,12 @@ export function parseAttendanceImportMatrixSafe(
       warnings.push("No attendance rows were extracted from the sheet.");
     }
 
-    return { rows, skippedRows, warnings };
+    return { rows, bulkRows, skippedRows, warnings };
   } catch (error) {
     console.error(error);
     return {
       rows: [],
+      bulkRows: [],
       skippedRows: 0,
       warnings: [...warnings, "Matrix parse terminated safely."],
     };
@@ -629,7 +661,7 @@ export async function parseAttendanceImportFileSafe(
 
   try {
     if (!file || file.size === 0) {
-      return { rows: [], skippedRows: 0, warnings: ["The selected file is empty."] };
+      return { rows: [], bulkRows: [], skippedRows: 0, warnings: ["The selected file is empty."] };
     }
 
     const extension = resolveExtension(file);
@@ -641,7 +673,7 @@ export async function parseAttendanceImportFileSafe(
         return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
       } catch (error) {
         console.error(error);
-        return { rows: [], skippedRows: 0, warnings: [...warnings, "CSV import recovered safely."] };
+        return { rows: [], bulkRows: [], skippedRows: 0, warnings: [...warnings, "CSV import recovered safely."] };
       }
     }
 
@@ -653,7 +685,7 @@ export async function parseAttendanceImportFileSafe(
         return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
       } catch (error) {
         console.error(error);
-        return { rows: [], skippedRows: 0, warnings: [...warnings, "Excel import recovered safely."] };
+        return { rows: [], bulkRows: [], skippedRows: 0, warnings: [...warnings, "Excel import recovered safely."] };
       }
     }
 
@@ -662,6 +694,7 @@ export async function parseAttendanceImportFileSafe(
         const buffer = await readFileBufferResilient(file);
         return {
           rows: [],
+          bulkRows: [],
           skippedRows: 0,
           warnings: [PDF_UPLOAD_SUCCESS_TOKEN],
           pdfDocumentUploaded: true,
@@ -671,6 +704,7 @@ export async function parseAttendanceImportFileSafe(
         console.error(error);
         return {
           rows: [],
+          bulkRows: [],
           skippedRows: 0,
           warnings: [PDF_UPLOAD_SUCCESS_TOKEN],
           pdfDocumentUploaded: true,
@@ -681,6 +715,7 @@ export async function parseAttendanceImportFileSafe(
 
     return {
       rows: [],
+      bulkRows: [],
       skippedRows: 0,
       warnings: [...warnings, "Unsupported file type. Upload .xlsx, .xls, or .csv."],
     };
@@ -688,6 +723,7 @@ export async function parseAttendanceImportFileSafe(
     console.error(error);
     return {
       rows: [],
+      bulkRows: [],
       skippedRows: 0,
       warnings: [...warnings, "File import terminated safely without crashing."],
     };

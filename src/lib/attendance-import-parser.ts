@@ -15,13 +15,22 @@ export type AttendanceImportRow = {
   remarks: string;
 };
 
+export type AttendanceImportParseOutcome = {
+  rows: AttendanceImportRow[];
+  skippedRows: number;
+  warnings: string[];
+};
+
 type XlsxModule = typeof import("xlsx");
 
 let xlsxModulePromise: Promise<XlsxModule> | null = null;
 
 async function loadXlsxModule(): Promise<XlsxModule> {
   if (!xlsxModulePromise) {
-    xlsxModulePromise = import("xlsx");
+    xlsxModulePromise = import("xlsx").catch((error) => {
+      xlsxModulePromise = null;
+      throw error;
+    });
   }
   return xlsxModulePromise;
 }
@@ -79,7 +88,13 @@ function todayIsoDate(): string {
 }
 
 function normalizeHeader(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  try {
+    return String(value ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+  } catch {
+    return "";
+  }
 }
 
 function formatExcelSerialDate(serial: number, xlsx: XlsxModule): string {
@@ -93,62 +108,76 @@ function formatExcelSerialDate(serial: number, xlsx: XlsxModule): string {
 }
 
 function cellToString(cell: unknown, xlsx?: XlsxModule): string {
-  if (cell == null || cell === "") return "";
+  try {
+    if (cell == null || cell === "") return "";
 
-  if (cell instanceof Date) {
-    if (Number.isNaN(cell.getTime())) return "";
-    return cell.toISOString().slice(0, 10);
-  }
+    if (cell instanceof Date) {
+      if (Number.isNaN(cell.getTime())) return "";
+      return cell.toISOString().slice(0, 10);
+    }
 
-  if (typeof cell === "boolean") {
-    return cell ? "true" : "false";
-  }
+    if (typeof cell === "boolean") {
+      return cell ? "true" : "false";
+    }
 
-  if (typeof cell === "number" && Number.isFinite(cell)) {
-    if (xlsx && cell > 30000 && cell < 70000) {
-      return formatExcelSerialDate(cell, xlsx);
+    if (typeof cell === "number" && Number.isFinite(cell)) {
+      if (xlsx && cell > 30000 && cell < 70000) {
+        return formatExcelSerialDate(cell, xlsx);
+      }
+      return String(cell);
     }
-    return String(cell);
-  }
 
-  if (typeof cell === "object") {
-    const record = cell as Record<string, unknown>;
-    if (typeof record.w === "string" && record.w.trim()) {
-      return record.w.trim();
+    if (typeof cell === "object") {
+      const record = cell as Record<string, unknown>;
+      if (typeof record.w === "string" && record.w.trim()) {
+        return record.w.trim();
+      }
+      if ("v" in record) {
+        return cellToString(record.v, xlsx);
+      }
+      if ("text" in record) {
+        return cellToString(record.text, xlsx);
+      }
+      if ("richText" in record && Array.isArray(record.richText)) {
+        return (record.richText as Array<{ text?: string }>)
+          .map((part) => part.text ?? "")
+          .join("")
+          .trim();
+      }
+      return "";
     }
-    if ("v" in record) {
-      return cellToString(record.v, xlsx);
-    }
-    if ("text" in record) {
-      return cellToString(record.text, xlsx);
-    }
+
+    return String(cell).trim();
+  } catch {
     return "";
   }
-
-  return String(cell).trim();
 }
 
 function parseCsvLine(line: string): string[] {
-  const cells: string[] = [];
-  let current = "";
-  let inQuotes = false;
+  try {
+    const cells: string[] = [];
+    let current = "";
+    let inQuotes = false;
 
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      if (char === '"') {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (char === "," && !inQuotes) {
+        cells.push(current.trim());
+        current = "";
+        continue;
+      }
+      current += char;
     }
-    if (char === "," && !inQuotes) {
-      cells.push(current.trim());
-      current = "";
-      continue;
-    }
-    current += char;
+
+    cells.push(current.trim());
+    return cells;
+  } catch {
+    return [];
   }
-
-  cells.push(current.trim());
-  return cells;
 }
 
 function parseWorkShift(value: string): WorkShift | "" {
@@ -183,41 +212,77 @@ function parseStatus(value: string): ManualAttendanceStatus {
   return "present";
 }
 
+function parseOvertimeHours(value: string): number {
+  const cleaned = value.replace(/[^\d.-]/g, "").trim();
+  if (!cleaned) return 0;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
 function splitDelimitedLine(line: string): string[] {
-  if (line.includes("\t")) {
-    return line.split("\t").map((cell) => cell.trim());
+  try {
+    if (line.includes("\t")) {
+      return line.split("\t").map((cell) => cell.trim());
+    }
+    if (line.includes("|")) {
+      return line.split("|").map((cell) => cell.trim());
+    }
+    if (/\s{2,}/.test(line)) {
+      return line.split(/\s{2,}/).map((cell) => cell.trim());
+    }
+    return line.split(",").map((cell) => cell.trim());
+  } catch {
+    return [];
   }
-  if (line.includes("|")) {
-    return line.split("|").map((cell) => cell.trim());
+}
+
+function sanitizeMatrix(matrix: unknown): string[][] {
+  if (!Array.isArray(matrix)) return [];
+
+  const sanitized: string[][] = [];
+
+  for (const rawRow of matrix) {
+    try {
+      if (!Array.isArray(rawRow)) continue;
+      const row = rawRow.map((cell) => cellToString(cell));
+      if (row.some((cell) => cell.length > 0)) {
+        sanitized.push(row);
+      }
+    } catch {
+      continue;
+    }
   }
-  if (/\s{2,}/.test(line)) {
-    return line.split(/\s{2,}/).map((cell) => cell.trim());
-  }
-  return line.split(",").map((cell) => cell.trim());
+
+  return sanitized;
 }
 
 function matrixFromCsvText(text: string): string[][] {
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => (line.includes(",") ? parseCsvLine(line) : splitDelimitedLine(line)));
+  try {
+    return text
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => (line.includes(",") ? parseCsvLine(line) : splitDelimitedLine(line)))
+      .filter((row) => row.some((cell) => cell.length > 0));
+  } catch {
+    return [];
+  }
 }
 
 function bufferToBinaryString(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]!);
+  const chunkSize = 0x8000;
+  const chunks: string[] = [];
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const slice = bytes.subarray(offset, offset + chunkSize);
+    chunks.push(String.fromCharCode(...slice));
   }
-  return binary;
+
+  return chunks.join("");
 }
 
-function readWorkbookFromBuffer(
-  XLSX: XlsxModule,
-  buffer: ArrayBuffer,
-  extension: string
-) {
+function readWorkbookFromBuffer(XLSX: XlsxModule, buffer: ArrayBuffer, extension: string) {
   const bytes = new Uint8Array(buffer);
   const attempts: Array<{ type: "array" | "binary"; data: Uint8Array | string }> = [];
 
@@ -236,7 +301,6 @@ function readWorkbookFromBuffer(
       return XLSX.read(attempt.data, {
         type: attempt.type,
         cellDates: true,
-        dense: true,
       });
     } catch (error) {
       lastError = error;
@@ -249,25 +313,41 @@ function readWorkbookFromBuffer(
 }
 
 function sheetToMatrix(XLSX: XlsxModule, sheet: import("xlsx").WorkSheet): string[][] {
-  const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    defval: "",
-    blankrows: false,
-    raw: true,
-  });
+  try {
+    const rawRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+      header: 1,
+      defval: "",
+      blankrows: false,
+      raw: true,
+    });
 
-  if (!Array.isArray(rawRows) || rawRows.length === 0) {
+    if (!Array.isArray(rawRows)) return [];
+
+    const matrix: string[][] = [];
+
+    for (const rawRow of rawRows) {
+      try {
+        if (Array.isArray(rawRow)) {
+          const row = rawRow.map((cell) => cellToString(cell, XLSX));
+          if (row.some((cell) => cell.length > 0)) {
+            matrix.push(row);
+          }
+          continue;
+        }
+
+        const single = cellToString(rawRow, XLSX);
+        if (single) {
+          matrix.push([single]);
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return matrix;
+  } catch {
     return [];
   }
-
-  return rawRows
-    .map((row) => {
-      if (Array.isArray(row)) {
-        return row.map((cell) => cellToString(cell, XLSX));
-      }
-      return [cellToString(row, XLSX)];
-    })
-    .filter((row) => row.some((cell) => cell.length > 0));
 }
 
 async function matrixFromExcelBuffer(
@@ -289,17 +369,21 @@ async function matrixFromExcelBuffer(
     );
   }
 
-  if (!workbook.SheetNames.length) {
+  if (!workbook?.SheetNames?.length) {
     throw new Error("The Excel file does not contain any worksheets.");
   }
 
   for (const sheetName of workbook.SheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) continue;
+    try {
+      const sheet = workbook.Sheets[sheetName];
+      if (!sheet) continue;
 
-    const matrix = sheetToMatrix(XLSX, sheet);
-    if (matrix.length > 0) {
-      return matrix;
+      const matrix = sheetToMatrix(XLSX, sheet);
+      if (matrix.length > 0) {
+        return matrix;
+      }
+    } catch {
+      continue;
     }
   }
 
@@ -308,11 +392,15 @@ async function matrixFromExcelBuffer(
 
 function decodePdfBinary(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
-  let raw = "";
-  for (let offset = 0; offset < bytes.length; offset += 1) {
-    raw += String.fromCharCode(bytes[offset]!);
+  const chunkSize = 0x8000;
+  const chunks: string[] = [];
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const slice = bytes.subarray(offset, offset + chunkSize);
+    chunks.push(String.fromCharCode(...slice));
   }
-  return raw;
+
+  return chunks.join("");
 }
 
 function unescapePdfString(value: string): string {
@@ -326,37 +414,41 @@ function unescapePdfString(value: string): string {
 }
 
 function extractPdfTextTokens(buffer: ArrayBuffer): string[] {
-  const raw = decodePdfBinary(buffer);
-  const tokens: string[] = [];
+  try {
+    const raw = decodePdfBinary(buffer);
+    const tokens: string[] = [];
 
-  const parenRegex = /\(([^)\\]*(?:\\.[^)\\]*)*)\)/g;
-  let match: RegExpExecArray | null = parenRegex.exec(raw);
-  while (match !== null) {
-    const text = unescapePdfString(match[1]).trim();
-    if (text.length > 0 && /[\w]/.test(text)) {
-      tokens.push(text);
+    const parenRegex = /\(([^)\\]*(?:\\.[^)\\]*)*)\)/g;
+    let match: RegExpExecArray | null = parenRegex.exec(raw);
+    while (match !== null) {
+      const text = unescapePdfString(match[1]).trim();
+      if (text.length > 0 && /[\w]/.test(text)) {
+        tokens.push(text);
+      }
+      match = parenRegex.exec(raw);
     }
-    match = parenRegex.exec(raw);
-  }
 
-  if (tokens.length > 0) {
+    if (tokens.length > 0) {
+      return tokens;
+    }
+
+    const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let streamMatch: RegExpExecArray | null = streamRegex.exec(raw);
+    while (streamMatch !== null) {
+      const chunk = streamMatch[1]
+        .replace(/[^\x20-\x7E\n\r\t]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (chunk.length > 8) {
+        tokens.push(chunk);
+      }
+      streamMatch = streamRegex.exec(raw);
+    }
+
     return tokens;
+  } catch {
+    return [];
   }
-
-  const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
-  let streamMatch: RegExpExecArray | null = streamRegex.exec(raw);
-  while (streamMatch !== null) {
-    const chunk = streamMatch[1]
-      .replace(/[^\x20-\x7E\n\r\t]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (chunk.length > 8) {
-      tokens.push(chunk);
-    }
-    streamMatch = streamRegex.exec(raw);
-  }
-
-  return tokens;
 }
 
 function matrixFromPdfBuffer(buffer: ArrayBuffer): string[][] {
@@ -374,7 +466,18 @@ function matrixFromPdfBuffer(buffer: ArrayBuffer): string[][] {
       .filter(Boolean)
   );
 
-  const matrix = lines.map(splitDelimitedLine).filter((row) => row.some((cell) => cell.length > 0));
+  const matrix: string[][] = [];
+
+  for (const line of lines) {
+    try {
+      const row = splitDelimitedLine(line);
+      if (row.some((cell) => cell.length > 0)) {
+        matrix.push(row);
+      }
+    } catch {
+      continue;
+    }
+  }
 
   if (matrix.length === 0) {
     throw new Error("The PDF did not contain tabular attendance rows.");
@@ -384,13 +487,17 @@ function matrixFromPdfBuffer(buffer: ArrayBuffer): string[][] {
 }
 
 function findHeaderRowIndex(matrix: string[][]): number {
-  for (let index = 0; index < Math.min(matrix.length, 15); index += 1) {
-    const normalized = matrix[index].map(normalizeHeader);
-    const hasCode = normalized.some((cell) => CODE_HEADERS.has(cell));
-    const hasName = normalized.some((cell) => NAME_HEADERS.has(cell));
-    const hasStatus = normalized.some((cell) => STATUS_HEADERS.has(cell));
-    if (hasCode || hasName || hasStatus) {
-      return index;
+  for (let index = 0; index < Math.min(matrix.length, 20); index += 1) {
+    try {
+      const normalized = matrix[index].map(normalizeHeader);
+      const hasCode = normalized.some((cell) => CODE_HEADERS.has(cell));
+      const hasName = normalized.some((cell) => NAME_HEADERS.has(cell));
+      const hasStatus = normalized.some((cell) => STATUS_HEADERS.has(cell));
+      if (hasCode || hasName || hasStatus) {
+        return index;
+      }
+    } catch {
+      continue;
     }
   }
   return 0;
@@ -400,21 +507,83 @@ function findColumnIndex(headers: string[], candidates: Set<string>): number {
   return headers.findIndex((cell) => candidates.has(cell));
 }
 
+function safeCell(cells: string[], index: number): string {
+  if (index < 0 || index >= cells.length) return "";
+  return cells[index]?.trim() ?? "";
+}
+
+function parseImportRow(
+  cells: string[],
+  columnMap: {
+    codeIndex: number;
+    nameIndex: number;
+    dateIndex: number;
+    statusIndex: number;
+    shiftIndex: number;
+    otIndex: number;
+    otShiftIndex: number;
+    remarksIndex: number;
+  }
+): AttendanceImportRow | null {
+  const employeeCode = safeCell(cells, columnMap.codeIndex);
+  const employeeName =
+    safeCell(cells, columnMap.nameIndex) ||
+    (columnMap.codeIndex >= 0 ? safeCell(cells, columnMap.codeIndex + 1) : safeCell(cells, 0));
+
+  if (!employeeName && !employeeCode) {
+    return null;
+  }
+
+  const attendanceDate = safeCell(cells, columnMap.dateIndex) || todayIsoDate();
+  const statusRaw = safeCell(cells, columnMap.statusIndex) || "present";
+  const status = parseStatus(statusRaw);
+  const workShift = parseWorkShift(safeCell(cells, columnMap.shiftIndex));
+  const overtimeHours = parseOvertimeHours(safeCell(cells, columnMap.otIndex));
+  const overtimeShift = parseOvertimeShift(safeCell(cells, columnMap.otShiftIndex));
+  const remarks = safeCell(cells, columnMap.remarksIndex);
+
+  return {
+    employeeCode,
+    employeeName: employeeName || employeeCode,
+    attendanceDate,
+    status,
+    workShift:
+      workShift || (status === "present" || status === "half_day" ? ("day" as WorkShift) : ""),
+    overtimeHours,
+    overtimeShift,
+    remarks,
+  };
+}
+
 export function parseAttendanceImportMatrix(matrix: string[][]): AttendanceImportRow[] {
-  if (matrix.length === 0) return [];
+  return parseAttendanceImportMatrixSafe(matrix).rows;
+}
 
-  const headerRowIndex = findHeaderRowIndex(matrix);
-  const headerCells = matrix[headerRowIndex].map(normalizeHeader);
-  const codeIndex = findColumnIndex(headerCells, CODE_HEADERS);
-  const nameIndex = findColumnIndex(headerCells, NAME_HEADERS);
-  const dateIndex = findColumnIndex(headerCells, DATE_HEADERS);
-  const statusIndex = findColumnIndex(headerCells, STATUS_HEADERS);
-  const shiftIndex = findColumnIndex(headerCells, SHIFT_HEADERS);
-  const otIndex = findColumnIndex(headerCells, OT_HEADERS);
-  const otShiftIndex = findColumnIndex(headerCells, OT_SHIFT_HEADERS);
-  const remarksIndex = findColumnIndex(headerCells, REMARKS_HEADERS);
+export function parseAttendanceImportMatrixSafe(
+  matrix: string[][]
+): AttendanceImportParseOutcome {
+  const warnings: string[] = [];
+  let skippedRows = 0;
 
-  if (nameIndex < 0 && codeIndex < 0) {
+  const sanitized = sanitizeMatrix(matrix);
+  if (sanitized.length === 0) {
+    return { rows: [], skippedRows: 0, warnings };
+  }
+
+  const headerRowIndex = findHeaderRowIndex(sanitized);
+  const headerCells = (sanitized[headerRowIndex] ?? []).map(normalizeHeader);
+  const columnMap = {
+    codeIndex: findColumnIndex(headerCells, CODE_HEADERS),
+    nameIndex: findColumnIndex(headerCells, NAME_HEADERS),
+    dateIndex: findColumnIndex(headerCells, DATE_HEADERS),
+    statusIndex: findColumnIndex(headerCells, STATUS_HEADERS),
+    shiftIndex: findColumnIndex(headerCells, SHIFT_HEADERS),
+    otIndex: findColumnIndex(headerCells, OT_HEADERS),
+    otShiftIndex: findColumnIndex(headerCells, OT_SHIFT_HEADERS),
+    remarksIndex: findColumnIndex(headerCells, REMARKS_HEADERS),
+  };
+
+  if (columnMap.nameIndex < 0 && columnMap.codeIndex < 0) {
     throw new Error(
       "Invalid file structure. Include Employee Code and/or Employee Name column headers."
     );
@@ -422,38 +591,24 @@ export function parseAttendanceImportMatrix(matrix: string[][]): AttendanceImpor
 
   const rows: AttendanceImportRow[] = [];
 
-  for (const cells of matrix.slice(headerRowIndex + 1)) {
-    const employeeCode = cells[codeIndex >= 0 ? codeIndex : -1]?.trim() ?? "";
-    const employeeName =
-      cells[nameIndex >= 0 ? nameIndex : codeIndex >= 0 ? codeIndex + 1 : 0]?.trim() ?? "";
-    const attendanceDate =
-      (dateIndex >= 0 ? cells[dateIndex]?.trim() : "") || todayIsoDate();
-    const statusRaw = cells[statusIndex >= 0 ? statusIndex : -1]?.trim() ?? "present";
-    const status = parseStatus(statusRaw);
-    const workShift = parseWorkShift(cells[shiftIndex >= 0 ? shiftIndex : -1]?.trim() ?? "");
-    const overtimeHours = Number(cells[otIndex >= 0 ? otIndex : -1]) || 0;
-    const overtimeShift = parseOvertimeShift(
-      cells[otShiftIndex >= 0 ? otShiftIndex : -1]?.trim() ?? ""
-    );
-    const remarks = cells[remarksIndex >= 0 ? remarksIndex : -1]?.trim() ?? "";
-
-    if (!employeeName && !employeeCode) continue;
-
-    rows.push({
-      employeeCode,
-      employeeName: employeeName || employeeCode,
-      attendanceDate,
-      status,
-      workShift:
-        workShift ||
-        (status === "present" || status === "half_day" ? ("day" as WorkShift) : ""),
-      overtimeHours,
-      overtimeShift,
-      remarks,
-    });
+  for (const cells of sanitized.slice(headerRowIndex + 1)) {
+    try {
+      const parsed = parseImportRow(cells, columnMap);
+      if (!parsed) {
+        skippedRows += 1;
+        continue;
+      }
+      rows.push(parsed);
+    } catch {
+      skippedRows += 1;
+    }
   }
 
-  return rows;
+  if (skippedRows > 0) {
+    warnings.push(`${skippedRows} malformed row(s) were skipped during import sanitization.`);
+  }
+
+  return { rows, skippedRows, warnings };
 }
 
 function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
@@ -513,28 +668,34 @@ function resolveFileExtension(file: File): string {
   return "";
 }
 
-export async function parseAttendanceImportFile(file: File): Promise<AttendanceImportRow[]> {
+export async function parseAttendanceImportFileSafe(
+  file: File
+): Promise<AttendanceImportParseOutcome> {
   if (!file || file.size === 0) {
     throw new Error("The selected file is empty.");
   }
 
   const extension = resolveFileExtension(file);
+  const warnings: string[] = [];
 
   try {
     if (extension === "csv") {
       const text = await readFileAsText(file);
-      return parseAttendanceImportMatrix(matrixFromCsvText(text));
+      const outcome = parseAttendanceImportMatrixSafe(matrixFromCsvText(text));
+      return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
     }
 
     if (extension === "xlsx" || extension === "xls") {
       const buffer = await readFileAsArrayBuffer(file);
       const matrix = await matrixFromExcelBuffer(buffer, extension);
-      return parseAttendanceImportMatrix(matrix);
+      const outcome = parseAttendanceImportMatrixSafe(matrix);
+      return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
     }
 
     if (extension === "pdf") {
       const buffer = await readFileAsArrayBuffer(file);
-      return parseAttendanceImportMatrix(matrixFromPdfBuffer(buffer));
+      const outcome = parseAttendanceImportMatrixSafe(matrixFromPdfBuffer(buffer));
+      return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
     }
 
     throw new Error("Unsupported file type. Upload a .xlsx, .xls, .pdf, or .csv file.");
@@ -544,4 +705,9 @@ export async function parseAttendanceImportFile(file: File): Promise<AttendanceI
     }
     throw new Error("Unable to parse the uploaded attendance file.");
   }
+}
+
+export async function parseAttendanceImportFile(file: File): Promise<AttendanceImportRow[]> {
+  const outcome = await parseAttendanceImportFileSafe(file);
+  return outcome.rows;
 }

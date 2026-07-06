@@ -17,7 +17,7 @@ import {
   formatImportShiftLabel,
 } from "@/lib/attendance-import-process";
 import {
-  parseAttendanceImportFile,
+  parseAttendanceImportFileSafe,
   type AttendanceImportRow,
 } from "@/lib/attendance-import-parser";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
@@ -36,6 +36,8 @@ type ImportPreviewState = {
   fileName: string;
   rows: AttendanceImportRow[];
   pendingNewEmployees: PendingAutoEmployee[];
+  skippedRows: number;
+  warnings: string[];
 };
 
 type ImportResult = {
@@ -64,7 +66,8 @@ export default function AttendanceLoggingWorkspacePanel() {
     setIsParsing(true);
 
     try {
-      const parsedRows = await parseAttendanceImportFile(file);
+      const { rows: parsedRows, skippedRows, warnings } =
+        await parseAttendanceImportFileSafe(file);
 
       if (parsedRows.length === 0) {
         setImportPreview(null);
@@ -85,6 +88,8 @@ export default function AttendanceLoggingWorkspacePanel() {
         fileName: file.name,
         rows: parsedRows,
         pendingNewEmployees,
+        skippedRows,
+        warnings,
       });
     } catch (error) {
       setImportPreview(null);
@@ -306,6 +311,18 @@ export default function AttendanceLoggingWorkspacePanel() {
                   {importPreview.pendingNewEmployees
                     .map((row) => `${row.employeeCode} — ${row.employeeName}`)
                     .join(" · ")}
+                </p>
+              </div>
+            )}
+
+            {(importPreview.skippedRows > 0 || importPreview.warnings.length > 0) && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-700">
+                <p className="font-semibold">Import sanitization summary</p>
+                <p className="mt-1">
+                  {importPreview.skippedRows > 0
+                    ? `${importPreview.skippedRows} malformed row(s) were safely skipped. `
+                    : ""}
+                  {importPreview.warnings.join(" ")}
                 </p>
               </div>
             )}

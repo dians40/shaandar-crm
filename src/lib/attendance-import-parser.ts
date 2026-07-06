@@ -122,7 +122,88 @@ const BIOMETRIC_POSITIONAL_LAYOUT = {
 } as const;
 
 const BIOMETRIC_MIN_COLUMNS = 15;
-const BIOMETRIC_TARGET_WIDTH = 25;
+const BIOMETRIC_MAX_WIDTH = 32;
+
+const FALLBACK_EMPLOYEE_CODE = "TEMP_CODE";
+const FALLBACK_EMPLOYEE_NAME = "Unknown";
+const FALLBACK_STATUS_LABEL = "Absent";
+const DEFAULT_IMPORT_STATUS: ManualAttendanceStatus = "Present Day Shift";
+
+function safeString(value: unknown): string {
+  try {
+    if (value == null) return "";
+    if (typeof value === "string") return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value === "boolean") return value ? "true" : "false";
+    return String(value).trim();
+  } catch {
+    return "";
+  }
+}
+
+function resolveMatrixCell(matrix: string[], index: number | undefined): string {
+  try {
+    if (index == null || index < 0 || index >= matrix.length) return "";
+    return safeString(matrix[index]);
+  } catch {
+    return "";
+  }
+}
+
+/** Ultra-safe 25+ column coercion — never throws on null, sparse, or object rows. */
+function buildBiometricSanitizationMatrix(rawCells: unknown): string[] {
+  try {
+    const matrix = Array.from({ length: BIOMETRIC_MAX_WIDTH }, () => "");
+
+    if (Array.isArray(rawCells)) {
+      for (let index = 0; index < rawCells.length && index < BIOMETRIC_MAX_WIDTH; index += 1) {
+        try {
+          matrix[index] = safeString(rawCells[index]);
+        } catch {
+          matrix[index] = "";
+        }
+      }
+      return matrix;
+    }
+
+    if (rawCells && typeof rawCells === "object") {
+      const record = rawCells as Record<string, unknown>;
+      for (const [key, value] of Object.entries(record)) {
+        try {
+          const index = Number(key);
+          if (Number.isInteger(index) && index >= 0 && index < BIOMETRIC_MAX_WIDTH) {
+            matrix[index] = safeString(value);
+          }
+        } catch {
+          continue;
+        }
+      }
+    }
+
+    return matrix;
+  } catch {
+    return Array.from({ length: BIOMETRIC_MAX_WIDTH }, () => "");
+  }
+}
+
+function shouldUseBiometricLayout(
+  rawHeaderCells: string[],
+  normalizedHeaderCells: string[],
+  sampleRows: string[][]
+): boolean {
+  try {
+    if (detectBiometricLayout(rawHeaderCells, normalizedHeaderCells)) return true;
+
+    let maxWidth = Math.max(rawHeaderCells.length, normalizedHeaderCells.length);
+    for (const row of sampleRows.slice(0, 12)) {
+      if (Array.isArray(row)) maxWidth = Math.max(maxWidth, row.length);
+    }
+
+    return maxWidth >= BIOMETRIC_MIN_COLUMNS;
+  } catch {
+    return false;
+  }
+}
 
 function findBiometricShiftColumnIndex(
   rawHeaders: string[],
@@ -166,19 +247,25 @@ function detectBiometricLayout(
   }
 }
 
-function hasOvertimeSignal(otValue: string, overtimeAmount: string): boolean {
+function hasOvertimeSignal(otValue: string, overtimeAmount: string, overStay = ""): boolean {
   try {
     const ot = safeString(otValue);
     const amount = safeString(overtimeAmount);
-    if (!ot && !amount) return false;
+    const stay = safeString(overStay);
+
+    if (!ot && !amount && !stay) return false;
 
     const otNum = Number(ot.replace(/[^\d.-]/g, ""));
     const amountNum = Number(amount.replace(/[^\d.-]/g, ""));
+    const stayNum = Number(stay.replace(/[^\d.-]/g, ""));
 
     if (Number.isFinite(otNum) && otNum > 0) return true;
     if (Number.isFinite(amountNum) && amountNum > 0) return true;
+    if (Number.isFinite(stayNum) && stayNum > 0) return true;
+
     if (ot && !/^(0|0\.0+|no|nil|none|-)$/i.test(ot)) return true;
     if (amount && !/^(0|0\.0+|no|nil|none|-)$/i.test(amount)) return true;
+    if (stay && !/^(0|0\.0+|no|nil|none|-)$/i.test(stay)) return true;
 
     return false;
   } catch {
@@ -189,10 +276,11 @@ function hasOvertimeSignal(otValue: string, overtimeAmount: string): boolean {
 function parseBiometricOvertimeShift(
   otValue: string,
   overtimeAmount: string,
-  shiftHint: string
+  shiftHint: string,
+  overStay = ""
 ): OvertimeShiftType | "" {
   try {
-    if (!hasOvertimeSignal(otValue, overtimeAmount)) return "";
+    if (!hasOvertimeSignal(otValue, overtimeAmount, overStay)) return "";
     return parseWorkShift(shiftHint) === "night" ? "night" : "day";
   } catch {
     return "";
@@ -239,22 +327,99 @@ function parseBiometricStatus(
   }
 }
 
-function sanitizeBiometricRowCells(cells: unknown): string[] {
+function processRowThroughSanitizationMatrix(
+  cells: unknown,
+  columnMap: ImportColumnMap
+): Partial<AttendanceImportRow> {
   try {
-    const source = Array.isArray(cells) ? cells : [];
-    const sanitized: string[] = [];
+    const matrix = buildBiometricSanitizationMatrix(cells);
 
-    for (let index = 0; index < BIOMETRIC_TARGET_WIDTH; index += 1) {
-      try {
-        sanitized.push(index < source.length ? safeString(source[index]) : "");
-      } catch {
-        sanitized.push("");
-      }
+    let employeeCode = resolveMatrixCell(matrix, columnMap.codeIndex);
+    let employeeName =
+      resolveMatrixCell(matrix, columnMap.nameIndex) ||
+      resolveMatrixCell(matrix, (columnMap.codeIndex ?? -1) + 1);
+
+    if (!employeeCode && !employeeName) {
+      const seedIndex = matrix.findIndex((cell) => cell.length > 0);
+      const seed = seedIndex >= 0 ? matrix[seedIndex]! : "";
+      employeeCode = seed ? deriveAutoEmployeeCode(seed) : FALLBACK_EMPLOYEE_CODE;
+      employeeName = seed || FALLBACK_EMPLOYEE_NAME;
     }
 
-    return sanitized;
+    const statusRaw = resolveMatrixCell(matrix, columnMap.statusIndex);
+    const shiftRaw = resolveMatrixCell(matrix, columnMap.shiftIndex);
+    const hoursWorked = resolveMatrixCell(matrix, columnMap.hoursWorkedIndex);
+    const otValue = resolveMatrixCell(matrix, columnMap.otIndex);
+    const otAmount = resolveMatrixCell(matrix, columnMap.overtimeAmountIndex);
+    const overStay = resolveMatrixCell(matrix, columnMap.overStayIndex);
+
+    const status = parseBiometricStatus(statusRaw, shiftRaw, hoursWorked);
+    const overtimeShift = parseBiometricOvertimeShift(otValue, otAmount, shiftRaw, overStay);
+
+    const remarks = [
+      buildBiometricRemarks(matrix, columnMap),
+      resolveMatrixCell(matrix, columnMap.remarksIndex),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+
+    return {
+      employeeCode: employeeCode || FALLBACK_EMPLOYEE_CODE,
+      employeeName: employeeName || FALLBACK_EMPLOYEE_NAME,
+      attendanceDate: normalizeAttendanceDate(resolveMatrixCell(matrix, columnMap.dateIndex)),
+      status,
+      overtimeShift,
+      remarks,
+    };
   } catch {
-    return Array.from({ length: BIOMETRIC_TARGET_WIDTH }, () => "");
+    return {
+      employeeCode: FALLBACK_EMPLOYEE_CODE,
+      employeeName: FALLBACK_EMPLOYEE_NAME,
+      status: parseStatus(FALLBACK_STATUS_LABEL),
+      remarks: "Recovered by biometric sanitization matrix.",
+    };
+  }
+}
+
+function processRowThroughSanitizationMatrix(
+  cells: unknown,
+  columnMap: ImportColumnMap
+): AttendanceImportRow {
+  try {
+    if (columnMap.isBiometricLayout) {
+      return finalizeImportRow(processBiometricImportRow(cells, columnMap));
+    }
+
+    const parsed = parseGenericImportRow(cells, columnMap);
+    return finalizeImportRow(parsed ?? {});
+  } catch {
+    return finalizeImportRow({
+      employeeCode: FALLBACK_EMPLOYEE_CODE,
+      employeeName: FALLBACK_EMPLOYEE_NAME,
+      status: parseStatus(FALLBACK_STATUS_LABEL),
+      remarks: "Recovered by sanitization matrix.",
+    });
+  }
+}
+
+function parseImportRow(
+  cells: unknown,
+  columnMap: ImportColumnMap
+): AttendanceImportRow | null {
+  try {
+    const rowCells = Array.isArray(cells)
+      ? cells.map((cell) => safeString(cell))
+      : buildBiometricSanitizationMatrix(cells);
+
+    if (!rowHasContent(rowCells)) {
+      return null;
+    }
+
+    return processRowThroughSanitizationMatrix(cells, columnMap);
+  } catch {
+    return finalizeImportRow({
+      remarks: "Recovered from malformed import row.",
+    });
   }
 }
 
@@ -283,22 +448,6 @@ function buildBiometricRemarks(rowCells: unknown, columnMap: ImportColumnMap): s
     append(columnMap.manualIndex, "Manual");
 
     return parts.join(" · ");
-  } catch {
-    return "";
-  }
-}
-const FALLBACK_EMPLOYEE_CODE = "TEMP_CODE";
-const FALLBACK_EMPLOYEE_NAME = "Unknown Worker";
-const FALLBACK_STATUS_LABEL = "Absent";
-const DEFAULT_IMPORT_STATUS: ManualAttendanceStatus = "Present Day Shift";
-
-function safeString(value: unknown): string {
-  try {
-    if (value == null) return "";
-    if (typeof value === "string") return value.trim();
-    if (typeof value === "number" && Number.isFinite(value)) return String(value);
-    if (typeof value === "boolean") return value ? "true" : "false";
-    return String(value).trim();
   } catch {
     return "";
   }
@@ -1069,7 +1218,7 @@ function buildFallbackColumnMap(
   normalizedHeaderCells: string[],
   sampleRows: string[][]
 ): ImportColumnMap {
-  if (detectBiometricLayout(rawHeaderCells, normalizedHeaderCells)) {
+  if (shouldUseBiometricLayout(rawHeaderCells, normalizedHeaderCells, sampleRows)) {
     return buildBiometricColumnMap(rawHeaderCells, normalizedHeaderCells);
   }
   const codeIndex =
@@ -1235,16 +1384,14 @@ function safeCell(cells: unknown, index: number): string {
   }
 }
 
-function parseImportRow(
+function parseGenericImportRow(
   cells: unknown,
   columnMap: ImportColumnMap
-): AttendanceImportRow | null {
+): Partial<AttendanceImportRow> | null {
   try {
-    const rowCells = columnMap.isBiometricLayout
-      ? sanitizeBiometricRowCells(cells)
-      : Array.isArray(cells)
-        ? cells.map((cell) => safeString(cell))
-        : [];
+    const rowCells = Array.isArray(cells)
+      ? cells.map((cell) => safeString(cell))
+      : buildBiometricSanitizationMatrix(cells);
 
     if (!rowHasContent(rowCells)) {
       return null;
@@ -1258,47 +1405,26 @@ function parseImportRow(
         : safeCell(rowCells, 0));
 
     if (!employeeName && !employeeCode) {
-      const seed =
-        rowCells.find((cell) => safeString(cell).length > 0) ?? "";
+      const seed = rowCells.find((cell) => safeString(cell).length > 0) ?? "";
       employeeCode = deriveAutoEmployeeCode(safeString(seed));
       employeeName = safeString(seed) || FALLBACK_EMPLOYEE_NAME;
     }
 
     const statusRaw = safeCell(rowCells, columnMap.statusIndex);
     const shiftRaw = safeCell(rowCells, columnMap.shiftIndex);
-    const hoursWorked = safeCell(rowCells, columnMap.hoursWorkedIndex ?? -1);
-    const otValue = safeCell(rowCells, columnMap.otIndex);
-    const otAmount = safeCell(rowCells, columnMap.overtimeAmountIndex ?? -1);
     const otShiftRaw =
-      safeCell(rowCells, columnMap.otShiftIndex) || otValue || otAmount;
+      safeCell(rowCells, columnMap.otShiftIndex) || safeCell(rowCells, columnMap.otIndex);
 
-    const status = columnMap.isBiometricLayout
-      ? parseBiometricStatus(statusRaw, shiftRaw, hoursWorked)
-      : parseStatus(statusRaw || FALLBACK_STATUS_LABEL, shiftRaw);
-
-    const overtimeShift = columnMap.isBiometricLayout
-      ? parseBiometricOvertimeShift(otValue, otAmount, shiftRaw)
-      : parseOvertimeShift(otShiftRaw);
-
-    const remarks = [
-      columnMap.isBiometricLayout ? buildBiometricRemarks(rowCells, columnMap) : "",
-      safeCell(rowCells, columnMap.remarksIndex),
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-    return finalizeImportRow({
+    return {
       employeeCode: employeeCode || FALLBACK_EMPLOYEE_CODE,
       employeeName: employeeName || FALLBACK_EMPLOYEE_NAME,
       attendanceDate: normalizeAttendanceDate(safeCell(rowCells, columnMap.dateIndex)),
-      status,
-      overtimeShift,
-      remarks,
-    });
+      status: parseStatus(statusRaw || FALLBACK_STATUS_LABEL, shiftRaw),
+      overtimeShift: parseOvertimeShift(otShiftRaw),
+      remarks: safeCell(rowCells, columnMap.remarksIndex),
+    };
   } catch {
-    return finalizeImportRow({
-      remarks: "Recovered from malformed import row.",
-    });
+    return null;
   }
 }
 
@@ -1326,7 +1452,7 @@ export function parseAttendanceImportMatrixSafe(
 
     if (columnMap.isBiometricLayout) {
       warnings.push(
-        "Industrial biometric column layout detected. Pay Code, Employee Name, Status, Shift, and OT columns were mapped safely."
+        "Industrial biometric 25+ column layout detected. Sanitization matrix applied with crash-proof field extraction."
       );
     }
 
@@ -1355,15 +1481,26 @@ export function parseAttendanceImportMatrixSafe(
 
     for (const cells of dataRows) {
       try {
-        const parsed = parseImportRow(cells, columnMap);
-        if (!parsed) {
+        const hasContent = Array.isArray(cells)
+          ? cells.some((cell) => safeString(cell).length > 0)
+          : buildBiometricSanitizationMatrix(cells).some((cell) => cell.length > 0);
+
+        if (!hasContent) {
           skippedRows += 1;
           continue;
         }
-        rows.push(finalizeImportRow(parsed));
+
+        rows.push(processRowThroughSanitizationMatrix(cells, columnMap));
       } catch {
-        rows.push(finalizeImportRow(null));
-        warnings.push("One row was recovered using default attendance values.");
+        rows.push(
+          finalizeImportRow({
+            employeeCode: FALLBACK_EMPLOYEE_CODE,
+            employeeName: FALLBACK_EMPLOYEE_NAME,
+            status: parseStatus(FALLBACK_STATUS_LABEL),
+            remarks: "Recovered during bulk row sanitization.",
+          })
+        );
+        warnings.push("One row was recovered using fallback attendance values.");
       }
     }
 

@@ -82,5 +82,8 @@ export function formatMaintenanceAlertLabel(daysUntilDue: number): string {
   if (daysUntilDue === 0) {
     return "Upcoming Maintenance - Due Today";
   }
+  if (daysUntilDue <= REPAIR_MAINTENANCE_ALERT_WINDOW_DAYS) {
+    return "Upcoming Maintenance - 15 Day Alert";
+  }
   return `Upcoming Maintenance - ${daysUntilDue} Day Alert`;
 }

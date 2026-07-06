@@ -16,7 +16,6 @@ import {
 } from "@/constants/master-panel-modules";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/app/login/actions";
-import { useUserPermissions } from "@/contexts/user-permissions-context";
 
 type ExpandableSectionId = "master-panel" | "transactions";
 
@@ -44,7 +43,6 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { selectedRole, canViewMasterPanelModule } = useUserPermissions();
   const activeModuleParam = searchParams.get("module");
 
   const activeModuleId = isMasterPanelModuleId(activeModuleParam)
@@ -85,15 +83,14 @@ export default function Sidebar({
   const nestedModules = useMemo(
     () =>
       ({
-        "master-panel": (getGroupById("administration")?.moduleIds ?? []).filter((moduleId) =>
-          canViewMasterPanelModule(selectedRole, moduleId)
-        ),
+        // Master Panel — full administration routes always visible (role matrix applies inside workspace).
+        "master-panel": getGroupById("administration")?.moduleIds ?? [],
         // Transactions menu — full operational routes; manual entry stays in Employee Management only.
         transactions: (getGroupById("transaction")?.moduleIds ?? []).filter(
           (moduleId) => !EMPLOYEE_EMBEDDED_MODULE_IDS.includes(moduleId)
         ),
       }) satisfies Record<ExpandableSectionId, MasterPanelModuleId[]>,
-    [canViewMasterPanelModule, selectedRole]
+    []
   );
 
   return (

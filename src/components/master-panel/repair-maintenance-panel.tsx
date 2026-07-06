@@ -105,7 +105,8 @@ function MaintenanceAlertBadge({
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm">
       <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-      {formatMaintenanceAlertLabel(alertStatus.daysUntilDue)}
+      <span aria-hidden>⚠️</span>
+      [{formatMaintenanceAlertLabel(alertStatus.daysUntilDue)}]
     </span>
   );
 }

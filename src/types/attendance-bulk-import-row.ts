@@ -209,6 +209,11 @@ function normalizeDateToken(value: unknown, fallback?: string): string {
   }
 }
 
+/** Normalize any date token to ISO YYYY-MM-DD (DD/MM/YYYY safe). */
+export function normalizeAttendanceDateIso(value: unknown, fallback?: string): string {
+  return normalizeDateToken(value, fallback);
+}
+
 /** Inject today's date when the explicit date column is blank. */
 export function applyDateFallback(
   record: Partial<Biometric23ColumnRecord> | null | undefined,

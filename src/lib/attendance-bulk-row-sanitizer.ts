@@ -1,3 +1,4 @@
+import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
 import {
   atomicFinalizeBulkDbPayload,
   buildBulkDbPayload,
@@ -85,9 +86,9 @@ export function sanitizeIncomingBulkRow(
       return null;
     }
 
-    const attendanceDate =
-      fuzzyReadBulkField(normalizedKeys, ["date", "attendance_date", "attendanceDate"]) ||
-      todayIsoDate();
+    const rawDate =
+      fuzzyReadBulkField(normalizedKeys, ["date", "attendance_date", "attendanceDate"]) || "";
+    const attendanceDate = normalizeAttendanceDateIso(rawDate);
 
     const biometric = sanitizeBulkRowInput(normalizedKeys);
     const payload = atomicFinalizeBulkDbPayload(
@@ -131,10 +132,10 @@ export function sanitizeIncomingBulkRow(
       punch_in: punchIn,
       punch_out: punchOut,
       overtime_hours: overtimeHours,
-      ot: safeString(payload.ot),
-      overtime_amount: safeString(payload.overtime_amount),
-      over_stay: safeString(payload.over_stay),
-      manual: safeString(payload.manual),
+      ot: safeString(payload.ot) || "0",
+      overtime_amount: safeString(payload.overtime_amount) || "0",
+      over_stay: safeString(payload.over_stay) || "0",
+      manual: safeString(payload.manual) || "0",
       remarks:
         fuzzyReadBulkField(normalizedKeys, ["remarks", "shift_remarks", "shiftRemarks"]) ||
         payload.remarks,

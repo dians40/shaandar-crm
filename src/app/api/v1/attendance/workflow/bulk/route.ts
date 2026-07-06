@@ -10,7 +10,7 @@ import {
   mapToBiometricAttendanceRow,
 } from "@/lib/biometric-attendance-db-mapper";
 import { safeBulkNumeric, sanitizeBulkRowInput } from "@/lib/attendance-bulk-payload-bridge";
-import { bulkRecordToWorkflowFields } from "@/types/attendance-bulk-import-row";
+import { bulkRecordToWorkflowFields, normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
 import { BIOMETRIC_DAY_CODE } from "@/types/manual-attendance-entry";
 import {
   buildDefaultAttendanceWorkflowNotes,
@@ -39,6 +39,21 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+const BATCH_SIZE = 50;
+
+function chunkArray<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function isMissingDateColumnError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("date") && (lower.includes("column") || lower.includes("schema cache"));
+}
+
 async function persistBiometricRowsSupabase(
   supabase: ReturnType<typeof createAdminClient>,
   rows: Record<string, unknown>[]
@@ -46,19 +61,65 @@ async function persistBiometricRowsSupabase(
   const errors: string[] = [];
   let saved = 0;
 
-  for (const row of rows) {
+  for (const chunk of chunkArray(rows, BATCH_SIZE)) {
     try {
-      const { error } = await supabase.from(BIOMETRIC_TABLE).upsert(row, {
+      const { error } = await supabase.from(BIOMETRIC_TABLE).upsert(chunk, {
         onConflict: "employee_id,attendance_date",
       });
       if (error) {
+        if (isMissingDateColumnError(error.message ?? "")) {
+          const legacyChunk = chunk.map((row) => {
+            const { date: _date, ...legacy } = row;
+            return legacy;
+          });
+          const { error: legacyError } = await supabase.from(BIOMETRIC_TABLE).upsert(legacyChunk, {
+            onConflict: "employee_id,attendance_date",
+          });
+          if (legacyError) {
+            errors.push(legacyError.message ?? "biometric_attendance upsert failed");
+            continue;
+          }
+          saved += legacyChunk.length;
+          continue;
+        }
         errors.push(error.message ?? "biometric_attendance upsert failed");
         continue;
       }
-      saved += 1;
+      saved += chunk.length;
     } catch (error) {
       console.error("[bulk-import] supabase biometric upsert:", error);
       errors.push(error instanceof Error ? error.message : "biometric upsert failed");
+    }
+  }
+
+  return { saved, errors };
+}
+
+async function persistWorkflowRowsSupabase(
+  supabase: ReturnType<typeof createAdminClient>,
+  rows: Array<{
+    employee_id: string;
+    attendance_date: string;
+    status: string;
+    notes: string;
+  }>
+): Promise<{ saved: number; errors: string[] }> {
+  const errors: string[] = [];
+  let saved = 0;
+
+  for (const chunk of chunkArray(rows, BATCH_SIZE)) {
+    try {
+      const { error } = await supabase.from(ATTENDANCE_TABLE).upsert(chunk, {
+        onConflict: "employee_id,attendance_date",
+      });
+      if (error) {
+        errors.push(error.message ?? "employee_attendance upsert failed");
+        continue;
+      }
+      saved += chunk.length;
+    } catch (error) {
+      console.error("[bulk-import] employee_attendance batch upsert:", error);
+      errors.push(error instanceof Error ? error.message : "employee_attendance upsert failed");
     }
   }
 
@@ -141,6 +202,11 @@ export async function POST(request: Request) {
         normalized.punch_in = `${normalized.attendance_date || todayIsoDate()}T09:00:00.000Z`;
       }
 
+      normalized.attendance_date = normalizeAttendanceDateIso(normalized.attendance_date);
+      normalized.date = normalizeAttendanceDateIso(
+        normalized.date || normalized.attendance_date
+      );
+
       normalizedRows.push(normalized);
     } catch (rowError) {
       console.error("[bulk-import] row sanitization error:", rowError);
@@ -166,6 +232,13 @@ export async function POST(request: Request) {
   const records: ReturnType<typeof normalizeAttendanceWorkflowRecord>[] = [];
   const prismaAttendanceRows: Prisma.AttendanceCreateManyInput[] = [];
   const supabaseBiometricRows: Record<string, unknown>[] = [];
+  const workflowUpsertRows: Array<{
+    employee_id: string;
+    attendance_date: string;
+    status: string;
+    notes: string;
+    rowMeta: AttendanceBulkDbPayload;
+  }> = [];
   let imported = 0;
   let skipped = 0;
   let provisionedEmployees = 0;
@@ -207,10 +280,9 @@ export async function POST(request: Request) {
           safeString(row.employee_id) || safeString(row.pay_code) || null;
       }
 
-      const rowDate =
-        safeString(row.date) ||
-        safeString(row.attendance_date) ||
-        todayIsoDate();
+      const rowDate = normalizeAttendanceDateIso(
+        safeString(row.date) || safeString(row.attendance_date)
+      );
 
       const prismaRow = mapToAttendanceCreate(row, resolvedEmployeeId, rowDate);
       prismaAttendanceRows.push(prismaRow);
@@ -223,7 +295,7 @@ export async function POST(request: Request) {
             id: `att-bulk-${Date.now()}-${imported}`,
             employeeId: resolvedEmployeeId || row.pay_code,
             employeeName: row.employee_name || mapped.employeeName,
-            attendanceDate: row.attendance_date,
+            attendanceDate: rowDate,
             punchIn: row.punch_in,
             punchOut: row.punch_out,
             assignedMachine: row.remarks,
@@ -264,43 +336,13 @@ export async function POST(request: Request) {
           .join(" · "),
       };
 
-      const { data, error } = await supabase!
-        .from(ATTENDANCE_TABLE)
-        .upsert(
-          {
-            employee_id: resolvedEmployeeId,
-            attendance_date: row.attendance_date,
-            status: dbStatus,
-            notes: serializeAttendanceWorkflowNotes(workflowNotes),
-          },
-          { onConflict: "employee_id,attendance_date" }
-        )
-        .select("id, employee_id, attendance_date, status")
-        .single();
-
-      if (error) {
-        console.error("[bulk-import] workflow upsert error:", error);
-        skipped += 1;
-        rowErrors.push(
-          `${row.employee_name || row.pay_code}: ${error.message ?? "workflow insert failed"}`
-        );
-        continue;
-      }
-
-      records.push(
-        normalizeAttendanceWorkflowRecord({
-          id: String(data.id),
-          employeeId: resolvedEmployeeId!,
-          employeeName: row.employee_name,
-          attendanceDate: row.attendance_date,
-          punchIn: row.punch_in,
-          punchOut: row.punch_out,
-          assignedMachine: remarks,
-          workflowStage: "pending_allocation",
-          source: "manual",
-        })
-      );
-      imported += 1;
+      workflowUpsertRows.push({
+        employee_id: resolvedEmployeeId!,
+        attendance_date: rowDate,
+        status: dbStatus,
+        notes: serializeAttendanceWorkflowNotes(workflowNotes),
+        rowMeta: row,
+      });
     } catch (rowError) {
       console.error("[bulk-import] row save error:", rowError);
       skipped += 1;
@@ -308,6 +350,36 @@ export async function POST(request: Request) {
         `${row.employee_name || row.pay_code || "Row"}: ${
           rowError instanceof Error ? rowError.message : "insert failed"
         }`
+      );
+    }
+  }
+
+  if (supabase && workflowUpsertRows.length > 0) {
+    const workflowResult = await persistWorkflowRowsSupabase(
+      supabase,
+      workflowUpsertRows.map(({ employee_id, attendance_date, status, notes }) => ({
+        employee_id,
+        attendance_date,
+        status,
+        notes,
+      }))
+    );
+    imported = workflowResult.saved;
+    rowErrors.push(...workflowResult.errors);
+
+    for (const workflowRow of workflowUpsertRows) {
+      records.push(
+        normalizeAttendanceWorkflowRecord({
+          id: `att-bulk-${workflowRow.employee_id}-${workflowRow.attendance_date}`,
+          employeeId: workflowRow.employee_id,
+          employeeName: workflowRow.rowMeta.employee_name,
+          attendanceDate: workflowRow.attendance_date,
+          punchIn: workflowRow.rowMeta.punch_in,
+          punchOut: workflowRow.rowMeta.punch_out,
+          assignedMachine: workflowRow.rowMeta.remarks,
+          workflowStage: "pending_allocation",
+          source: "manual",
+        })
       );
     }
   }

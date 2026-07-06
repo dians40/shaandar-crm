@@ -83,6 +83,10 @@ export function parseAttendanceWorkflowNotes(
       supervisorApprovedAt: parsed.supervisorApprovedAt ?? null,
       supervisorApprovedBy: parsed.supervisorApprovedBy ?? null,
       employeeName: parsed.employeeName,
+      manualStatus: parsed.manualStatus,
+      overtimeHours: parsed.overtimeHours ?? 0,
+      overtimeShift: parsed.overtimeShift ?? null,
+      shiftRemarks: parsed.shiftRemarks,
     };
   } catch {
     return null;

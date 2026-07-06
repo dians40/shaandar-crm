@@ -14,6 +14,7 @@ import {
 import {
   atomicFinalizeBulkDbPayload,
   buildBulkDbPayload,
+  safeBulkNumeric,
 } from "@/lib/attendance-bulk-payload-bridge";
 import { bulkRecordToWorkflowFields } from "@/types/attendance-bulk-import-row";
 import {
@@ -23,6 +24,7 @@ import {
   type AttendanceImportRow,
 } from "@/lib/attendance-import-parser";
 import {
+  bulkRecordHasContent,
   normalizeBiometric22ColumnRecord,
   type Biometric22ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
@@ -58,6 +60,19 @@ function mappedStatusFromRecord(record: {
     return "DY1";
   } catch {
     return "DY1";
+  }
+}
+
+function safeBulkNumericFromRecord(record: {
+  assignedMachine?: string;
+}): number {
+  try {
+    const token = record.assignedMachine ?? "";
+    const match = token.match(/Overtime Amount:\s*([$0-9.]+)/i);
+    if (match?.[1]) return safeBulkNumeric(match[1]);
+    return 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -199,6 +214,10 @@ export default function AttendanceLoggingWorkspacePanel() {
       for (const bulkRow of importPreview.bulkRows) {
         try {
           const safeBulk = normalizeBiometric22ColumnRecord(bulkRow);
+          if (!bulkRecordHasContent(safeBulk)) {
+            result.skipped += 1;
+            continue;
+          }
           const mapped = bulkRecordToWorkflowFields(safeBulk);
           const employeeCode = mapped.employeeCode.trim() || "TEMP_CODE";
           const employeeName = mapped.employeeName.trim() || "Unknown Worker";
@@ -253,9 +272,12 @@ export default function AttendanceLoggingWorkspacePanel() {
 
       const body = (await response.json()) as {
         error?: string;
+        ok?: boolean;
         imported?: number;
         skipped?: number;
+        provisionedEmployees?: number;
         errors?: string[];
+        debug?: { cause?: string; receivedRows?: number };
         records?: Array<{
           id: string;
           employeeId: string;
@@ -268,11 +290,15 @@ export default function AttendanceLoggingWorkspacePanel() {
       };
 
       if (!response.ok) {
-        throw new Error(body.error ?? "Bulk attendance submission failed.");
+        const detail = body.debug?.cause ? ` ${body.debug.cause}` : "";
+        throw new Error((body.error ?? "Bulk attendance submission failed.") + detail);
       }
 
       result.imported = body.imported ?? 0;
       result.skipped += body.skipped ?? 0;
+      if (body.provisionedEmployees && body.provisionedEmployees > 0) {
+        result.createdEmployees += body.provisionedEmployees;
+      }
       if (Array.isArray(body.errors)) {
         result.errors.push(...body.errors);
       }
@@ -289,7 +315,7 @@ export default function AttendanceLoggingWorkspacePanel() {
             punchOut: record.punchOut ?? "",
             remarks: record.assignedMachine ?? "",
             status: mappedStatusFromRecord(record),
-            overtimeHours: 0,
+            overtimeHours: safeBulkNumericFromRecord(record),
           });
         } catch (entryError) {
           console.error(entryError);

@@ -195,7 +195,7 @@ export function atomicFinalizeBulkDbPayload(
       manual: safeString(payload.manual),
       employee_id: safeString(payload.employee_id),
       attendance_date: safeString(payload.attendance_date) || todayIsoDate(),
-      punch_in: safeString(payload.punch_in),
+      punch_in: safeString(payload.punch_in) || fallbackPunchIn(safeString(payload.attendance_date)),
       punch_out: safeString(payload.punch_out),
       overtime_hours: safeBulkNumeric(payload.overtime_hours),
       overtime_shift: safeString(payload.overtime_shift) || BIOMETRIC_DAY_CODE,
@@ -240,6 +240,10 @@ export function atomicFinalizeBulkDbPayload(
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function fallbackPunchIn(date?: string): string {
+  return `${safeString(date) || todayIsoDate()}T09:00:00.000Z`;
 }
 
 function parseTimeToIso(date: string, timeValue: string): string {

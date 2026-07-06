@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
 import {
-  atomicFinalizeBulkDbPayload,
-  buildBulkDbPayload,
-  safeBulkNumeric,
-  sanitizeBulkRowInput,
-  type AttendanceBulkDbPayload,
-} from "@/lib/attendance-bulk-payload-bridge";
-import { normalizeRawRowKeys } from "@/lib/attendance-bulk-header-normalizer";
+  resolveOrProvisionEmployeeId,
+  mapExcelStatusToDbStatus,
+  resolveOvertimeShiftFromBulkRow,
+} from "@/lib/attendance-bulk-employee-resolver";
+import { sanitizeIncomingBulkRow } from "@/lib/attendance-bulk-row-sanitizer";
+import { safeBulkNumeric, sanitizeBulkRowInput } from "@/lib/attendance-bulk-payload-bridge";
 import { bulkRecordToWorkflowFields } from "@/types/attendance-bulk-import-row";
-import { BIOMETRIC_DAY_CODE, normalizeBiometricCode } from "@/types/manual-attendance-entry";
+import { BIOMETRIC_DAY_CODE } from "@/types/manual-attendance-entry";
 import {
   buildDefaultAttendanceWorkflowNotes,
   normalizeAttendanceWorkflowRecord,
@@ -16,10 +15,9 @@ import {
 } from "@/types/attendance-workflow";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import type { AttendanceBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
 
 const ATTENDANCE_TABLE = "employee_attendance";
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function safeString(value: unknown): string {
   try {
@@ -32,98 +30,6 @@ function safeString(value: unknown): string {
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-function isValidUuid(value: string): boolean {
-  return UUID_RE.test(value);
-}
-
-async function resolveEmployeeId(
-  supabase: ReturnType<typeof createAdminClient>,
-  employeeId: string,
-  employeeName: string,
-  payCode: string
-): Promise<string | null> {
-  try {
-    if (employeeId && isValidUuid(employeeId)) {
-      const { data } = await supabase
-        .from("employees")
-        .select("id")
-        .eq("id", employeeId)
-        .maybeSingle();
-      if (data?.id) return String(data.id);
-    }
-
-    if (employeeName) {
-      const { data: byName } = await supabase
-        .from("employees")
-        .select("id")
-        .ilike("full_name", employeeName)
-        .limit(1)
-        .maybeSingle();
-      if (byName?.id) return String(byName.id);
-    }
-
-    if (payCode) {
-      const { data: byMobile } = await supabase
-        .from("employees")
-        .select("id")
-        .ilike("mobile_number", payCode)
-        .limit(1)
-        .maybeSingle();
-      if (byMobile?.id) return String(byMobile.id);
-    }
-
-    return null;
-  } catch (error) {
-    console.error(error);
-    return null;
-  }
-}
-
-function normalizeIncomingRow(raw: Record<string, unknown>): AttendanceBulkDbPayload | null {
-  try {
-    const normalizedKeys = normalizeRawRowKeys(raw);
-    const employeeId = safeString(
-      normalizedKeys.employee_id ?? normalizedKeys.employeeId
-    );
-    const employeeName = safeString(
-      normalizedKeys.employee_name ?? normalizedKeys.employeeName
-    );
-    const payCode = safeString(normalizedKeys.pay_code ?? normalizedKeys.payCode);
-    const attendanceDate =
-      safeString(normalizedKeys.attendance_date ?? normalizedKeys.attendanceDate) ||
-      todayIsoDate();
-
-    if (!employeeId && !employeeName && !payCode) return null;
-
-    const biometric = sanitizeBulkRowInput(normalizedKeys);
-    const payload = atomicFinalizeBulkDbPayload(
-      buildBulkDbPayload({
-        row: biometric,
-        employeeId: employeeId || payCode || employeeName,
-        attendanceDate,
-      })
-    );
-
-    return {
-      ...payload,
-      employee_name: payload.employee_name || employeeName,
-      pay_code: payload.pay_code || payCode,
-      punch_in:
-        safeString(normalizedKeys.punch_in ?? normalizedKeys.punchIn) || payload.punch_in,
-      punch_out:
-        safeString(normalizedKeys.punch_out ?? normalizedKeys.punchOut) || payload.punch_out,
-      overtime_hours:
-        safeBulkNumeric(normalizedKeys.overtime_hours ?? normalizedKeys.overtimeHours) ||
-        payload.overtime_hours,
-      remarks:
-        safeString(normalizedKeys.remarks ?? normalizedKeys.shift_remarks) || payload.remarks,
-    };
-  } catch (error) {
-    console.error(error);
-    return null;
-  }
 }
 
 export async function POST(request: Request) {
@@ -149,25 +55,35 @@ export async function POST(request: Request) {
         rowErrors.push(`Row ${index + 1}: invalid row object.`);
         continue;
       }
-      const normalized = normalizeIncomingRow(raw as Record<string, unknown>);
+
+      const normalized = sanitizeIncomingBulkRow(raw as Record<string, unknown>);
       if (!normalized) {
         rowErrors.push(`Row ${index + 1}: missing employee identity fields.`);
         continue;
       }
+
       if (!normalized.punch_in) {
-        rowErrors.push(`Row ${index + 1}: punch_in is required.`);
-        continue;
+        normalized.punch_in = `${normalized.attendance_date || todayIsoDate()}T09:00:00.000Z`;
       }
+
       normalizedRows.push(normalized);
     } catch (rowError) {
-      console.error(rowError);
-      rowErrors.push(`Row ${index + 1}: sanitization failed.`);
+      console.error("[bulk-import] row sanitization error:", rowError);
+      rowErrors.push(`Row ${index + 1}: sanitization recovered with skip.`);
     }
   }
 
   if (normalizedRows.length === 0) {
     return NextResponse.json(
-      { error: "No valid rows to import.", errors: rowErrors },
+      {
+        error: "No valid rows to import.",
+        errors: rowErrors,
+        debug: {
+          cause:
+            "All rows failed sanitization — check pay_code, employee_name, or card_number columns.",
+          receivedRows: payload.rows.length,
+        },
+      },
       { status: 400 }
     );
   }
@@ -175,6 +91,7 @@ export async function POST(request: Request) {
   const records: ReturnType<typeof normalizeAttendanceWorkflowRecord>[] = [];
   let imported = 0;
   let skipped = 0;
+  let provisionedEmployees = 0;
 
   if (!isSupabaseServerConfigured()) {
     for (const row of normalizedRows) {
@@ -183,7 +100,7 @@ export async function POST(request: Request) {
         records.push(
           normalizeAttendanceWorkflowRecord({
             id: `att-bulk-${Date.now()}-${imported}`,
-            employeeId: row.employee_id,
+            employeeId: row.employee_id || row.pay_code,
             employeeName: row.employee_name || mapped.employeeName,
             attendanceDate: row.attendance_date,
             punchIn: row.punch_in,
@@ -205,6 +122,7 @@ export async function POST(request: Request) {
       message: "Bulk attendance saved locally (database not configured).",
       imported,
       skipped,
+      provisionedEmployees,
       errors: rowErrors,
       records,
     });
@@ -215,25 +133,25 @@ export async function POST(request: Request) {
 
     for (const row of normalizedRows) {
       try {
-        const resolvedEmployeeId = await resolveEmployeeId(
-          supabase,
-          row.employee_id,
-          row.employee_name,
-          row.pay_code
-        );
+        const resolution = await resolveOrProvisionEmployeeId(supabase, row, {
+          autoProvision: true,
+        });
 
-        if (!resolvedEmployeeId) {
+        if (!resolution.employeeId) {
           skipped += 1;
           rowErrors.push(
-            `${row.employee_name || row.pay_code || row.employee_id}: employee not found in database.`
+            resolution.error ??
+              `${row.employee_name || row.pay_code || row.employee_id}: employee not found.`
           );
           continue;
         }
 
-        const status = normalizeBiometricCode(row.status || row.shift || BIOMETRIC_DAY_CODE);
-        const overtimeShift = normalizeBiometricCode(
-          row.overtime_shift || row.ot || row.overtime_amount || status
-        );
+        if (resolution.provisioned) {
+          provisionedEmployees += 1;
+        }
+
+        const dbStatus = mapExcelStatusToDbStatus(row.status, row.shift);
+        const overtimeShift = resolveOvertimeShiftFromBulkRow(row);
         const overtimeHours = safeBulkNumeric(row.overtime_hours);
         const remarks = row.remarks || "";
 
@@ -244,14 +162,18 @@ export async function POST(request: Request) {
             row.employee_name || undefined
           ),
           source: "manual" as const,
-          manualStatus: status,
+          manualStatus: safeString(row.status) || row.shift || BIOMETRIC_DAY_CODE,
           overtimeHours,
-          overtimeShift,
+          overtimeShift: overtimeShift as "DY1" | "G11",
           shiftRemarks: [
             remarks,
             row.srl_number ? `SRL: ${row.srl_number}` : "",
             row.pay_code ? `Pay Code: ${row.pay_code}` : "",
-            row.hours_worked ? `Hours: ${row.hours_worked}` : "",
+            row.card_number ? `Card No: ${row.card_number}` : "",
+            row.hours_worked ? `Hours Worked: ${row.hours_worked}` : "",
+            row.overtime_amount ? `Overtime Amount: ${row.overtime_amount}` : "",
+            row.over_stay ? `Over Stay: ${row.over_stay}` : "",
+            row.manual ? `Manual: ${row.manual}` : "",
           ]
             .filter(Boolean)
             .join(" · "),
@@ -261,9 +183,9 @@ export async function POST(request: Request) {
           .from(ATTENDANCE_TABLE)
           .upsert(
             {
-              employee_id: resolvedEmployeeId,
+              employee_id: resolution.employeeId,
               attendance_date: row.attendance_date,
-              status: "present",
+              status: dbStatus,
               notes: serializeAttendanceWorkflowNotes(workflowNotes),
             },
             { onConflict: "employee_id,attendance_date" }
@@ -272,7 +194,7 @@ export async function POST(request: Request) {
           .single();
 
         if (error) {
-          console.error(error);
+          console.error("[bulk-import] upsert error:", error);
           skipped += 1;
           rowErrors.push(
             `${row.employee_name || row.pay_code}: ${error.message ?? "database insert failed"}`
@@ -283,7 +205,7 @@ export async function POST(request: Request) {
         records.push(
           normalizeAttendanceWorkflowRecord({
             id: String(data.id),
-            employeeId: resolvedEmployeeId,
+            employeeId: resolution.employeeId,
             employeeName: row.employee_name,
             attendanceDate: row.attendance_date,
             punchIn: row.punch_in,
@@ -295,7 +217,7 @@ export async function POST(request: Request) {
         );
         imported += 1;
       } catch (rowError) {
-        console.error(rowError);
+        console.error("[bulk-import] row save error:", rowError);
         skipped += 1;
         rowErrors.push(
           `${row.employee_name || row.pay_code || "Row"}: ${
@@ -307,17 +229,21 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      message: "Bulk attendance import completed.",
+      message:
+        imported > 0
+          ? "Bulk attendance import completed."
+          : "Bulk import finished with zero saved rows — see errors.",
       imported,
       skipped,
+      provisionedEmployees,
       errors: rowErrors.slice(0, 20),
       records,
     });
   } catch (error) {
-    console.error(error);
+    console.error("[bulk-import] fatal error:", error);
     const message = error instanceof Error ? error.message : "Bulk attendance import failed.";
     return NextResponse.json(
-      { error: message, imported, skipped, errors: rowErrors },
+      { error: message, imported, skipped, provisionedEmployees, errors: rowErrors },
       { status: 500 }
     );
   }

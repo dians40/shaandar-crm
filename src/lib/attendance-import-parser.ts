@@ -47,6 +47,7 @@ const CODE_HEADERS = new Set([
   "code",
   "empid",
   "empcode",
+  "workerid",
 ]);
 
 const NAME_HEADERS = new Set([
@@ -55,6 +56,8 @@ const NAME_HEADERS = new Set([
   "name",
   "employee",
   "fullname",
+  "worker",
+  "staff",
 ]);
 
 const DATE_HEADERS = new Set(["attendancedate", "date", "workdate", "attdate"]);
@@ -65,6 +68,7 @@ const STATUS_HEADERS = new Set([
   "attendance",
   "attstatus",
   "presentstatus",
+  "present",
 ]);
 
 const SHIFT_HEADERS = new Set(["workshift", "shift", "dayshift", "shiftname"]);
@@ -80,6 +84,17 @@ const OT_HEADERS = new Set([
 const OT_SHIFT_HEADERS = new Set(["overtimeshift", "otshift", "overtimeband"]);
 
 const REMARKS_HEADERS = new Set(["remarks", "notes", "shiftinfo", "comment"]);
+
+const FUZZY_CODE_PATTERNS = [/code/i, /\bid\b/i, /emp.*code/i, /worker.*id/i];
+const FUZZY_NAME_PATTERNS = [/name/i, /worker/i, /employee/i, /staff/i];
+const FUZZY_DATE_PATTERNS = [/date/i, /workdate/i, /attdate/i];
+const FUZZY_STATUS_PATTERNS = [/status/i, /attendance/i, /present/i];
+const FUZZY_SHIFT_PATTERNS = [/workshift/i, /\bshift\b/i, /dayshift/i];
+const FUZZY_OT_SHIFT_PATTERNS = [/overtime.*shift/i, /ot.*shift/i, /overtimeshift/i];
+const FUZZY_OT_PATTERNS = [/overtime/i, /\bot\b/i, /othours/i];
+const FUZZY_REMARKS_PATTERNS = [/remarks/i, /notes/i, /comment/i];
+
+const DEFAULT_IMPORT_STATUS: ManualAttendanceStatus = "Present Day Shift";
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -186,35 +201,49 @@ function parseWorkShift(value: string): WorkShift | "" {
 }
 
 function parseStatus(value: string, shiftHint = ""): ManualAttendanceStatus {
-  const combined = `${value} ${shiftHint}`.trim().toLowerCase();
+  try {
+    const trimmed = value.trim();
+    const combined = `${trimmed} ${shiftHint}`.trim().toLowerCase();
 
-  if (VALID_STATUSES.has(value.trim() as ManualAttendanceStatus)) {
-    return value.trim() as ManualAttendanceStatus;
-  }
+    if (!trimmed && !shiftHint.trim()) {
+      return DEFAULT_IMPORT_STATUS;
+    }
 
-  if (combined.includes("present") && combined.includes("night")) {
-    return "Present Night Shift";
-  }
-  if (combined.includes("present") && combined.includes("day")) {
-    return "Present Day Shift";
-  }
-  if (combined.includes("half") && combined.includes("night")) {
-    return "Half Night Shift";
-  }
-  if (combined.includes("half")) {
-    return "Half Day Shift";
-  }
-  if (combined.includes("present") || combined === "p") {
-    return parseWorkShift(shiftHint) === "night" ? "Present Night Shift" : "Present Day Shift";
-  }
+    if (VALID_STATUSES.has(trimmed as ManualAttendanceStatus)) {
+      return trimmed as ManualAttendanceStatus;
+    }
 
-  return "Present Day Shift";
+    if (combined.includes("present") && combined.includes("night")) {
+      return "Present Night Shift";
+    }
+    if (combined.includes("present") && combined.includes("day")) {
+      return "Present Day Shift";
+    }
+    if (combined.includes("half") && combined.includes("night")) {
+      return "Half Night Shift";
+    }
+    if (combined.includes("half")) {
+      return "Half Day Shift";
+    }
+    if (combined.includes("absent") || combined.includes("a/l") || combined.includes("leave")) {
+      return DEFAULT_IMPORT_STATUS;
+    }
+    if (combined.includes("present") || combined === "p") {
+      return parseWorkShift(shiftHint) === "night" ? "Present Night Shift" : "Present Day Shift";
+    }
+
+    return DEFAULT_IMPORT_STATUS;
+  } catch {
+    return DEFAULT_IMPORT_STATUS;
+  }
 }
 
 function parseOvertimeShift(value: string): OvertimeShiftType | "" {
   try {
     const normalized = value.trim().toLowerCase();
-    if (!normalized) return "";
+    if (!normalized || normalized === "none" || normalized === "n/a" || normalized === "-") {
+      return "";
+    }
     if (/^\d+(\.\d+)?$/.test(normalized)) return "";
     if (normalized.includes("night")) return "night";
     if (normalized.includes("day")) return "day";
@@ -222,6 +251,30 @@ function parseOvertimeShift(value: string): OvertimeShiftType | "" {
   } catch {
     return "";
   }
+}
+
+function createSafeImportRow(partial: Partial<AttendanceImportRow> = {}): AttendanceImportRow {
+  return {
+    employeeCode: partial.employeeCode ?? "",
+    employeeName: partial.employeeName ?? "Unknown Staff",
+    attendanceDate: partial.attendanceDate ?? todayIsoDate(),
+    status: partial.status ?? DEFAULT_IMPORT_STATUS,
+    overtimeShift: partial.overtimeShift ?? "",
+    remarks: partial.remarks ?? "",
+  };
+}
+
+function rowHasContent(cells: string[]): boolean {
+  try {
+    return cells.some((cell) => String(cell ?? "").trim().length > 0);
+  } catch {
+    return false;
+  }
+}
+
+function deriveAutoEmployeeCode(seed: string): string {
+  const normalized = seed.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+  return normalized ? `AUTO-${normalized}` : `AUTO-${Date.now().toString().slice(-8)}`;
 }
 
 function splitDelimitedLine(line: string): string[] {
@@ -527,13 +580,25 @@ function matrixFromPdfBuffer(buffer: ArrayBuffer): { matrix: string[][]; warning
 }
 
 function findHeaderRowIndex(matrix: string[][]): number {
-  for (let index = 0; index < Math.min(matrix.length, 20); index += 1) {
+  for (let index = 0; index < Math.min(matrix.length, 25); index += 1) {
     try {
-      const normalized = matrix[index].map(normalizeHeader);
-      const hasCode = normalized.some((cell) => CODE_HEADERS.has(cell));
-      const hasName = normalized.some((cell) => NAME_HEADERS.has(cell));
-      const hasStatus = normalized.some((cell) => STATUS_HEADERS.has(cell));
-      if (hasCode || hasName || hasStatus) {
+      const rawRow = matrix[index] ?? [];
+      const normalized = rawRow.map(normalizeHeader);
+      const probe = rawRow
+        .map((cell, cellIndex) => `${cell} ${normalized[cellIndex] ?? ""}`)
+        .join(" ");
+
+      const fuzzyMatch =
+        FUZZY_CODE_PATTERNS.some((pattern) => pattern.test(probe)) ||
+        FUZZY_NAME_PATTERNS.some((pattern) => pattern.test(probe)) ||
+        FUZZY_STATUS_PATTERNS.some((pattern) => pattern.test(probe));
+
+      const exactMatch =
+        normalized.some((cell) => CODE_HEADERS.has(cell)) ||
+        normalized.some((cell) => NAME_HEADERS.has(cell)) ||
+        normalized.some((cell) => STATUS_HEADERS.has(cell));
+
+      if (fuzzyMatch || exactMatch) {
         return index;
       }
     } catch {
@@ -547,6 +612,27 @@ function findColumnIndex(headers: string[], candidates: Set<string>): number {
   return headers.findIndex((cell) => candidates.has(cell));
 }
 
+function findFuzzyColumnIndex(
+  rawHeaders: string[],
+  normalizedHeaders: string[],
+  patterns: RegExp[],
+  excludeIndices: number[] = []
+): number {
+  for (let index = 0; index < rawHeaders.length; index += 1) {
+    if (excludeIndices.includes(index)) continue;
+
+    const raw = String(rawHeaders[index] ?? "").trim();
+    const normalized = normalizedHeaders[index] ?? "";
+    const probe = `${raw} ${normalized}`;
+
+    if (patterns.some((pattern) => pattern.test(probe))) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
 type ImportColumnMap = {
   codeIndex: number;
   nameIndex: number;
@@ -558,20 +644,99 @@ type ImportColumnMap = {
   remarksIndex: number;
 };
 
-function buildFallbackColumnMap(headerCells: string[], sampleRows: string[][]): ImportColumnMap {
+function buildFallbackColumnMap(
+  rawHeaderCells: string[],
+  normalizedHeaderCells: string[],
+  sampleRows: string[][]
+): ImportColumnMap {
+  const codeIndex =
+    findColumnIndex(normalizedHeaderCells, CODE_HEADERS) >= 0
+      ? findColumnIndex(normalizedHeaderCells, CODE_HEADERS)
+      : findFuzzyColumnIndex(rawHeaderCells, normalizedHeaderCells, FUZZY_CODE_PATTERNS);
+
+  const nameIndex =
+    findColumnIndex(normalizedHeaderCells, NAME_HEADERS) >= 0
+      ? findColumnIndex(normalizedHeaderCells, NAME_HEADERS)
+      : findFuzzyColumnIndex(rawHeaderCells, normalizedHeaderCells, FUZZY_NAME_PATTERNS, [
+          codeIndex,
+        ]);
+
+  const dateIndex =
+    findColumnIndex(normalizedHeaderCells, DATE_HEADERS) >= 0
+      ? findColumnIndex(normalizedHeaderCells, DATE_HEADERS)
+      : findFuzzyColumnIndex(rawHeaderCells, normalizedHeaderCells, FUZZY_DATE_PATTERNS, [
+          codeIndex,
+          nameIndex,
+        ]);
+
+  const statusIndex =
+    findColumnIndex(normalizedHeaderCells, STATUS_HEADERS) >= 0
+      ? findColumnIndex(normalizedHeaderCells, STATUS_HEADERS)
+      : findFuzzyColumnIndex(rawHeaderCells, normalizedHeaderCells, FUZZY_STATUS_PATTERNS, [
+          codeIndex,
+          nameIndex,
+          dateIndex,
+        ]);
+
+  const shiftIndex =
+    findColumnIndex(normalizedHeaderCells, SHIFT_HEADERS) >= 0
+      ? findColumnIndex(normalizedHeaderCells, SHIFT_HEADERS)
+      : findFuzzyColumnIndex(rawHeaderCells, normalizedHeaderCells, FUZZY_SHIFT_PATTERNS, [
+          codeIndex,
+          nameIndex,
+          dateIndex,
+          statusIndex,
+        ]);
+
+  const otShiftIndex =
+    findColumnIndex(normalizedHeaderCells, OT_SHIFT_HEADERS) >= 0
+      ? findColumnIndex(normalizedHeaderCells, OT_SHIFT_HEADERS)
+      : findFuzzyColumnIndex(rawHeaderCells, normalizedHeaderCells, FUZZY_OT_SHIFT_PATTERNS, [
+          codeIndex,
+          nameIndex,
+          dateIndex,
+          statusIndex,
+          shiftIndex,
+        ]);
+
+  const otIndex =
+    findColumnIndex(normalizedHeaderCells, OT_HEADERS) >= 0
+      ? findColumnIndex(normalizedHeaderCells, OT_HEADERS)
+      : findFuzzyColumnIndex(rawHeaderCells, normalizedHeaderCells, FUZZY_OT_PATTERNS, [
+          codeIndex,
+          nameIndex,
+          dateIndex,
+          statusIndex,
+          shiftIndex,
+          otShiftIndex,
+        ]);
+
+  const remarksIndex =
+    findColumnIndex(normalizedHeaderCells, REMARKS_HEADERS) >= 0
+      ? findColumnIndex(normalizedHeaderCells, REMARKS_HEADERS)
+      : findFuzzyColumnIndex(rawHeaderCells, normalizedHeaderCells, FUZZY_REMARKS_PATTERNS, [
+          codeIndex,
+          nameIndex,
+          dateIndex,
+          statusIndex,
+          shiftIndex,
+          otShiftIndex,
+          otIndex,
+        ]);
+
   const resolved: ImportColumnMap = {
-    codeIndex: findColumnIndex(headerCells, CODE_HEADERS),
-    nameIndex: findColumnIndex(headerCells, NAME_HEADERS),
-    dateIndex: findColumnIndex(headerCells, DATE_HEADERS),
-    statusIndex: findColumnIndex(headerCells, STATUS_HEADERS),
-    shiftIndex: findColumnIndex(headerCells, SHIFT_HEADERS),
-    otIndex: findColumnIndex(headerCells, OT_HEADERS),
-    otShiftIndex: findColumnIndex(headerCells, OT_SHIFT_HEADERS),
-    remarksIndex: findColumnIndex(headerCells, REMARKS_HEADERS),
+    codeIndex,
+    nameIndex,
+    dateIndex,
+    statusIndex,
+    shiftIndex,
+    otIndex,
+    otShiftIndex,
+    remarksIndex,
   };
 
   const maxColumns = Math.max(
-    headerCells.length,
+    normalizedHeaderCells.length,
     ...sampleRows.slice(0, 5).map((row) => row.length),
     1
   );
@@ -635,13 +800,19 @@ function parseImportRow(
   columnMap: ImportColumnMap
 ): AttendanceImportRow | null {
   try {
-    const employeeCode = safeCell(cells, columnMap.codeIndex);
-    const employeeName =
+    if (!rowHasContent(cells)) {
+      return null;
+    }
+
+    let employeeCode = safeCell(cells, columnMap.codeIndex);
+    let employeeName =
       safeCell(cells, columnMap.nameIndex) ||
       (columnMap.codeIndex >= 0 ? safeCell(cells, columnMap.codeIndex + 1) : safeCell(cells, 0));
 
     if (!employeeName && !employeeCode) {
-      return null;
+      const seed = cells.find((cell) => String(cell ?? "").trim().length > 0) ?? "";
+      employeeCode = deriveAutoEmployeeCode(seed);
+      employeeName = seed.trim() || "Unknown Staff";
     }
 
     const attendanceDate = normalizeAttendanceDate(safeCell(cells, columnMap.dateIndex));
@@ -649,20 +820,25 @@ function parseImportRow(
     const shiftRaw = safeCell(cells, columnMap.shiftIndex);
     const otShiftRaw =
       safeCell(cells, columnMap.otShiftIndex) || safeCell(cells, columnMap.otIndex);
-    const status = parseStatus(statusRaw || "Present Day Shift", shiftRaw);
+    const status = parseStatus(statusRaw, shiftRaw);
     const overtimeShift = parseOvertimeShift(otShiftRaw);
     const remarks = safeCell(cells, columnMap.remarksIndex);
 
-    return {
+    return createSafeImportRow({
       employeeCode,
-      employeeName: employeeName || employeeCode,
+      employeeName: employeeName || employeeCode || "Unknown Staff",
       attendanceDate,
       status,
       overtimeShift,
       remarks,
-    };
+    });
   } catch {
-    return null;
+    const seed = cells.find((cell) => String(cell ?? "").trim().length > 0) ?? "";
+    return createSafeImportRow({
+      employeeCode: deriveAutoEmployeeCode(seed),
+      employeeName: seed.trim() || "Recovered Staff",
+      remarks: "Recovered from malformed import row.",
+    });
   }
 }
 
@@ -683,17 +859,20 @@ export function parseAttendanceImportMatrixSafe(
     }
 
     const headerRowIndex = findHeaderRowIndex(sanitized);
-    const headerCells = (sanitized[headerRowIndex] ?? []).map(normalizeHeader);
+    const rawHeaderCells = sanitized[headerRowIndex] ?? [];
+    const headerCells = rawHeaderCells.map(normalizeHeader);
     const dataRows = sanitized.slice(headerRowIndex + 1);
-    const columnMap = buildFallbackColumnMap(headerCells, dataRows);
+    const columnMap = buildFallbackColumnMap(rawHeaderCells, headerCells, dataRows);
 
     const usedFallback =
       findColumnIndex(headerCells, CODE_HEADERS) < 0 &&
-      findColumnIndex(headerCells, NAME_HEADERS) < 0;
+      findFuzzyColumnIndex(rawHeaderCells, headerCells, FUZZY_CODE_PATTERNS) < 0 &&
+      findColumnIndex(headerCells, NAME_HEADERS) < 0 &&
+      findFuzzyColumnIndex(rawHeaderCells, headerCells, FUZZY_NAME_PATTERNS) < 0;
 
     if (usedFallback) {
       warnings.push(
-        "Header row was shifted or missing. Positional column mapping was applied with sanitized defaults."
+        "Header row was shifted or missing. Fuzzy positional column mapping was applied with sanitized defaults."
       );
     }
 
@@ -715,7 +894,11 @@ export function parseAttendanceImportMatrixSafe(
         }
         rows.push(parsed);
       } catch {
-        skippedRows += 1;
+        const recovered = createSafeImportRow({
+          remarks: "Recovered from row-level parse failure.",
+        });
+        rows.push(recovered);
+        warnings.push("One row was recovered using default attendance values.");
       }
     }
 

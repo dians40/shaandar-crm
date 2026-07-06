@@ -61,6 +61,27 @@ export default function AttendanceLoggingWorkspacePanel() {
   const autoProvisioned = readAutoProvisionedEmployees();
   const mergedEmployees = [...autoProvisioned, ...employees];
 
+  const autoProvisionMissingEmployees = (
+    rows: AttendanceImportRow[],
+    registry: ReturnType<typeof readAutoProvisionedEmployees>
+  ) => {
+    const pending = detectPendingAutoEmployees(rows, employees, registry);
+    let nextRegistry = registry;
+    let createdCount = 0;
+
+    for (const pendingEmployee of pending) {
+      const created = createAutoProvisionedEmployee(
+        pendingEmployee.employeeCode,
+        pendingEmployee.employeeName
+      );
+      nextRegistry = upsertAutoProvisionedEmployee(created);
+      prependEmployee(created);
+      createdCount += 1;
+    }
+
+    return { pending, nextRegistry, createdCount };
+  };
+
   const handleFileSelect = async (file: File) => {
     setImportMessage(null);
     setImportError(null);
@@ -81,9 +102,8 @@ export default function AttendanceLoggingWorkspacePanel() {
       }
 
       const registry = readAutoProvisionedEmployees();
-      const pendingNewEmployees = detectPendingAutoEmployees(
+      const { pending: pendingNewEmployees, createdCount } = autoProvisionMissingEmployees(
         parsedRows,
-        employees,
         registry
       );
 
@@ -92,8 +112,20 @@ export default function AttendanceLoggingWorkspacePanel() {
         rows: parsedRows,
         pendingNewEmployees,
         skippedRows,
-        warnings,
+        warnings:
+          createdCount > 0
+            ? [
+                ...warnings,
+                `${createdCount} missing employee profile(s) were auto-created in this session.`,
+              ]
+            : warnings,
       });
+
+      if (createdCount > 0) {
+        setImportMessage(
+          `${createdCount} new employee profile(s) were auto-provisioned from the uploaded sheet.`
+        );
+      }
     } catch (error) {
       setImportPreview(null);
       const message =

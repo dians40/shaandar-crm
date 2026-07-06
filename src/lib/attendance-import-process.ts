@@ -41,6 +41,7 @@ export function formatImportStatusLabel(status: ManualAttendanceStatus): string 
 }
 
 export function formatImportOvertimeShiftLabel(shift: OvertimeShiftType | ""): string {
+  if (!shift) return "None";
   return formatOvertimeShiftLabel(shift);
 }
 

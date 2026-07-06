@@ -13,6 +13,11 @@ import {
   type MasterPanelModuleGroupId,
   type MasterPanelModuleId,
 } from "@/constants/master-panel-modules";
+import {
+  getTransactionNavHref,
+  isTransactionNavItemActive,
+  TRANSACTIONS_NAV_ITEMS,
+} from "@/constants/transactions-nav-config";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/app/login/actions";
 import { useUserPermissions } from "@/contexts/user-permissions-context";
@@ -171,7 +176,48 @@ export default function Sidebar({
                         className="mt-0.5 space-y-0.5 border-l-2 border-corporate-brand/20 pb-2 pl-3"
                         aria-label={`${group?.label ?? item.label} modules`}
                       >
-                        {nestedModules[expandableKey].length === 0 ? (
+                        {expandableKey === "transactions"
+                          ? TRANSACTIONS_NAV_ITEMS.map((navItem) => {
+                              const NavIcon = navItem.icon;
+                              const navHref = getTransactionNavHref(navItem);
+                              const isNavActive = isTransactionNavItemActive(
+                                navItem,
+                                pathname,
+                                activeModuleId
+                              );
+
+                              return (
+                                <li key={navItem.id}>
+                                  <Link
+                                    href={navHref}
+                                    onClick={() => onNavigate?.()}
+                                    className={cn(
+                                      "flex min-h-11 items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-all",
+                                      isNavActive
+                                        ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
+                                        : "border-transparent text-corporate-muted hover:border-corporate-border hover:bg-corporate-bg hover:text-corporate-text"
+                                    )}
+                                    aria-current={isNavActive ? "page" : undefined}
+                                  >
+                                    <NavIcon className="h-4 w-4 shrink-0" aria-hidden />
+                                    <span className="min-w-0 flex-1 truncate">
+                                      {navItem.label}
+                                      <span
+                                        className={cn(
+                                          "mt-0.5 block truncate text-[11px] font-normal",
+                                          isNavActive
+                                            ? "text-white/85"
+                                            : "text-corporate-muted"
+                                        )}
+                                      >
+                                        {navItem.labelHi}
+                                      </span>
+                                    </span>
+                                  </Link>
+                                </li>
+                              );
+                            })
+                          : nestedModules[expandableKey].length === 0 ? (
                           <li className="px-3 py-2 text-xs text-corporate-muted">
                             No modules available for the current role.
                           </li>

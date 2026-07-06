@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { ManualAttendanceStatus } from "@/types/manual-attendance-entry";
 import {
   buildDefaultAttendanceWorkflowNotes,
   normalizeAttendanceWorkflowRecord,
@@ -157,6 +158,131 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ ok: true, record: merged });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Workflow update failed.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+type ManualEntryBody = {
+  employeeId?: string;
+  employeeName?: string;
+  attendanceDate?: string;
+  status?: ManualAttendanceStatus;
+  overtimeHours?: number;
+  remarks?: string;
+  punchIn?: string;
+  punchOut?: string;
+};
+
+export async function POST(request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
+  }
+
+  const payload = body as ManualEntryBody;
+  const employeeId = String(payload.employeeId ?? "").trim();
+  const attendanceDate = String(payload.attendanceDate ?? "").trim();
+  const punchIn = String(payload.punchIn ?? "").trim();
+  const status = payload.status ?? "present";
+
+  if (!employeeId) {
+    return NextResponse.json({ error: "employeeId is required." }, { status: 400 });
+  }
+  if (!attendanceDate) {
+    return NextResponse.json({ error: "attendanceDate is required." }, { status: 400 });
+  }
+  if (!punchIn) {
+    return NextResponse.json({ error: "punchIn is required." }, { status: 400 });
+  }
+
+  const punchOut = String(payload.punchOut ?? "").trim();
+  const employeeName = String(payload.employeeName ?? "").trim();
+  const remarks = String(payload.remarks ?? "").trim();
+  const overtimeHours = Number(payload.overtimeHours) || 0;
+
+  const workflowNotes = {
+    ...buildDefaultAttendanceWorkflowNotes(punchIn, punchOut, employeeName || undefined),
+    source: "manual" as const,
+    manualStatus: status,
+    overtimeHours,
+    shiftRemarks: remarks,
+  };
+
+  const workflowRecord = normalizeAttendanceWorkflowRecord({
+    id: `att-manual-${Date.now()}`,
+    employeeId,
+    employeeName,
+    attendanceDate,
+    punchIn,
+    punchOut,
+    assignedMachine: remarks,
+    workflowStage: "pending_allocation",
+    source: "manual",
+  });
+
+  if (!isSupabaseServerConfigured()) {
+    return NextResponse.json({
+      ok: true,
+      message: "Attendance saved locally (database not configured).",
+      record: workflowRecord,
+      sync: {
+        employee_id: employeeId,
+        punch_in: punchIn,
+        punch_out: punchOut || null,
+        status,
+        overtime_hours: overtimeHours,
+        remarks,
+      },
+    });
+  }
+
+  try {
+    const supabase = createAdminClient();
+    const dbStatus =
+      status === "present" || status === "half_day"
+        ? "present"
+        : status === "paid_leave"
+          ? "leave"
+          : "absent";
+
+    const { data, error } = await supabase
+      .from(ATTENDANCE_TABLE)
+      .upsert(
+        {
+          employee_id: employeeId,
+          attendance_date: attendanceDate,
+          status: dbStatus,
+          notes: serializeAttendanceWorkflowNotes(workflowNotes),
+        },
+        { onConflict: "employee_id,attendance_date" }
+      )
+      .select("id, employee_id, attendance_date, status")
+      .single();
+
+    if (error) throw error;
+
+    const record = normalizeAttendanceWorkflowRecord({
+      ...workflowRecord,
+      id: String(data.id),
+    });
+
+    return NextResponse.json({
+      ok: true,
+      message: "Attendance log synced successfully.",
+      record,
+      sync: {
+        employee_id: employeeId,
+        punch_in: punchIn,
+        punch_out: punchOut || null,
+        status,
+        overtime_hours: overtimeHours,
+        remarks,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Manual attendance save failed.";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

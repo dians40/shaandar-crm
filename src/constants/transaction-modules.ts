@@ -3,6 +3,7 @@ import type { MasterPanelModuleId } from "@/constants/master-panel-modules";
 /** Transaction modules with full panel implementations (not placeholders). */
 export const IMPLEMENTED_TRANSACTION_MODULE_IDS = new Set<MasterPanelModuleId>([
   "attendance-system",
+  "attendance-manual-entry",
   "overtime-tracker",
   "vehicle-management-transaction",
   "sales-dispatch",
@@ -39,6 +40,7 @@ export const TRANSACTION_LIST_COLUMN_LABELS: Partial<
   expenses: { primaryLabel: "Payee Name", secondaryLabel: "Voucher #" },
   receipt: { primaryLabel: "Party Name", secondaryLabel: "Receipt #" },
   "attendance-system": { primaryLabel: "Employee Name", secondaryLabel: "Date" },
+  "attendance-manual-entry": { primaryLabel: "Employee Name", secondaryLabel: "Date" },
   "overtime-tracker": { primaryLabel: "Employee Name", secondaryLabel: "Work Date" },
   "vehicle-management-transaction": {
     primaryLabel: "Vehicle Number",

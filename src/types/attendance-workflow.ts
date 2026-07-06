@@ -33,6 +33,9 @@ export type AttendanceWorkflowNotesPayload = {
   supervisorApprovedAt: string | null;
   supervisorApprovedBy: string | null;
   employeeName?: string;
+  manualStatus?: string;
+  overtimeHours?: number;
+  shiftRemarks?: string;
 };
 
 export function normalizeAttendanceWorkflowRecord(

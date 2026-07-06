@@ -126,6 +126,38 @@ export function useAttendanceWorkflow() {
     [persist]
   );
 
+  const ingestManualEntry = useCallback(
+    (input: {
+      id: string;
+      employeeId: string;
+      employeeName: string;
+      attendanceDate: string;
+      punchIn: string;
+      punchOut: string;
+      remarks: string;
+      status: string;
+      overtimeHours: number;
+    }) => {
+      const now = new Date().toISOString();
+      const record = normalizeAttendanceWorkflowRecord({
+        id: input.id,
+        employeeId: input.employeeId,
+        employeeName: input.employeeName,
+        attendanceDate: input.attendanceDate,
+        punchIn: input.punchIn,
+        punchOut: input.punchOut,
+        assignedMachine: input.remarks,
+        workflowStage: "pending_allocation",
+        source: "manual",
+        createdAt: now,
+        updatedAt: now,
+      });
+      persist([record, ...readRecords().filter((row) => row.id !== input.id)]);
+      return record;
+    },
+    [persist]
+  );
+
   const updateRecord = useCallback(
     (id: string, patch: Partial<AttendanceWorkflowRecord>) => {
       const next = readRecords().map((row) =>
@@ -159,6 +191,7 @@ export function useAttendanceWorkflow() {
     payrollTally,
     isReady,
     ingestBiometricLog,
+    ingestManualEntry,
     updateRecord,
     commitToPayrollTally,
     syncFromApi,

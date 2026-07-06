@@ -54,6 +54,7 @@ import ExpenseReceiptPanel from "./expense-receipt-panel";
 import JournalEntryPanel from "./journal-entry-panel";
 import TransferVoucherPanel from "./transfer-voucher-panel";
 import PartsOrderPanel from "./parts-order-panel";
+import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 import { INVENTORY_VOUCHER_CONFIGS } from "@/constants/inventory-voucher-configs";
 import { EXPENSE_RECEIPT_CONFIGS } from "@/constants/accounting-voucher-configs";
 
@@ -236,6 +237,8 @@ function MasterPanelContent({ scope }: MasterPanelContentProps) {
           return <ApiIntegrationGatewayPanel />;
         case "attendance-system":
           return <AttendanceSystemPanel />;
+        case "attendance-manual-entry":
+          return <ManualAttendanceEntryPanel />;
         case "overtime-tracker":
           return <OvertimeTrackerPanel />;
         case "vehicle-management-transaction":

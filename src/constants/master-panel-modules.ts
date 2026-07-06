@@ -7,6 +7,7 @@ import {
   CalendarCheck,
   Car,
   ClipboardList,
+  ClipboardPen,
   Factory,
   FileText,
   FolderTree,
@@ -59,6 +60,7 @@ export type MasterPanelModuleId =
   | "expenses"
   | "receipt"
   | "attendance-system"
+  | "attendance-manual-entry"
   | "overtime-tracker"
   | "vehicle-management-transaction";
 
@@ -336,6 +338,15 @@ const TRANSACTION_MODULES: MasterPanelModule[] = [
     subtitle: "Daily labor attendance",
     icon: CalendarCheck,
     placeholderMessage: "Attendance System Coming Soon",
+  },
+  {
+    id: "attendance-manual-entry",
+    serial: 29,
+    navLabel: "Manual Entry",
+    title: "Attendance Manual Entry",
+    subtitle: "Supervisor staff attendance self-entry",
+    icon: ClipboardPen,
+    placeholderMessage: "",
   },
   {
     id: "overtime-tracker",

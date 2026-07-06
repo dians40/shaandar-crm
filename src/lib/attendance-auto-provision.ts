@@ -135,20 +135,29 @@ export type PendingAutoEmployee = {
   employeeName: string;
 };
 
+function safeString(value: unknown): string {
+  try {
+    if (value == null) return "";
+    return String(value).trim();
+  } catch {
+    return "";
+  }
+}
+
 export function detectPendingAutoEmployees(
-  rows: Array<{ employeeCode: string; employeeName: string }>,
+  rows: Array<{ employeeCode?: string; employeeName?: string }>,
   masterEmployees: EmployeeListItem[],
   autoProvisioned: AutoProvisionedEmployeeRecord[]
 ): PendingAutoEmployee[] {
   const pending = new Map<string, PendingAutoEmployee>();
 
   for (const row of rows) {
-    const employeeName = row.employeeName.trim();
+    const employeeName = safeString(row?.employeeName);
     const employeeCode =
-      row.employeeCode.trim() ||
+      safeString(row?.employeeCode) ||
       (employeeName
         ? `AUTO-${employeeName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12)}`
-        : "");
+        : "TEMP_CODE");
 
     if (!employeeName && !employeeCode) continue;
 

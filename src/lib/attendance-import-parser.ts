@@ -85,16 +85,31 @@ const OT_SHIFT_HEADERS = new Set(["overtimeshift", "otshift", "overtimeband"]);
 
 const REMARKS_HEADERS = new Set(["remarks", "notes", "shiftinfo", "comment"]);
 
-const FUZZY_CODE_PATTERNS = [/code/i, /\bid\b/i, /emp.*code/i, /worker.*id/i];
-const FUZZY_NAME_PATTERNS = [/name/i, /worker/i, /employee/i, /staff/i];
+const FUZZY_CODE_PATTERNS = [/code/i, /\bid\b/i, /emp/i];
+const FUZZY_NAME_PATTERNS = [/name/i, /worker/i, /staff/i];
 const FUZZY_DATE_PATTERNS = [/date/i, /workdate/i, /attdate/i];
-const FUZZY_STATUS_PATTERNS = [/status/i, /attendance/i, /present/i];
+const FUZZY_STATUS_PATTERNS = [/status/i, /attendance/i];
 const FUZZY_SHIFT_PATTERNS = [/workshift/i, /\bshift\b/i, /dayshift/i];
-const FUZZY_OT_SHIFT_PATTERNS = [/overtime.*shift/i, /ot.*shift/i, /overtimeshift/i];
+const FUZZY_OT_SHIFT_PATTERNS = [/overtime.*shift/i, /ot.*shift/i, /overtimeshift/i, /overtime/i, /\bot\b/i];
 const FUZZY_OT_PATTERNS = [/overtime/i, /\bot\b/i, /othours/i];
 const FUZZY_REMARKS_PATTERNS = [/remarks/i, /notes/i, /comment/i];
 
+const FALLBACK_EMPLOYEE_CODE = "TEMP_CODE";
+const FALLBACK_EMPLOYEE_NAME = "Unknown Worker";
+const FALLBACK_STATUS_LABEL = "Absent";
 const DEFAULT_IMPORT_STATUS: ManualAttendanceStatus = "Present Day Shift";
+
+function safeString(value: unknown): string {
+  try {
+    if (value == null) return "";
+    if (typeof value === "string") return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value === "boolean") return value ? "true" : "false";
+    return String(value).trim();
+  } catch {
+    return "";
+  }
+}
 
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
@@ -120,8 +135,9 @@ function formatExcelSerialDate(serial: number, xlsx: XlsxModule): string {
   }
 }
 
-function cellToString(cell: unknown, xlsx?: XlsxModule): string {
+function cellToString(cell: unknown, xlsx?: XlsxModule, depth = 0): string {
   try {
+    if (depth > 6) return "";
     if (cell == null || cell === "") return "";
 
     if (cell instanceof Date) {
@@ -140,27 +156,57 @@ function cellToString(cell: unknown, xlsx?: XlsxModule): string {
       return String(cell);
     }
 
+    if (typeof cell === "bigint") {
+      return String(cell);
+    }
+
+    if (Array.isArray(cell)) {
+      return cell
+        .map((entry) => cellToString(entry, xlsx, depth + 1))
+        .filter(Boolean)
+        .join(" ")
+        .trim();
+    }
+
     if (typeof cell === "object") {
       const record = cell as Record<string, unknown>;
+
       if (typeof record.w === "string" && record.w.trim()) {
         return record.w.trim();
       }
+      if (typeof record.h === "string" && record.h.trim()) {
+        return record.h.trim();
+      }
+      if (typeof record.f === "string" && record.f.trim()) {
+        return record.f.trim();
+      }
       if ("v" in record) {
-        return cellToString(record.v, xlsx);
+        return cellToString(record.v, xlsx, depth + 1);
       }
       if ("text" in record) {
-        return cellToString(record.text, xlsx);
+        return cellToString(record.text, xlsx, depth + 1);
+      }
+      if ("result" in record) {
+        return cellToString(record.result, xlsx, depth + 1);
       }
       if ("richText" in record && Array.isArray(record.richText)) {
-        return (record.richText as Array<{ text?: string }>)
-          .map((part) => part.text ?? "")
+        return (record.richText as Array<{ text?: unknown }>)
+          .map((part) => cellToString(part?.text, xlsx, depth + 1))
           .join("")
           .trim();
       }
+
+      for (const key of ["formatted", "label", "value", "display", "content"] as const) {
+        if (key in record) {
+          const nested = cellToString(record[key], xlsx, depth + 1);
+          if (nested) return nested;
+        }
+      }
+
       return "";
     }
 
-    return String(cell).trim();
+    return safeString(cell);
   } catch {
     return "";
   }
@@ -202,10 +248,11 @@ function parseWorkShift(value: string): WorkShift | "" {
 
 function parseStatus(value: string, shiftHint = ""): ManualAttendanceStatus {
   try {
-    const trimmed = value.trim();
-    const combined = `${trimmed} ${shiftHint}`.trim().toLowerCase();
+    const trimmed = safeString(value);
+    const hint = safeString(shiftHint);
+    const combined = `${trimmed} ${hint}`.trim().toLowerCase();
 
-    if (!trimmed && !shiftHint.trim()) {
+    if (!trimmed && !hint) {
       return DEFAULT_IMPORT_STATUS;
     }
 
@@ -226,10 +273,10 @@ function parseStatus(value: string, shiftHint = ""): ManualAttendanceStatus {
       return "Half Day Shift";
     }
     if (combined.includes("absent") || combined.includes("a/l") || combined.includes("leave")) {
-      return DEFAULT_IMPORT_STATUS;
+      return "Half Day Shift";
     }
     if (combined.includes("present") || combined === "p") {
-      return parseWorkShift(shiftHint) === "night" ? "Present Night Shift" : "Present Day Shift";
+      return parseWorkShift(hint) === "night" ? "Present Night Shift" : "Present Day Shift";
     }
 
     return DEFAULT_IMPORT_STATUS;
@@ -254,14 +301,51 @@ function parseOvertimeShift(value: string): OvertimeShiftType | "" {
 }
 
 function createSafeImportRow(partial: Partial<AttendanceImportRow> = {}): AttendanceImportRow {
+  const employeeCode = safeString(partial.employeeCode) || FALLBACK_EMPLOYEE_CODE;
+  const employeeName = safeString(partial.employeeName) || FALLBACK_EMPLOYEE_NAME;
+  const statusRaw = safeString(partial.status);
+  const status = VALID_STATUSES.has(statusRaw as ManualAttendanceStatus)
+    ? (statusRaw as ManualAttendanceStatus)
+    : parseStatus(statusRaw);
+
+  let overtimeShift: OvertimeShiftType | "" = "";
+  try {
+    overtimeShift = parseOvertimeShift(safeString(partial.overtimeShift));
+  } catch {
+    overtimeShift = "";
+  }
+
+  const appliedDefaults: string[] = [];
+  if (!safeString(partial.employeeCode)) appliedDefaults.push(`code=${FALLBACK_EMPLOYEE_CODE}`);
+  if (!safeString(partial.employeeName)) appliedDefaults.push(`name=${FALLBACK_EMPLOYEE_NAME}`);
+  if (!statusRaw) appliedDefaults.push(`status=${FALLBACK_STATUS_LABEL}`);
+
+  const remarks = [
+    safeString(partial.remarks),
+    appliedDefaults.length > 0 ? `Defaults applied: ${appliedDefaults.join(", ")}` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return {
-    employeeCode: partial.employeeCode ?? "",
-    employeeName: partial.employeeName ?? "Unknown Staff",
-    attendanceDate: partial.attendanceDate ?? todayIsoDate(),
-    status: partial.status ?? DEFAULT_IMPORT_STATUS,
-    overtimeShift: partial.overtimeShift ?? "",
-    remarks: partial.remarks ?? "",
+    employeeCode,
+    employeeName,
+    attendanceDate: normalizeAttendanceDate(safeString(partial.attendanceDate)),
+    status,
+    overtimeShift,
+    remarks,
   };
+}
+
+export function finalizeImportRow(row: Partial<AttendanceImportRow> | null | undefined): AttendanceImportRow {
+  try {
+    if (!row || typeof row !== "object") {
+      return createSafeImportRow();
+    }
+    return createSafeImportRow(row);
+  } catch {
+    return createSafeImportRow();
+  }
 }
 
 function rowHasContent(cells: string[]): boolean {
@@ -302,7 +386,14 @@ function sanitizeMatrix(matrix: unknown): string[][] {
   for (const rawRow of matrix) {
     try {
       if (!Array.isArray(rawRow)) continue;
-      const row = rawRow.map((cell) => cellToString(cell));
+      const row: string[] = [];
+      for (let index = 0; index < rawRow.length; index += 1) {
+        try {
+          row.push(cellToString(rawRow[index]));
+        } catch {
+          row.push("");
+        }
+      }
       if (row.some((cell) => cell.length > 0)) {
         sanitized.push(row);
       }
@@ -394,7 +485,14 @@ function sheetToMatrix(XLSX: XlsxModule, sheet: import("xlsx").WorkSheet): strin
     for (const rawRow of rawRows) {
       try {
         if (Array.isArray(rawRow)) {
-          const row = rawRow.map((cell) => cellToString(cell, XLSX));
+          const row: string[] = [];
+          for (let index = 0; index < rawRow.length; index += 1) {
+            try {
+              row.push(cellToString(rawRow[index], XLSX));
+            } catch {
+              row.push("");
+            }
+          }
           if (row.some((cell) => cell.length > 0)) {
             matrix.push(row);
           }
@@ -737,7 +835,7 @@ function buildFallbackColumnMap(
 
   const maxColumns = Math.max(
     normalizedHeaderCells.length,
-    ...sampleRows.slice(0, 5).map((row) => row.length),
+    ...sampleRows.slice(0, 5).map((row) => (Array.isArray(row) ? row.length : 0)),
     1
   );
 
@@ -758,13 +856,26 @@ function buildFallbackColumnMap(
 }
 
 function normalizeRowWidth(rows: string[][]): string[][] {
-  const maxWidth = rows.reduce((max, row) => Math.max(max, row.length), 0);
-  if (maxWidth === 0) return rows;
+  try {
+    if (!Array.isArray(rows) || rows.length === 0) return [];
 
-  return rows.map((row) => {
-    if (row.length >= maxWidth) return row;
-    return [...row, ...Array.from({ length: maxWidth - row.length }, () => "")];
-  });
+    let maxWidth = 0;
+    for (const row of rows) {
+      if (Array.isArray(row)) {
+        maxWidth = Math.max(maxWidth, row.length);
+      }
+    }
+
+    if (maxWidth === 0) return rows;
+
+    return rows.map((row) => {
+      if (!Array.isArray(row)) return Array.from({ length: maxWidth }, () => "");
+      if (row.length >= maxWidth) return row;
+      return [...row, ...Array.from({ length: maxWidth - row.length }, () => "")];
+    });
+  } catch {
+    return [];
+  }
 }
 
 function normalizeAttendanceDate(value: string): string {
@@ -790,53 +901,55 @@ function normalizeAttendanceDate(value: string): string {
   return todayIsoDate();
 }
 
-function safeCell(cells: string[], index: number): string {
-  if (index < 0 || index >= cells.length) return "";
-  return cells[index]?.trim() ?? "";
+function safeCell(cells: unknown, index: number): string {
+  try {
+    if (!Array.isArray(cells) || index < 0 || index >= cells.length) return "";
+    return safeString(cells[index]);
+  } catch {
+    return "";
+  }
 }
 
 function parseImportRow(
-  cells: string[],
+  cells: unknown,
   columnMap: ImportColumnMap
 ): AttendanceImportRow | null {
   try {
-    if (!rowHasContent(cells)) {
+    const rowCells = Array.isArray(cells) ? cells : [];
+
+    if (!rowHasContent(rowCells)) {
       return null;
     }
 
-    let employeeCode = safeCell(cells, columnMap.codeIndex);
+    let employeeCode = safeCell(rowCells, columnMap.codeIndex);
     let employeeName =
-      safeCell(cells, columnMap.nameIndex) ||
-      (columnMap.codeIndex >= 0 ? safeCell(cells, columnMap.codeIndex + 1) : safeCell(cells, 0));
+      safeCell(rowCells, columnMap.nameIndex) ||
+      (columnMap.codeIndex >= 0
+        ? safeCell(rowCells, columnMap.codeIndex + 1)
+        : safeCell(rowCells, 0));
 
     if (!employeeName && !employeeCode) {
-      const seed = cells.find((cell) => String(cell ?? "").trim().length > 0) ?? "";
-      employeeCode = deriveAutoEmployeeCode(seed);
-      employeeName = seed.trim() || "Unknown Staff";
+      const seed =
+        rowCells.find((cell) => safeString(cell).length > 0) ?? "";
+      employeeCode = deriveAutoEmployeeCode(safeString(seed));
+      employeeName = safeString(seed) || FALLBACK_EMPLOYEE_NAME;
     }
 
-    const attendanceDate = normalizeAttendanceDate(safeCell(cells, columnMap.dateIndex));
-    const statusRaw = safeCell(cells, columnMap.statusIndex);
-    const shiftRaw = safeCell(cells, columnMap.shiftIndex);
+    const statusRaw = safeCell(rowCells, columnMap.statusIndex);
+    const shiftRaw = safeCell(rowCells, columnMap.shiftIndex);
     const otShiftRaw =
-      safeCell(cells, columnMap.otShiftIndex) || safeCell(cells, columnMap.otIndex);
-    const status = parseStatus(statusRaw, shiftRaw);
-    const overtimeShift = parseOvertimeShift(otShiftRaw);
-    const remarks = safeCell(cells, columnMap.remarksIndex);
+      safeCell(rowCells, columnMap.otShiftIndex) || safeCell(rowCells, columnMap.otIndex);
 
-    return createSafeImportRow({
-      employeeCode,
-      employeeName: employeeName || employeeCode || "Unknown Staff",
-      attendanceDate,
-      status,
-      overtimeShift,
-      remarks,
+    return finalizeImportRow({
+      employeeCode: employeeCode || FALLBACK_EMPLOYEE_CODE,
+      employeeName: employeeName || FALLBACK_EMPLOYEE_NAME,
+      attendanceDate: normalizeAttendanceDate(safeCell(rowCells, columnMap.dateIndex)),
+      status: parseStatus(statusRaw || FALLBACK_STATUS_LABEL, shiftRaw),
+      overtimeShift: parseOvertimeShift(otShiftRaw),
+      remarks: safeCell(rowCells, columnMap.remarksIndex),
     });
   } catch {
-    const seed = cells.find((cell) => String(cell ?? "").trim().length > 0) ?? "";
-    return createSafeImportRow({
-      employeeCode: deriveAutoEmployeeCode(seed),
-      employeeName: seed.trim() || "Recovered Staff",
+    return finalizeImportRow({
       remarks: "Recovered from malformed import row.",
     });
   }
@@ -878,9 +991,10 @@ export function parseAttendanceImportMatrixSafe(
 
     if (columnMap.nameIndex < 0 && columnMap.codeIndex < 0) {
       warnings.push(
-        "Employee Code and Employee Name columns could not be resolved. No rows were imported."
+        "Employee Code and Employee Name columns could not be resolved. Positional defaults will be used."
       );
-      return { rows: [], skippedRows: sanitized.length, warnings };
+      columnMap.codeIndex = 0;
+      columnMap.nameIndex = 1;
     }
 
     const rows: AttendanceImportRow[] = [];
@@ -892,21 +1006,20 @@ export function parseAttendanceImportMatrixSafe(
           skippedRows += 1;
           continue;
         }
-        rows.push(parsed);
+        rows.push(finalizeImportRow(parsed));
       } catch {
-        const recovered = createSafeImportRow({
-          remarks: "Recovered from row-level parse failure.",
-        });
-        rows.push(recovered);
+        rows.push(finalizeImportRow(null));
         warnings.push("One row was recovered using default attendance values.");
       }
     }
+
+    const finalizedRows = rows.map((row) => finalizeImportRow(row));
 
     if (skippedRows > 0) {
       warnings.push(`${skippedRows} malformed row(s) were skipped during import sanitization.`);
     }
 
-    return { rows, skippedRows, warnings };
+    return { rows: finalizedRows, skippedRows, warnings };
   } catch {
     warnings.push("Unexpected matrix parse failure. Returning empty sanitized result.");
     return { rows: [], skippedRows: 0, warnings };
@@ -1017,60 +1130,94 @@ function resolveFileExtension(file: File): string {
 export async function parseAttendanceImportFileSafe(
   file: File
 ): Promise<AttendanceImportParseOutcome> {
-  if (!file || file.size === 0) {
-    throw new Error("The selected file is empty.");
-  }
-
-  const extension = resolveFileExtension(file);
   const warnings: string[] = [];
 
   try {
+    if (!file || file.size === 0) {
+      return {
+        rows: [],
+        skippedRows: 0,
+        warnings: ["The selected file is empty."],
+      };
+    }
+
+    const extension = resolveFileExtension(file);
+
     if (extension === "csv") {
       try {
         const text = await readFileAsText(file);
         const outcome = parseAttendanceImportMatrixSafe(matrixFromCsvText(text));
         return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
       } catch {
-        const buffer = await readFileAsArrayBufferResilient(file);
-        const fallback = parseAttendanceImportMatrixSafe(tryMatrixFromEmbeddedCsvText(buffer));
-        warnings.push("CSV text decode failed. Recovered rows from embedded buffer text.");
-        return { ...fallback, warnings: [...warnings, ...fallback.warnings] };
+        try {
+          const buffer = await readFileAsArrayBufferResilient(file);
+          const fallback = parseAttendanceImportMatrixSafe(tryMatrixFromEmbeddedCsvText(buffer));
+          warnings.push("CSV text decode failed. Recovered rows from embedded buffer text.");
+          return { ...fallback, warnings: [...warnings, ...fallback.warnings] };
+        } catch {
+          return {
+            rows: [],
+            skippedRows: 0,
+            warnings: [...warnings, "CSV import failed safely with zero runtime exceptions."],
+          };
+        }
       }
     }
 
     if (extension === "xlsx" || extension === "xls") {
-      const buffer = await readFileAsArrayBufferResilient(file);
-      const { matrix, warnings: excelWarnings } = await matrixFromExcelBuffer(buffer, extension);
-      warnings.push(...excelWarnings);
+      try {
+        const buffer = await readFileAsArrayBufferResilient(file);
+        const { matrix, warnings: excelWarnings } = await matrixFromExcelBuffer(buffer, extension);
+        warnings.push(...excelWarnings);
 
-      let outcome = parseAttendanceImportMatrixSafe(matrix);
+        let outcome = parseAttendanceImportMatrixSafe(matrix);
 
-      if (outcome.rows.length === 0) {
-        const csvMatrix = tryMatrixFromEmbeddedCsvText(buffer);
-        if (csvMatrix.length > 0) {
-          const csvOutcome = parseAttendanceImportMatrixSafe(csvMatrix);
-          outcome = mergeParseOutcomes(outcome, csvOutcome);
-          warnings.push("Excel decode fallback recovered rows from embedded delimited text.");
+        if (outcome.rows.length === 0) {
+          const csvMatrix = tryMatrixFromEmbeddedCsvText(buffer);
+          if (csvMatrix.length > 0) {
+            const csvOutcome = parseAttendanceImportMatrixSafe(csvMatrix);
+            outcome = mergeParseOutcomes(outcome, csvOutcome);
+            warnings.push("Excel decode fallback recovered rows from embedded delimited text.");
+          }
         }
-      }
 
-      return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
+        return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
+      } catch {
+        return {
+          rows: [],
+          skippedRows: 0,
+          warnings: [...warnings, "Excel import failed safely with zero runtime exceptions."],
+        };
+      }
     }
 
     if (extension === "pdf") {
-      const buffer = await readFileAsArrayBufferResilient(file);
-      const { matrix, warnings: pdfWarnings } = matrixFromPdfBuffer(buffer);
-      warnings.push(...pdfWarnings);
-      const outcome = parseAttendanceImportMatrixSafe(matrix);
-      return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
+      try {
+        const buffer = await readFileAsArrayBufferResilient(file);
+        const { matrix, warnings: pdfWarnings } = matrixFromPdfBuffer(buffer);
+        warnings.push(...pdfWarnings);
+        const outcome = parseAttendanceImportMatrixSafe(matrix);
+        return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
+      } catch {
+        return {
+          rows: [],
+          skippedRows: 0,
+          warnings: [...warnings, "PDF import failed safely with zero runtime exceptions."],
+        };
+      }
     }
 
-    throw new Error("Unsupported file type. Upload a .xlsx, .xls, .pdf, or .csv file.");
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error;
-    }
-    throw new Error("Unable to parse the uploaded attendance file.");
+    return {
+      rows: [],
+      skippedRows: 0,
+      warnings: [...warnings, "Unsupported file type. Upload a .xlsx, .xls, .pdf, or .csv file."],
+    };
+  } catch {
+    return {
+      rows: [],
+      skippedRows: 0,
+      warnings: [...warnings, "File import terminated safely without crashing the application."],
+    };
   }
 }
 

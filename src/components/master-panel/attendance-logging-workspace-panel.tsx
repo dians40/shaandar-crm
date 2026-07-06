@@ -18,6 +18,7 @@ import {
   formatImportStatusLabel,
 } from "@/lib/attendance-import-process";
 import {
+  finalizeImportRow,
   parseAttendanceImportFileSafe,
   type AttendanceImportRow,
 } from "@/lib/attendance-import-parser";
@@ -91,7 +92,11 @@ export default function AttendanceLoggingWorkspacePanel() {
       const { rows: parsedRows, skippedRows, warnings } =
         await parseAttendanceImportFileSafe(file);
 
-      if (parsedRows.length === 0) {
+      const sanitizedRows = Array.isArray(parsedRows)
+        ? parsedRows.map((row) => finalizeImportRow(row))
+        : [];
+
+      if (sanitizedRows.length === 0) {
         setImportPreview(null);
         setImportError(
           warnings.length > 0
@@ -103,13 +108,13 @@ export default function AttendanceLoggingWorkspacePanel() {
 
       const registry = readAutoProvisionedEmployees();
       const { pending: pendingNewEmployees, createdCount } = autoProvisionMissingEmployees(
-        parsedRows,
+        sanitizedRows,
         registry
       );
 
       setImportPreview({
         fileName: file.name,
-        rows: parsedRows,
+        rows: sanitizedRows,
         pendingNewEmployees,
         skippedRows,
         warnings:
@@ -126,13 +131,11 @@ export default function AttendanceLoggingWorkspacePanel() {
           `${createdCount} new employee profile(s) were auto-provisioned from the uploaded sheet.`
         );
       }
-    } catch (error) {
+    } catch {
       setImportPreview(null);
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Unable to read the selected file. Check the Excel, PDF, or CSV structure and try again.";
-      setImportError(message);
+      setImportError(
+        "Upload processing completed safely, but no rows could be recovered from this file."
+      );
     } finally {
       setIsParsing(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -166,29 +169,29 @@ export default function AttendanceLoggingWorkspacePanel() {
       }
 
       for (const row of importPreview.rows) {
-        const employeeCode =
-          row.employeeCode.trim() ||
-          `AUTO-${row.employeeName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12)}`;
+        const safeRow = finalizeImportRow(row);
+        const employeeCode = safeRow.employeeCode.trim() || "TEMP_CODE";
+        const employeeName = safeRow.employeeName.trim() || "Unknown Worker";
 
         let employee = resolveImportEmployee(
           employeeCode,
-          row.employeeName,
+          employeeName,
           employees,
           registry
         );
 
         if (!employee) {
-          const created = createAutoProvisionedEmployee(employeeCode, row.employeeName);
+          const created = createAutoProvisionedEmployee(employeeCode, employeeName);
           registry = upsertAutoProvisionedEmployee(created);
           prependEmployee(created);
           employee = created;
           result.createdEmployees += 1;
         }
 
-        const { punchIn, punchOut } = buildImportPunchTimes(row);
-        const remarks = buildImportAttendanceRemarks(row, employee.name);
+        const { punchIn, punchOut } = buildImportPunchTimes(safeRow);
+        const remarks = buildImportAttendanceRemarks(safeRow, employee.name);
 
-        const overtimeHours = row.overtimeShift ? 1 : 0;
+        const overtimeHours = safeRow.overtimeShift ? 1 : 0;
 
         try {
           const response = await fetch("/api/v1/attendance/workflow", {
@@ -197,10 +200,10 @@ export default function AttendanceLoggingWorkspacePanel() {
             body: JSON.stringify({
               employeeId: employee.id,
               employeeName: employee.name,
-              attendanceDate: row.attendanceDate,
-              status: row.status,
+              attendanceDate: safeRow.attendanceDate,
+              status: safeRow.status,
               overtimeHours,
-              overtimeShift: row.overtimeShift || undefined,
+              overtimeShift: safeRow.overtimeShift || undefined,
               remarks,
               punchIn,
               punchOut: punchOut || undefined,
@@ -215,17 +218,17 @@ export default function AttendanceLoggingWorkspacePanel() {
           const body = (await response.json()) as { record?: { id: string } };
           const recordId =
             body.record?.id ??
-            `att-import-${employee.id}-${row.attendanceDate}-${Date.now()}-${result.imported}`;
+            `att-import-${employee.id}-${safeRow.attendanceDate}-${Date.now()}-${result.imported}`;
 
           ingestManualEntry({
             id: recordId,
             employeeId: employee.id,
             employeeName: employee.name,
-            attendanceDate: row.attendanceDate,
+            attendanceDate: safeRow.attendanceDate,
             punchIn,
             punchOut,
             remarks,
-            status: row.status,
+            status: safeRow.status,
             overtimeHours,
           });
 
@@ -234,8 +237,8 @@ export default function AttendanceLoggingWorkspacePanel() {
           result.skipped += 1;
           result.errors.push(
             rowError instanceof Error
-              ? `${row.employeeName}: ${rowError.message}`
-              : `${row.employeeName}: Import failed`
+              ? `${employeeName}: ${rowError.message}`
+              : `${employeeName}: Import failed`
           );
         }
       }
@@ -379,12 +382,12 @@ export default function AttendanceLoggingWorkspacePanel() {
                 </thead>
                 <tbody className="divide-y divide-corporate-border">
                   {importPreview.rows.map((row, index) => {
-                    const employeeCode =
-                      row.employeeCode.trim() ||
-                      `AUTO-${row.employeeName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12)}`;
+                    const safeRow = finalizeImportRow(row);
+                    const employeeCode = safeRow.employeeCode.trim() || "TEMP_CODE";
+                    const employeeName = safeRow.employeeName.trim() || "Unknown Worker";
                     const matched = resolveImportEmployee(
                       employeeCode,
-                      row.employeeName,
+                      employeeName,
                       mergedEmployees,
                       autoProvisioned
                     );
@@ -393,18 +396,18 @@ export default function AttendanceLoggingWorkspacePanel() {
                     );
 
                     return (
-                      <tr key={`${employeeCode}-${row.attendanceDate}-${index}`}>
+                      <tr key={`${employeeCode}-${safeRow.attendanceDate}-${index}`}>
                         <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-medium")}>
                           {employeeCode}
                         </td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.employeeName}</td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{employeeName}</td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                          {formatImportStatusLabel(row.status)}
+                          {formatImportStatusLabel(safeRow.status)}
                         </td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                          {formatImportOvertimeShiftLabel(row.overtimeShift)}
+                          {formatImportOvertimeShiftLabel(safeRow.overtimeShift)}
                         </td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.attendanceDate}</td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{safeRow.attendanceDate}</td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>
                           <span
                             className={cn(

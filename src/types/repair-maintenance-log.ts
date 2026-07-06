@@ -5,7 +5,12 @@ export type VehicleRepairType =
   | "Suspension"
   | "Other";
 
-export type PreventiveMaintenanceCycle = "half-yearly" | "yearly";
+export type PreventiveMaintenanceCycle =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "half-yearly"
+  | "yearly";
 
 export type MachineRepairLogRow = {
   id: string;
@@ -16,7 +21,11 @@ export type MachineRepairLogRow = {
   productAllocation: string;
   diagnosisStatus: string;
   breakdownNotes: string;
+  workStartDate: string;
+  workDoneDate: string;
+  daysTaken: number;
   workDone: string;
+  sparePartSelection: string;
   sparesUsed: string;
   vendorMechanic: string;
   maintenanceCost: number;
@@ -45,7 +54,10 @@ export type MachineRepairFormState = {
   productAllocation: string;
   diagnosisStatus: string;
   breakdownNotes: string;
+  workStartDate: string;
+  workDoneDate: string;
   workDone: string;
+  sparePartSelection: string;
   sparesUsed: string;
   vendorMechanic: string;
   maintenanceCost: string;
@@ -68,11 +80,14 @@ export const EMPTY_MACHINE_REPAIR_FORM: MachineRepairFormState = {
   productAllocation: "",
   diagnosisStatus: "",
   breakdownNotes: "",
+  workStartDate: new Date().toISOString().slice(0, 10),
+  workDoneDate: new Date().toISOString().slice(0, 10),
   workDone: "",
+  sparePartSelection: "",
   sparesUsed: "",
   vendorMechanic: "",
   maintenanceCost: "",
-  preventiveCycle: "half-yearly",
+  preventiveCycle: "monthly",
 };
 
 export const EMPTY_VEHICLE_REPAIR_FORM: VehicleRepairFormState = {
@@ -82,7 +97,7 @@ export const EMPTY_VEHICLE_REPAIR_FORM: VehicleRepairFormState = {
   repairType: "",
   workshopDetails: "",
   totalAmount: "",
-  preventiveCycle: "half-yearly",
+  preventiveCycle: "monthly",
 };
 
 export const VEHICLE_REPAIR_TYPE_OPTIONS: VehicleRepairType[] = [
@@ -96,10 +111,12 @@ export const VEHICLE_REPAIR_TYPE_OPTIONS: VehicleRepairType[] = [
 export const PREVENTIVE_CYCLE_OPTIONS: {
   value: PreventiveMaintenanceCycle;
   label: string;
-  months: number;
 }[] = [
-  { value: "half-yearly", label: "Half-Yearly (6 Months)", months: 6 },
-  { value: "yearly", label: "Yearly (12 Months)", months: 12 },
+  { value: "daily", label: "Daily" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
+  { value: "half-yearly", label: "Half-Yearly (6 Months)" },
+  { value: "yearly", label: "Yearly (12 Months)" },
 ];
 
 export const BREAKDOWN_ROOT_CAUSE_OPTIONS = [
@@ -133,6 +150,18 @@ export const DEFAULT_PRODUCT_ALLOCATION_OPTIONS = [
   "Maintenance Hold — No Production",
 ] as const;
 
+export const DEFAULT_SPARE_PART_OPTIONS = [
+  "Hydraulic Seal Kit",
+  "Conveyor Roller Set",
+  "Gear Oil Filter",
+  "Drive Belt Type-X",
+  "Control Panel Fuse",
+  "Bearing Assembly",
+  "Motor Coupling",
+  "Lubrication Pump",
+  "No Spares Used",
+] as const;
+
 export function formatBreakdownCauseSummary(
   rootCause: string,
   productAllocation: string,
@@ -145,16 +174,73 @@ export function formatBreakdownCauseSummary(
   return parts || "Breakdown logged";
 }
 
+export function calculateWorkDurationDays(startDate: string, endDate: string): number {
+  try {
+    if (!startDate.trim() || !endDate.trim()) return 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+    const diffMs = end.getTime() - start.getTime();
+    return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  } catch {
+    return 0;
+  }
+}
+
+export function parseOptionalMaintenanceCost(value: string): number {
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+  const cost = Number(trimmed);
+  if (!Number.isFinite(cost) || cost < 0) return 0;
+  return cost;
+}
+
+export function formatSparesUsedLabel(sparePartSelection: string, sparesNotes: string): string {
+  const part = sparePartSelection.trim();
+  const notes = sparesNotes.trim();
+  if (part && notes) return `${part} — ${notes}`;
+  return part || notes;
+}
+
+export function formatPreventiveCycleLabel(cycle: PreventiveMaintenanceCycle): string {
+  return PREVENTIVE_CYCLE_OPTIONS.find((option) => option.value === cycle)?.label ?? cycle;
+}
+
+export function normalizePreventiveCycle(
+  cycle: string | undefined
+): PreventiveMaintenanceCycle {
+  if (
+    cycle === "daily" ||
+    cycle === "weekly" ||
+    cycle === "monthly" ||
+    cycle === "half-yearly" ||
+    cycle === "yearly"
+  ) {
+    return cycle;
+  }
+  return "monthly";
+}
+
 export function validateMachineRepairForm(form: MachineRepairFormState): string | null {
   if (!form.machineId.trim()) return "Select an active machine from the master list.";
   if (!form.breakdownRootCause.trim()) return "Select a breakdown root cause.";
   if (!form.productAllocation.trim()) return "Select the product or machine allocation.";
   if (!form.diagnosisStatus.trim()) return "Select a problem identification / diagnosis status.";
+  if (!form.workStartDate.trim()) return "Work start date is required.";
+  if (!form.workDoneDate.trim()) return "Work done date is required.";
+  const start = new Date(form.workStartDate);
+  const end = new Date(form.workDoneDate);
+  if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end < start) {
+    return "Work done date cannot be before work start date.";
+  }
   if (!form.workDone.trim()) return "Detailed work done is required.";
   if (!form.vendorMechanic.trim()) return "Vendor / mechanic details are required.";
   if (!form.preventiveCycle) return "Select a preventive maintenance cycle.";
-  const cost = Number(form.maintenanceCost);
-  if (!Number.isFinite(cost) || cost < 0) return "Enter a valid maintenance cost.";
+  const costRaw = form.maintenanceCost.trim();
+  if (costRaw) {
+    const cost = Number(costRaw);
+    if (!Number.isFinite(cost) || cost < 0) return "Maintenance cost must be a valid non-negative number.";
+  }
   return null;
 }
 
@@ -190,6 +276,12 @@ export function normalizeMachineRepairLogRow(
   const productAllocation = row.productAllocation ?? "";
   const diagnosisStatus = row.diagnosisStatus ?? "";
   const breakdownNotes = row.breakdownNotes ?? "";
+  const workStartDate = row.workStartDate ?? "";
+  const workDoneDate = row.workDoneDate ?? "";
+  const sparePartSelection = row.sparePartSelection ?? "";
+  const sparesNotes = row.sparesUsed?.includes(" — ")
+    ? row.sparesUsed.split(" — ").slice(1).join(" — ")
+    : "";
 
   return {
     id: row.id,
@@ -207,11 +299,19 @@ export function normalizeMachineRepairLogRow(
         diagnosisStatus,
         breakdownNotes
       ),
+    workStartDate,
+    workDoneDate,
+    daysTaken:
+      row.daysTaken ??
+      calculateWorkDurationDays(workStartDate, workDoneDate),
     workDone: row.workDone ?? "",
-    sparesUsed: row.sparesUsed ?? "",
+    sparePartSelection,
+    sparesUsed: sparePartSelection
+      ? formatSparesUsedLabel(sparePartSelection, sparesNotes)
+      : row.sparesUsed ?? "",
     vendorMechanic: row.vendorMechanic ?? "",
     maintenanceCost: Number(row.maintenanceCost) || 0,
-    preventiveCycle: row.preventiveCycle ?? "half-yearly",
+    preventiveCycle: normalizePreventiveCycle(row.preventiveCycle),
     loggedAt: row.loggedAt ?? new Date().toISOString(),
     nextMaintenanceDate: row.nextMaintenanceDate ?? defaultNextMaintenanceDate(row.loggedAt),
   };
@@ -230,7 +330,7 @@ export function normalizeVehicleRepairLogRow(
     repairType: row.repairType ?? "Other",
     workshopDetails: row.workshopDetails ?? "",
     totalAmount: Number(row.totalAmount) || 0,
-    preventiveCycle: row.preventiveCycle ?? "half-yearly",
+    preventiveCycle: normalizePreventiveCycle(row.preventiveCycle),
     loggedAt: row.loggedAt ?? new Date().toISOString(),
     nextMaintenanceDate: row.nextMaintenanceDate ?? defaultNextMaintenanceDate(row.loggedAt),
   };

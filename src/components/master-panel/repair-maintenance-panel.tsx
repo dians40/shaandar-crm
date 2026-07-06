@@ -24,10 +24,15 @@ import { cn } from "@/lib/utils";
 import {
   BREAKDOWN_DIAGNOSIS_STATUS_OPTIONS,
   BREAKDOWN_ROOT_CAUSE_OPTIONS,
+  calculateWorkDurationDays,
   DEFAULT_PRODUCT_ALLOCATION_OPTIONS,
+  DEFAULT_SPARE_PART_OPTIONS,
   EMPTY_MACHINE_REPAIR_FORM,
   EMPTY_VEHICLE_REPAIR_FORM,
   formatBreakdownCauseSummary,
+  formatPreventiveCycleLabel,
+  formatSparesUsedLabel,
+  parseOptionalMaintenanceCost,
   PREVENTIVE_CYCLE_OPTIONS,
   VEHICLE_REPAIR_TYPE_OPTIONS,
   validateMachineRepairForm,
@@ -99,10 +104,12 @@ function EngineSection({ title, subtitle, icon, accentClass, children }: EngineS
 
 function MaintenanceAlertBadge({
   nextMaintenanceDate,
+  preventiveCycle,
 }: {
   nextMaintenanceDate: string;
+  preventiveCycle: PreventiveMaintenanceCycle;
 }) {
-  const alertStatus = resolveMaintenanceAlertStatus(nextMaintenanceDate);
+  const alertStatus = resolveMaintenanceAlertStatus(nextMaintenanceDate, preventiveCycle);
   if (!alertStatus?.isUpcomingAlert) {
     return (
       <span className="text-xs text-corporate-muted">
@@ -114,8 +121,7 @@ function MaintenanceAlertBadge({
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm">
       <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
-      <span aria-hidden>⚠️</span>
-      [{formatMaintenanceAlertLabel(alertStatus.daysUntilDue)}]
+      [{formatMaintenanceAlertLabel(alertStatus.daysUntilDue, preventiveCycle)}]
     </span>
   );
 }
@@ -178,10 +184,29 @@ export default function RepairMaintenancePanel() {
     [machineLogs, vehicleLogs]
   );
 
+  const sparePartOptions = useMemo(() => {
+    const itemParts = items
+      .map((item) => item.itemName.trim())
+      .filter(Boolean)
+      .map((name) => ({ value: name, label: name }));
+    const defaults = DEFAULT_SPARE_PART_OPTIONS.map((option) => ({
+      value: option,
+      label: option,
+    }));
+    return [...defaults, ...itemParts];
+  }, [items]);
+
+  const calculatedDaysTaken = useMemo(
+    () => calculateWorkDurationDays(machineForm.workStartDate, machineForm.workDoneDate),
+    [machineForm.workStartDate, machineForm.workDoneDate]
+  );
+
   const upcomingMachineAlerts = useMemo(
     () =>
       machineLogs.filter(
-        (row) => resolveMaintenanceAlertStatus(row.nextMaintenanceDate)?.isUpcomingAlert
+        (row) =>
+          resolveMaintenanceAlertStatus(row.nextMaintenanceDate, row.preventiveCycle)
+            ?.isUpcomingAlert
       ).length,
     [machineLogs]
   );
@@ -189,7 +214,9 @@ export default function RepairMaintenancePanel() {
   const upcomingVehicleAlerts = useMemo(
     () =>
       vehicleLogs.filter(
-        (row) => resolveMaintenanceAlertStatus(row.nextMaintenanceDate)?.isUpcomingAlert
+        (row) =>
+          resolveMaintenanceAlertStatus(row.nextMaintenanceDate, row.preventiveCycle)
+            ?.isUpcomingAlert
       ).length,
     [vehicleLogs]
   );
@@ -254,7 +281,12 @@ export default function RepairMaintenancePanel() {
       machineForm.machineId;
     const loggedAt = new Date().toISOString();
     const cycle = machineForm.preventiveCycle as PreventiveMaintenanceCycle;
-    const nextMaintenanceDate = computeNextMaintenanceDateFromCycle(loggedAt, cycle);
+    const anchorDate = machineForm.workDoneDate || loggedAt.slice(0, 10);
+    const nextMaintenanceDate = computeNextMaintenanceDateFromCycle(anchorDate, cycle);
+    const daysTaken = calculateWorkDurationDays(
+      machineForm.workStartDate,
+      machineForm.workDoneDate
+    );
     const breakdownCause = formatBreakdownCauseSummary(
       machineForm.breakdownRootCause.trim(),
       machineForm.productAllocation.trim(),
@@ -271,10 +303,17 @@ export default function RepairMaintenancePanel() {
       diagnosisStatus: machineForm.diagnosisStatus.trim(),
       breakdownNotes: machineForm.breakdownNotes.trim(),
       breakdownCause,
+      workStartDate: machineForm.workStartDate,
+      workDoneDate: machineForm.workDoneDate,
+      daysTaken,
       workDone: machineForm.workDone.trim(),
-      sparesUsed: machineForm.sparesUsed.trim(),
+      sparePartSelection: machineForm.sparePartSelection.trim(),
+      sparesUsed: formatSparesUsedLabel(
+        machineForm.sparePartSelection,
+        machineForm.sparesUsed
+      ),
       vendorMechanic: machineForm.vendorMechanic.trim(),
-      maintenanceCost: Number(machineForm.maintenanceCost),
+      maintenanceCost: parseOptionalMaintenanceCost(machineForm.maintenanceCost),
       preventiveCycle: cycle,
       loggedAt,
       nextMaintenanceDate,
@@ -357,7 +396,7 @@ export default function RepairMaintenancePanel() {
                       {alert.assetType === "machine" ? "Machine" : "Vehicle"}:{" "}
                       <span className="font-semibold">{alert.assetLabel}</span> — service on{" "}
                       {formatDateLabel(alert.nextMaintenanceDate)} (
-                      {formatMaintenanceAlertLabel(alert.daysUntilDue)})
+                      {formatMaintenanceAlertLabel(alert.daysUntilDue, alert.preventiveCycle)})
                     </li>
                   ))}
                 </ul>
@@ -484,9 +523,39 @@ export default function RepairMaintenancePanel() {
                 placeholder="Optional additional context"
               />
               <TextInput
-                label="Spares Used"
+                label="Work Start Date"
+                required
+                type="date"
+                value={machineForm.workStartDate}
+                onChange={(e) => handleMachineField("workStartDate", e.target.value)}
+              />
+              <TextInput
+                label="Work Done Date"
+                required
+                type="date"
+                value={machineForm.workDoneDate}
+                onChange={(e) => handleMachineField("workDoneDate", e.target.value)}
+              />
+              <TextInput
+                label="Days Taken"
+                readOnly
+                value={String(calculatedDaysTaken)}
+                placeholder="Auto-calculated duration"
+              />
+              <SelectInput
+                label="Spare Part Selection"
+                value={machineForm.sparePartSelection}
+                onChange={(event) =>
+                  handleMachineField("sparePartSelection", event.target.value)
+                }
+                placeholder={itemsReady ? "Select spare part" : "Loading spare parts..."}
+                options={sparePartOptions}
+              />
+              <TextInput
+                label="Spares Used — Additional Notes"
                 value={machineForm.sparesUsed}
                 onChange={(e) => handleMachineField("sparesUsed", e.target.value)}
+                placeholder="Quantity, batch, or usage notes"
               />
               <TextInput
                 label="Vendor / Mechanic Details"
@@ -495,13 +564,13 @@ export default function RepairMaintenancePanel() {
                 onChange={(e) => handleMachineField("vendorMechanic", e.target.value)}
               />
               <TextInput
-                label="Maintenance Cost"
-                required
+                label="Maintenance Cost (Optional)"
                 type="number"
                 min={0}
                 step="0.01"
                 value={machineForm.maintenanceCost}
                 onChange={(e) => handleMachineField("maintenanceCost", e.target.value)}
+                placeholder="Leave blank for zero"
               />
               <div className="md:col-span-2 xl:col-span-3">
                 <TextareaInput
@@ -549,11 +618,10 @@ export default function RepairMaintenancePanel() {
                 {[
                   "Machine",
                   "Root Cause",
-                  "Product Allocation",
-                  "Diagnosis Status",
-                  "Detailed Work Done",
+                  "Work Start",
+                  "Work Done",
+                  "Days Taken",
                   "Spares Used",
-                  "Vendor / Mechanic",
                   "Cost",
                   "Service Cycle",
                   "Next Service",
@@ -572,13 +640,16 @@ export default function RepairMaintenancePanel() {
             <tbody className="divide-y divide-corporate-border/60 bg-white">
               {machineLogs.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-3 py-8 text-center text-corporate-muted">
+                  <td colSpan={11} className="px-3 py-8 text-center text-corporate-muted">
                     No machine repair logs yet. Use Add Row to create the first entry.
                   </td>
                 </tr>
               ) : (
                 machineLogs.map((row) => {
-                  const alertStatus = resolveMaintenanceAlertStatus(row.nextMaintenanceDate);
+                  const alertStatus = resolveMaintenanceAlertStatus(
+                    row.nextMaintenanceDate,
+                    row.preventiveCycle
+                  );
                   return (
                     <tr
                       key={row.id}
@@ -593,30 +664,32 @@ export default function RepairMaintenancePanel() {
                       <td className="max-w-[140px] px-3 py-2.5 text-corporate-text">
                         {row.breakdownRootCause || "—"}
                       </td>
-                      <td className="max-w-[160px] px-3 py-2.5 text-corporate-muted">
-                        {row.productAllocation || "—"}
+                      <td className="whitespace-nowrap px-3 py-2.5 text-corporate-text">
+                        {row.workStartDate ? formatDateLabel(row.workStartDate) : "—"}
                       </td>
-                      <td className="max-w-[160px] px-3 py-2.5">
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900">
-                          {row.diagnosisStatus || "—"}
-                        </span>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-corporate-text">
+                        {row.workDoneDate ? formatDateLabel(row.workDoneDate) : "—"}
                       </td>
-                      <td className="max-w-[220px] px-3 py-2.5 text-corporate-muted">{row.workDone}</td>
-                      <td className="max-w-[160px] px-3 py-2.5 text-corporate-muted">
+                      <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-corporate-text">
+                        {row.daysTaken} day{row.daysTaken === 1 ? "" : "s"}
+                      </td>
+                      <td className="max-w-[180px] px-3 py-2.5 text-corporate-muted">
                         {row.sparesUsed || "—"}
                       </td>
-                      <td className="max-w-[180px] px-3 py-2.5 text-corporate-text">{row.vendorMechanic}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-emerald-700">
-                        {formatCurrency(row.maintenanceCost)}
+                        {row.maintenanceCost > 0 ? formatCurrency(row.maintenanceCost) : "—"}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-xs text-corporate-text">
-                        {row.preventiveCycle === "yearly" ? "Yearly (12 Mo)" : "Half-Yearly (6 Mo)"}
+                        {formatPreventiveCycleLabel(row.preventiveCycle)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-corporate-text">
                         {formatDateLabel(row.nextMaintenanceDate)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5">
-                        <MaintenanceAlertBadge nextMaintenanceDate={row.nextMaintenanceDate} />
+                        <MaintenanceAlertBadge
+                          nextMaintenanceDate={row.nextMaintenanceDate}
+                          preventiveCycle={row.preventiveCycle}
+                        />
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-corporate-muted">
                         {formatTimestamp(row.loggedAt)}
@@ -791,7 +864,10 @@ export default function RepairMaintenancePanel() {
                 </tr>
               ) : (
                 vehicleLogs.map((row) => {
-                  const alertStatus = resolveMaintenanceAlertStatus(row.nextMaintenanceDate);
+                  const alertStatus = resolveMaintenanceAlertStatus(
+                    row.nextMaintenanceDate,
+                    row.preventiveCycle
+                  );
                   return (
                     <tr
                       key={row.id}
@@ -817,13 +893,16 @@ export default function RepairMaintenancePanel() {
                         {formatCurrency(row.totalAmount)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-xs text-corporate-text">
-                        {row.preventiveCycle === "yearly" ? "Yearly (12 Mo)" : "Half-Yearly (6 Mo)"}
+                        {formatPreventiveCycleLabel(row.preventiveCycle)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-corporate-text">
                         {formatDateLabel(row.nextMaintenanceDate)}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5">
-                        <MaintenanceAlertBadge nextMaintenanceDate={row.nextMaintenanceDate} />
+                        <MaintenanceAlertBadge
+                          nextMaintenanceDate={row.nextMaintenanceDate}
+                          preventiveCycle={row.preventiveCycle}
+                        />
                       </td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-corporate-muted">
                         {formatTimestamp(row.loggedAt)}

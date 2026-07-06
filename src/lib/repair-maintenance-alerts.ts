@@ -3,9 +3,9 @@ import type {
   MachineRepairLogRow,
   VehicleRepairLogRow,
 } from "@/types/repair-maintenance-log";
-import { PREVENTIVE_CYCLE_OPTIONS } from "@/types/repair-maintenance-log";
+import { normalizePreventiveCycle } from "@/types/repair-maintenance-log";
 
-/** Proactive alert fires exactly 10–15 days before scheduled service. */
+/** Proactive alert fires 10–15 days before scheduled service (long cycles). */
 export const PREVENTIVE_ALERT_MIN_DAYS = 10;
 export const PREVENTIVE_ALERT_MAX_DAYS = 15;
 
@@ -24,6 +24,12 @@ export type MaintenanceDashboardAlert = {
   preventiveCycle: PreventiveMaintenanceCycle;
 };
 
+function addDays(base: Date, days: number): Date {
+  const result = new Date(base);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
 function addMonths(base: Date, months: number): Date {
   const result = new Date(base);
   result.setMonth(result.getMonth() + months);
@@ -35,34 +41,60 @@ function daysBetween(from: Date, to: Date): number {
   return Math.ceil(ms / (1000 * 60 * 60 * 24));
 }
 
-export function cycleToMonths(cycle: PreventiveMaintenanceCycle): number {
-  return (
-    PREVENTIVE_CYCLE_OPTIONS.find((option) => option.value === cycle)?.months ??
-    (cycle === "yearly" ? 12 : 6)
-  );
-}
-
 export function computeNextMaintenanceDateFromCycle(
-  loggedAt: string,
+  anchorDate: string,
   cycle: PreventiveMaintenanceCycle
 ): string {
-  const months = cycleToMonths(cycle);
-  const serviceBase = new Date(loggedAt);
-  if (Number.isNaN(serviceBase.getTime())) {
-    return addMonths(new Date(), months).toISOString().slice(0, 10);
+  const normalized = normalizePreventiveCycle(cycle);
+  const serviceBase = new Date(anchorDate);
+  const base = Number.isNaN(serviceBase.getTime()) ? new Date() : serviceBase;
+
+  switch (normalized) {
+    case "daily":
+      return addDays(base, 1).toISOString().slice(0, 10);
+    case "weekly":
+      return addDays(base, 7).toISOString().slice(0, 10);
+    case "monthly":
+      return addMonths(base, 1).toISOString().slice(0, 10);
+    case "yearly":
+      return addMonths(base, 12).toISOString().slice(0, 10);
+    case "half-yearly":
+    default:
+      return addMonths(base, 6).toISOString().slice(0, 10);
   }
-  return addMonths(serviceBase, months).toISOString().slice(0, 10);
 }
 
-export function isWithinPreventiveAlertWindow(daysUntilDue: number): boolean {
-  return (
-    daysUntilDue >= PREVENTIVE_ALERT_MIN_DAYS &&
-    daysUntilDue <= PREVENTIVE_ALERT_MAX_DAYS
-  );
+export function isWithinPreventiveAlertWindow(
+  daysUntilDue: number,
+  cycle: PreventiveMaintenanceCycle
+): boolean {
+  if (daysUntilDue < 0) return false;
+
+  const normalized = normalizePreventiveCycle(cycle);
+
+  switch (normalized) {
+    case "daily":
+      return daysUntilDue === 0 || daysUntilDue === 1;
+    case "weekly":
+      return daysUntilDue >= 0 && daysUntilDue <= 7;
+    case "monthly":
+    case "half-yearly":
+    case "yearly":
+      return (
+        daysUntilDue >= PREVENTIVE_ALERT_MIN_DAYS &&
+        daysUntilDue <= PREVENTIVE_ALERT_MAX_DAYS
+      );
+    default:
+      return (
+        daysUntilDue >= PREVENTIVE_ALERT_MIN_DAYS &&
+        daysUntilDue <= PREVENTIVE_ALERT_MAX_DAYS
+      );
+  }
 }
 
 export function resolveMaintenanceAlertStatus(
   nextMaintenanceDate: string,
+  cycle: PreventiveMaintenanceCycle = "monthly",
   today: Date = new Date()
 ): MaintenanceAlertStatus | null {
   if (!nextMaintenanceDate.trim()) return null;
@@ -72,21 +104,35 @@ export function resolveMaintenanceAlertStatus(
 
   const todayStart = new Date(today.toISOString().slice(0, 10));
   const daysUntilDue = daysBetween(todayStart, dueDate);
+  const normalizedCycle = normalizePreventiveCycle(cycle);
 
   return {
     daysUntilDue,
     nextMaintenanceDate: nextMaintenanceDate.slice(0, 10),
-    isUpcomingAlert: isWithinPreventiveAlertWindow(daysUntilDue),
+    isUpcomingAlert: isWithinPreventiveAlertWindow(daysUntilDue, normalizedCycle),
   };
 }
 
-export function formatMaintenanceAlertLabel(daysUntilDue: number): string {
-  if (daysUntilDue === PREVENTIVE_ALERT_MIN_DAYS) {
-    return `Preventive Service Due in ${daysUntilDue} Days`;
+export function formatMaintenanceAlertLabel(
+  daysUntilDue: number,
+  cycle: PreventiveMaintenanceCycle = "monthly"
+): string {
+  const normalized = normalizePreventiveCycle(cycle);
+
+  if (normalized === "daily") {
+    return daysUntilDue === 0
+      ? "Daily Service Due Today"
+      : "Daily Service Due Tomorrow";
   }
+
+  if (normalized === "weekly") {
+    return `Weekly Service Due in ${daysUntilDue} Day${daysUntilDue === 1 ? "" : "s"}`;
+  }
+
   if (daysUntilDue <= PREVENTIVE_ALERT_MAX_DAYS) {
     return `Preventive Service Due in ${daysUntilDue} Days (10–15 Day Alert)`;
   }
+
   return `Next Service in ${daysUntilDue} Days`;
 }
 
@@ -97,7 +143,7 @@ function mapLogToDashboardAlert(
   nextMaintenanceDate: string,
   preventiveCycle: PreventiveMaintenanceCycle
 ): MaintenanceDashboardAlert | null {
-  const status = resolveMaintenanceAlertStatus(nextMaintenanceDate);
+  const status = resolveMaintenanceAlertStatus(nextMaintenanceDate, preventiveCycle);
   if (!status?.isUpcomingAlert) return null;
   return {
     id,

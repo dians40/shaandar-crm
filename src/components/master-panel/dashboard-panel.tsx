@@ -177,7 +177,7 @@ export default function DashboardPanel() {
                       {alert.assetType === "machine" ? "Machine" : "Vehicle"}:{" "}
                       <span className="font-semibold">{alert.assetLabel}</span> — due{" "}
                       {formatDateLabel(alert.nextMaintenanceDate)} (
-                      {formatMaintenanceAlertLabel(alert.daysUntilDue)})
+                      {formatMaintenanceAlertLabel(alert.daysUntilDue, alert.preventiveCycle)})
                     </li>
                   ))}
                 </ul>

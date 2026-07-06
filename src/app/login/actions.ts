@@ -9,6 +9,18 @@ export type LoginState = {
   success?: boolean;
 };
 
+export async function establishSessionAction(): Promise<LoginState> {
+  const cookieStore = await cookies();
+  cookieStore.set(AUTH_COOKIE, "true", {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+  });
+
+  return { success: true };
+}
+
 export async function loginAction(
   _prevState: LoginState,
   formData: FormData

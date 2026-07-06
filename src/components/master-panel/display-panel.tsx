@@ -12,6 +12,7 @@ import { formatReportTypeLabel, getReportTypeDefinition } from "@/constants/disp
 import CashBankSummaryPanel from "./cash-bank-summary-panel";
 import MaterialLedgerPanel from "./material-ledger-panel";
 import DailyProductionSummaryPanel from "./daily-production-summary-panel";
+import OperationalDayBookPanel from "./operational-day-book-panel";
 import DisplayAdvancedReportPanel, {
   isAdvancedReportType,
 } from "./display-advanced-report-panel";
@@ -37,14 +38,6 @@ const DISPLAY_VIEWS = [
 ] as const;
 
 type DisplayViewId = (typeof DISPLAY_VIEWS)[number]["id"];
-
-const DAYBOOK_ROWS = [
-  { date: "2026-07-01", voucher: "SI-1042", particulars: "Sales Invoice — ABC Traders", debit: "", credit: "1,25,000.00", type: "Sales" },
-  { date: "2026-07-02", voucher: "PV-883", particulars: "Purchase — Steel Components", debit: "48,500.00", credit: "", type: "Purchase" },
-  { date: "2026-07-03", voucher: "RC-221", particulars: "Receipt — Cash Collection", debit: "32,000.00", credit: "", type: "Receipt" },
-  { date: "2026-07-04", voucher: "EX-119", particulars: "Factory Diesel Expense", debit: "12,400.00", credit: "", type: "Expense" },
-  { date: "2026-07-05", voucher: "JV-044", particulars: "Salary Accrual Journal", debit: "86,000.00", credit: "86,000.00", type: "Journal" },
-];
 
 const LEDGER_ROWS = [
   { date: "2026-07-01", account: "Cash Account", opening: "2,10,000.00", debit: "32,000.00", credit: "18,500.00", closing: "2,23,500.00" },
@@ -86,18 +79,6 @@ export default function DisplayPanel() {
     setHasGenerated(true);
   };
 
-  const filteredDaybook = useMemo(() => {
-    if (!appliedCriteria) return [];
-    return DAYBOOK_ROWS.filter(
-      (row) =>
-        isWithinDateRange(row.date, appliedCriteria.fromDate, appliedCriteria.toDate) &&
-        matchesEntityFilter(
-          `${row.particulars} ${row.voucher} ${row.type}`,
-          appliedCriteria.entityFilter
-        )
-    );
-  }, [appliedCriteria]);
-
   const filteredLedgers = useMemo(() => {
     if (!appliedCriteria) return [];
     return LEDGER_ROWS.filter(
@@ -111,42 +92,11 @@ export default function DisplayPanel() {
     switch (activeView) {
       case "daybook":
         return (
-          <div className={MASTER_LIST_TABLE_WRAPPER_CLASS}>
-            <table className={MASTER_LIST_TABLE_CLASS}>
-              <thead className={MASTER_LIST_HEAD_CLASS}>
-                <tr>
-                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Voucher</th>
-                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Particulars</th>
-                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Type</th>
-                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Debit</th>
-                  <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Credit</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-corporate-border">
-                {filteredDaybook.map((row) => (
-                  <tr key={`${row.voucher}-${row.date}`} className="hover:bg-corporate-bg/60">
-                    <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.date}</td>
-                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-medium text-corporate-brand")}>
-                      {row.voucher}
-                    </td>
-                    <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.particulars}</td>
-                    <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                      <span className="rounded-full border border-corporate-border bg-corporate-bg px-2.5 py-1 text-xs font-semibold">
-                        {row.type}
-                      </span>
-                    </td>
-                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-medium")}>
-                      {row.debit || "—"}
-                    </td>
-                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-right font-medium")}>
-                      {row.credit || "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <OperationalDayBookPanel
+            fromDate={criteria.fromDate}
+            toDate={criteria.toDate}
+            entityFilter={criteria.entityFilter}
+          />
         );
 
       case "ledgers":

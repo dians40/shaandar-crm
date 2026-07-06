@@ -48,6 +48,9 @@ const CODE_HEADERS = new Set([
   "empid",
   "empcode",
   "workerid",
+  "paycode",
+  "cardnumber",
+  "paycodecarnumber",
 ]);
 
 const NAME_HEADERS = new Set([
@@ -85,15 +88,205 @@ const OT_SHIFT_HEADERS = new Set(["overtimeshift", "otshift", "overtimeband"]);
 
 const REMARKS_HEADERS = new Set(["remarks", "notes", "shiftinfo", "comment"]);
 
-const FUZZY_CODE_PATTERNS = [/code/i, /\bid\b/i, /emp/i];
-const FUZZY_NAME_PATTERNS = [/name/i, /worker/i, /staff/i];
+const FUZZY_CODE_PATTERNS = [/pay\s*code/i, /card\s*number/i, /cardnumber/i, /code/i, /\bid\b/i, /emp/i];
+const FUZZY_NAME_PATTERNS = [/employee\s*name/i, /emp\s*name/i, /name/i, /worker/i, /staff/i];
 const FUZZY_DATE_PATTERNS = [/date/i, /workdate/i, /attdate/i];
-const FUZZY_STATUS_PATTERNS = [/status/i, /attendance/i];
+const FUZZY_STATUS_PATTERNS = [/^status$/i, /attendance/i, /present/i];
 const FUZZY_SHIFT_PATTERNS = [/workshift/i, /\bshift\b/i, /dayshift/i];
 const FUZZY_OT_SHIFT_PATTERNS = [/overtime.*shift/i, /ot.*shift/i, /overtimeshift/i, /overtime/i, /\bot\b/i];
-const FUZZY_OT_PATTERNS = [/overtime/i, /\bot\b/i, /othours/i];
-const FUZZY_REMARKS_PATTERNS = [/remarks/i, /notes/i, /comment/i];
+const FUZZY_OT_PATTERNS = [/^ot$/i, /overtime/i, /\bot\b/i, /othours/i, /overtimeamount/i];
+const FUZZY_REMARKS_PATTERNS = [/remarks/i, /notes/i, /comment/i, /^manual$/i];
 
+/** Standard industrial biometric export column order (20 core + extended). */
+const BIOMETRIC_POSITIONAL_LAYOUT = {
+  serialIndex: 0,
+  codeIndex: 1,
+  nameIndex: 2,
+  departmentIndex: 3,
+  designationIndex: 4,
+  shiftIndex: 5,
+  startInIndex: 6,
+  lunchOutIndex: 7,
+  lunchInIndex: 8,
+  outIndex: 9,
+  hoursWorkedIndex: 10,
+  statusIndex: 11,
+  earlyArrivalIndex: 12,
+  shiftLateIndex: 13,
+  earlyAccessIndex: 14,
+  lunchIndex: 15,
+  otIndex: 16,
+  overtimeAmountIndex: 17,
+  overStayIndex: 18,
+  manualIndex: 19,
+} as const;
+
+const BIOMETRIC_MIN_COLUMNS = 15;
+const BIOMETRIC_TARGET_WIDTH = 25;
+
+function findBiometricShiftColumnIndex(
+  rawHeaders: string[],
+  normalizedHeaders: string[],
+  excludeIndices: number[] = []
+): number {
+  for (let index = 0; index < rawHeaders.length; index += 1) {
+    if (excludeIndices.includes(index)) continue;
+    const probe = `${safeString(rawHeaders[index])} ${normalizedHeaders[index] ?? ""}`;
+    if (/shiftlate/i.test(probe)) continue;
+    if (/\bshift\b/i.test(probe) && !/overtime/i.test(probe)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function detectBiometricLayout(
+  rawHeaderCells: string[],
+  normalizedHeaderCells: string[]
+): boolean {
+  try {
+    const probe = rawHeaderCells
+      .map((cell, index) => `${safeString(cell)} ${normalizedHeaderCells[index] ?? ""}`)
+      .join(" ");
+
+    const hasPayOrCard = /pay\s*code|card\s*number|cardnumber|paycode/i.test(probe);
+    const hasEmployeeName = /employee\s*name|emp\s*name|\bname\b/i.test(probe);
+    const hasStatus = /\bstatus\b/i.test(probe);
+    const hasShift = /\bshift\b/i.test(probe);
+    const hasPunchColumns =
+      /start\s*in|lunch\s*out|lunch\s*in|\bout\b|hours\s*worked/i.test(probe);
+
+    const matchedSignals = [hasPayOrCard, hasEmployeeName, hasStatus, hasShift, hasPunchColumns].filter(
+      Boolean
+    ).length;
+
+    return matchedSignals >= 3 || (hasPayOrCard && hasStatus) || normalizedHeaderCells.length >= BIOMETRIC_MIN_COLUMNS;
+  } catch {
+    return false;
+  }
+}
+
+function hasOvertimeSignal(otValue: string, overtimeAmount: string): boolean {
+  try {
+    const ot = safeString(otValue);
+    const amount = safeString(overtimeAmount);
+    if (!ot && !amount) return false;
+
+    const otNum = Number(ot.replace(/[^\d.-]/g, ""));
+    const amountNum = Number(amount.replace(/[^\d.-]/g, ""));
+
+    if (Number.isFinite(otNum) && otNum > 0) return true;
+    if (Number.isFinite(amountNum) && amountNum > 0) return true;
+    if (ot && !/^(0|0\.0+|no|nil|none|-)$/i.test(ot)) return true;
+    if (amount && !/^(0|0\.0+|no|nil|none|-)$/i.test(amount)) return true;
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function parseBiometricOvertimeShift(
+  otValue: string,
+  overtimeAmount: string,
+  shiftHint: string
+): OvertimeShiftType | "" {
+  try {
+    if (!hasOvertimeSignal(otValue, overtimeAmount)) return "";
+    return parseWorkShift(shiftHint) === "night" ? "night" : "day";
+  } catch {
+    return "";
+  }
+}
+
+function parseBiometricStatus(
+  statusRaw: string,
+  shiftRaw: string,
+  hoursWorked = ""
+): ManualAttendanceStatus {
+  try {
+    const status = safeString(statusRaw);
+    const shift = safeString(shiftRaw);
+    const hours = safeString(hoursWorked);
+
+    if (!status && !shift && !hours) {
+      return parseStatus(FALLBACK_STATUS_LABEL, shift);
+    }
+
+    if (/^p(resent)?$/i.test(status) || /^p$/i.test(status)) {
+      return parseWorkShift(shift) === "night" ? "Present Night Shift" : "Present Day Shift";
+    }
+    if (/^a(bs(ent)?)?$/i.test(status) || /^a$/i.test(status)) {
+      return parseStatus(FALLBACK_STATUS_LABEL, shift);
+    }
+    if (/^h(alf)?$/i.test(status) || /^h$/i.test(status) || /half/i.test(status)) {
+      return parseWorkShift(shift) === "night" ? "Half Night Shift" : "Half Day Shift";
+    }
+
+    if (!status && hours) {
+      const hoursNum = Number(hours.replace(/[^\d.-]/g, ""));
+      if (Number.isFinite(hoursNum) && hoursNum > 0 && hoursNum < 4) {
+        return parseWorkShift(shift) === "night" ? "Half Night Shift" : "Half Day Shift";
+      }
+      if (Number.isFinite(hoursNum) && hoursNum >= 4) {
+        return parseWorkShift(shift) === "night" ? "Present Night Shift" : "Present Day Shift";
+      }
+    }
+
+    return parseStatus(status || FALLBACK_STATUS_LABEL, shift);
+  } catch {
+    return parseStatus(FALLBACK_STATUS_LABEL, shiftRaw);
+  }
+}
+
+function sanitizeBiometricRowCells(cells: unknown): string[] {
+  try {
+    const source = Array.isArray(cells) ? cells : [];
+    const sanitized: string[] = [];
+
+    for (let index = 0; index < BIOMETRIC_TARGET_WIDTH; index += 1) {
+      try {
+        sanitized.push(index < source.length ? safeString(source[index]) : "");
+      } catch {
+        sanitized.push("");
+      }
+    }
+
+    return sanitized;
+  } catch {
+    return Array.from({ length: BIOMETRIC_TARGET_WIDTH }, () => "");
+  }
+}
+
+function buildBiometricRemarks(rowCells: unknown, columnMap: ImportColumnMap): string {
+  try {
+    const parts: string[] = [];
+    const append = (index: number | undefined, label: string) => {
+      if (index == null || index < 0) return;
+      const value = safeCell(rowCells, index);
+      if (value) parts.push(`${label}: ${value}`);
+    };
+
+    append(columnMap.serialIndex, "Serial");
+    append(columnMap.departmentIndex, "Department");
+    append(columnMap.designationIndex, "Designation");
+    append(columnMap.startInIndex, "Start In");
+    append(columnMap.lunchOutIndex, "Lunch Out");
+    append(columnMap.lunchInIndex, "Lunch In");
+    append(columnMap.outIndex, "Out");
+    append(columnMap.hoursWorkedIndex, "Hours Worked");
+    append(columnMap.earlyArrivalIndex, "Early Arrival");
+    append(columnMap.shiftLateIndex, "Shift Late");
+    append(columnMap.earlyAccessIndex, "Early Access");
+    append(columnMap.lunchIndex, "Lunch");
+    append(columnMap.overStayIndex, "Over Stay");
+    append(columnMap.manualIndex, "Manual");
+
+    return parts.join(" · ");
+  } catch {
+    return "";
+  }
+}
 const FALLBACK_EMPLOYEE_CODE = "TEMP_CODE";
 const FALLBACK_EMPLOYEE_NAME = "Unknown Worker";
 const FALLBACK_STATUS_LABEL = "Absent";
@@ -686,7 +879,10 @@ function findHeaderRowIndex(matrix: string[][]): number {
         .map((cell, cellIndex) => `${cell} ${normalized[cellIndex] ?? ""}`)
         .join(" ");
 
+      const biometricMatch = detectBiometricLayout(rawRow, normalized);
+
       const fuzzyMatch =
+        biometricMatch ||
         FUZZY_CODE_PATTERNS.some((pattern) => pattern.test(probe)) ||
         FUZZY_NAME_PATTERNS.some((pattern) => pattern.test(probe)) ||
         FUZZY_STATUS_PATTERNS.some((pattern) => pattern.test(probe));
@@ -740,13 +936,142 @@ type ImportColumnMap = {
   otIndex: number;
   otShiftIndex: number;
   remarksIndex: number;
+  isBiometricLayout?: boolean;
+  serialIndex?: number;
+  departmentIndex?: number;
+  designationIndex?: number;
+  startInIndex?: number;
+  lunchOutIndex?: number;
+  lunchInIndex?: number;
+  outIndex?: number;
+  hoursWorkedIndex?: number;
+  earlyArrivalIndex?: number;
+  shiftLateIndex?: number;
+  earlyAccessIndex?: number;
+  lunchIndex?: number;
+  overtimeAmountIndex?: number;
+  overStayIndex?: number;
+  manualIndex?: number;
 };
+
+function buildBiometricColumnMap(
+  rawHeaderCells: string[],
+  normalizedHeaderCells: string[]
+): ImportColumnMap {
+  const exclude: number[] = [];
+
+  const take = (patterns: RegExp[], extraExclude: number[] = []) => {
+    const index = findFuzzyColumnIndex(rawHeaderCells, normalizedHeaderCells, patterns, [
+      ...exclude,
+      ...extraExclude,
+    ]);
+    if (index >= 0) exclude.push(index);
+    return index;
+  };
+
+  const serialIndex = take([/serial/i, /s\.?\s*no/i, /sr\.?\s*no/i]);
+  const codeIndex = take([/pay\s*code/i, /card\s*number/i, /cardnumber/i, /paycode/i, /code/i, /\bid\b/i, /emp/i]);
+  const nameIndex = take([/employee\s*name/i, /emp\s*name/i, /^name$/i, /worker/i, /staff/i]);
+  const departmentIndex = take([/department/i, /dept/i]);
+  const designationIndex = take([/designation/i, /title/i, /role/i]);
+  const shiftIndex = findBiometricShiftColumnIndex(rawHeaderCells, normalizedHeaderCells, exclude);
+  if (shiftIndex >= 0) exclude.push(shiftIndex);
+  const startInIndex = take([/start\s*in/i, /in\s*time/i, /punch\s*in/i]);
+  const lunchOutIndex = take([/lunch\s*out/i]);
+  const lunchInIndex = take([/lunch\s*in/i]);
+  const outIndex = take([/^out$/i, /out\s*time/i, /punch\s*out/i]);
+  const hoursWorkedIndex = take([/hours\s*worked/i, /thehoursworked/i, /total\s*hours/i]);
+  const statusIndex = take([/^status$/i, /attendance/i, /present/i]);
+  const earlyArrivalIndex = take([/early\s*arrival/i]);
+  const shiftLateIndex = take([/shift\s*late/i, /late/i]);
+  const earlyAccessIndex = take([/early\s*access/i]);
+  const lunchIndex = take([/^lunch$/i]);
+  const otIndex = take([/^ot$/i, /overtime(?!\s*amount)/i, /othours/i]);
+  const overtimeAmountIndex = take([/overtime\s*amount/i, /otamount/i]);
+  const overStayIndex = take([/over\s*stay/i, /overstay/i]);
+  const manualIndex = take([/^manual$/i, /remarks/i, /notes/i]);
+
+  const resolved: ImportColumnMap = {
+    codeIndex,
+    nameIndex,
+    dateIndex: -1,
+    statusIndex,
+    shiftIndex,
+    otIndex,
+    otShiftIndex: overtimeAmountIndex >= 0 ? overtimeAmountIndex : otIndex,
+    remarksIndex: manualIndex >= 0 ? manualIndex : -1,
+    isBiometricLayout: true,
+    serialIndex,
+    departmentIndex,
+    designationIndex,
+    startInIndex,
+    lunchOutIndex,
+    lunchInIndex,
+    outIndex,
+    hoursWorkedIndex,
+    earlyArrivalIndex,
+    shiftLateIndex,
+    earlyAccessIndex,
+    lunchIndex,
+    overtimeAmountIndex,
+    overStayIndex,
+    manualIndex,
+  };
+
+  const columnCount = Math.max(rawHeaderCells.length, normalizedHeaderCells.length);
+  if (columnCount >= BIOMETRIC_MIN_COLUMNS) {
+    const assignIfMissing = (key: keyof ImportColumnMap, position: number) => {
+      const current = resolved[key];
+      if (typeof current === "number" && current < 0 && position < columnCount) {
+        (resolved[key] as number) = position;
+      }
+    };
+
+    assignIfMissing("serialIndex", BIOMETRIC_POSITIONAL_LAYOUT.serialIndex);
+    assignIfMissing("codeIndex", BIOMETRIC_POSITIONAL_LAYOUT.codeIndex);
+    assignIfMissing("nameIndex", BIOMETRIC_POSITIONAL_LAYOUT.nameIndex);
+    assignIfMissing("departmentIndex", BIOMETRIC_POSITIONAL_LAYOUT.departmentIndex);
+    assignIfMissing("designationIndex", BIOMETRIC_POSITIONAL_LAYOUT.designationIndex);
+    assignIfMissing("shiftIndex", BIOMETRIC_POSITIONAL_LAYOUT.shiftIndex);
+    assignIfMissing("startInIndex", BIOMETRIC_POSITIONAL_LAYOUT.startInIndex);
+    assignIfMissing("lunchOutIndex", BIOMETRIC_POSITIONAL_LAYOUT.lunchOutIndex);
+    assignIfMissing("lunchInIndex", BIOMETRIC_POSITIONAL_LAYOUT.lunchInIndex);
+    assignIfMissing("outIndex", BIOMETRIC_POSITIONAL_LAYOUT.outIndex);
+    assignIfMissing("hoursWorkedIndex", BIOMETRIC_POSITIONAL_LAYOUT.hoursWorkedIndex);
+    assignIfMissing("statusIndex", BIOMETRIC_POSITIONAL_LAYOUT.statusIndex);
+    assignIfMissing("earlyArrivalIndex", BIOMETRIC_POSITIONAL_LAYOUT.earlyArrivalIndex);
+    assignIfMissing("shiftLateIndex", BIOMETRIC_POSITIONAL_LAYOUT.shiftLateIndex);
+    assignIfMissing("earlyAccessIndex", BIOMETRIC_POSITIONAL_LAYOUT.earlyAccessIndex);
+    assignIfMissing("lunchIndex", BIOMETRIC_POSITIONAL_LAYOUT.lunchIndex);
+    assignIfMissing("otIndex", BIOMETRIC_POSITIONAL_LAYOUT.otIndex);
+    assignIfMissing("overtimeAmountIndex", BIOMETRIC_POSITIONAL_LAYOUT.overtimeAmountIndex);
+    assignIfMissing("overStayIndex", BIOMETRIC_POSITIONAL_LAYOUT.overStayIndex);
+    assignIfMissing("manualIndex", BIOMETRIC_POSITIONAL_LAYOUT.manualIndex);
+  }
+
+  if (resolved.codeIndex < 0) resolved.codeIndex = BIOMETRIC_POSITIONAL_LAYOUT.codeIndex;
+  if (resolved.nameIndex < 0) resolved.nameIndex = BIOMETRIC_POSITIONAL_LAYOUT.nameIndex;
+  if (resolved.shiftIndex < 0) resolved.shiftIndex = BIOMETRIC_POSITIONAL_LAYOUT.shiftIndex;
+  if (resolved.statusIndex < 0) resolved.statusIndex = BIOMETRIC_POSITIONAL_LAYOUT.statusIndex;
+  if (resolved.otIndex < 0) resolved.otIndex = BIOMETRIC_POSITIONAL_LAYOUT.otIndex;
+  if (resolved.overtimeAmountIndex == null || resolved.overtimeAmountIndex < 0) {
+    resolved.overtimeAmountIndex = BIOMETRIC_POSITIONAL_LAYOUT.overtimeAmountIndex;
+  }
+  if (resolved.otShiftIndex < 0) {
+    resolved.otShiftIndex = resolved.overtimeAmountIndex;
+  }
+
+  return resolved;
+}
 
 function buildFallbackColumnMap(
   rawHeaderCells: string[],
   normalizedHeaderCells: string[],
   sampleRows: string[][]
 ): ImportColumnMap {
+  if (detectBiometricLayout(rawHeaderCells, normalizedHeaderCells)) {
+    return buildBiometricColumnMap(rawHeaderCells, normalizedHeaderCells);
+  }
   const codeIndex =
     findColumnIndex(normalizedHeaderCells, CODE_HEADERS) >= 0
       ? findColumnIndex(normalizedHeaderCells, CODE_HEADERS)
@@ -915,7 +1240,11 @@ function parseImportRow(
   columnMap: ImportColumnMap
 ): AttendanceImportRow | null {
   try {
-    const rowCells = Array.isArray(cells) ? cells : [];
+    const rowCells = columnMap.isBiometricLayout
+      ? sanitizeBiometricRowCells(cells)
+      : Array.isArray(cells)
+        ? cells.map((cell) => safeString(cell))
+        : [];
 
     if (!rowHasContent(rowCells)) {
       return null;
@@ -937,16 +1266,34 @@ function parseImportRow(
 
     const statusRaw = safeCell(rowCells, columnMap.statusIndex);
     const shiftRaw = safeCell(rowCells, columnMap.shiftIndex);
+    const hoursWorked = safeCell(rowCells, columnMap.hoursWorkedIndex ?? -1);
+    const otValue = safeCell(rowCells, columnMap.otIndex);
+    const otAmount = safeCell(rowCells, columnMap.overtimeAmountIndex ?? -1);
     const otShiftRaw =
-      safeCell(rowCells, columnMap.otShiftIndex) || safeCell(rowCells, columnMap.otIndex);
+      safeCell(rowCells, columnMap.otShiftIndex) || otValue || otAmount;
+
+    const status = columnMap.isBiometricLayout
+      ? parseBiometricStatus(statusRaw, shiftRaw, hoursWorked)
+      : parseStatus(statusRaw || FALLBACK_STATUS_LABEL, shiftRaw);
+
+    const overtimeShift = columnMap.isBiometricLayout
+      ? parseBiometricOvertimeShift(otValue, otAmount, shiftRaw)
+      : parseOvertimeShift(otShiftRaw);
+
+    const remarks = [
+      columnMap.isBiometricLayout ? buildBiometricRemarks(rowCells, columnMap) : "",
+      safeCell(rowCells, columnMap.remarksIndex),
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
     return finalizeImportRow({
       employeeCode: employeeCode || FALLBACK_EMPLOYEE_CODE,
       employeeName: employeeName || FALLBACK_EMPLOYEE_NAME,
       attendanceDate: normalizeAttendanceDate(safeCell(rowCells, columnMap.dateIndex)),
-      status: parseStatus(statusRaw || FALLBACK_STATUS_LABEL, shiftRaw),
-      overtimeShift: parseOvertimeShift(otShiftRaw),
-      remarks: safeCell(rowCells, columnMap.remarksIndex),
+      status,
+      overtimeShift,
+      remarks,
     });
   } catch {
     return finalizeImportRow({
@@ -977,7 +1324,14 @@ export function parseAttendanceImportMatrixSafe(
     const dataRows = sanitized.slice(headerRowIndex + 1);
     const columnMap = buildFallbackColumnMap(rawHeaderCells, headerCells, dataRows);
 
+    if (columnMap.isBiometricLayout) {
+      warnings.push(
+        "Industrial biometric column layout detected. Pay Code, Employee Name, Status, Shift, and OT columns were mapped safely."
+      );
+    }
+
     const usedFallback =
+      !columnMap.isBiometricLayout &&
       findColumnIndex(headerCells, CODE_HEADERS) < 0 &&
       findFuzzyColumnIndex(rawHeaderCells, headerCells, FUZZY_CODE_PATTERNS) < 0 &&
       findColumnIndex(headerCells, NAME_HEADERS) < 0 &&

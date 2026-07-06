@@ -29,6 +29,7 @@ import {
   Wallet,
   Warehouse,
   Wrench,
+  Hammer,
 } from "lucide-react";
 
 export type MasterPanelModuleId =
@@ -62,7 +63,8 @@ export type MasterPanelModuleId =
   | "attendance-system"
   | "attendance-manual-entry"
   | "overtime-tracker"
-  | "vehicle-management-transaction";
+  | "vehicle-management-transaction"
+  | "repair-maintenance";
 
 export type MasterPanelModule = {
   id: MasterPanelModuleId;
@@ -357,13 +359,22 @@ const TRANSACTION_MODULES: MasterPanelModule[] = [
     icon: Car,
     placeholderMessage: "Vehicle management transaction coming soon",
   },
+  {
+    id: "repair-maintenance",
+    serial: 29,
+    navLabel: "Repair & Maintenance",
+    title: "Repair & Maintenance",
+    subtitle: "Machine and vehicle repair logging with cost tracking",
+    icon: Hammer,
+    placeholderMessage: "",
+  },
 ];
 
 /** Workspace modules embedded inside administration screens — excluded from sidebar groups. */
 const INTERNAL_WORKSPACE_MODULES: MasterPanelModule[] = [
   {
     id: "attendance-manual-entry",
-    serial: 29,
+    serial: 30,
     navLabel: "Manual Entry",
     title: "Attendance Manual Entry",
     subtitle: "Supervisor staff attendance self-entry",

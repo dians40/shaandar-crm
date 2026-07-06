@@ -5,6 +5,7 @@ export const IMPLEMENTED_TRANSACTION_MODULE_IDS = new Set<MasterPanelModuleId>([
   "attendance-system",
   "overtime-tracker",
   "vehicle-management-transaction",
+  "repair-maintenance",
   "sales-dispatch",
   "sales-return",
   "purchase-logs",
@@ -44,6 +45,10 @@ export const TRANSACTION_LIST_COLUMN_LABELS: Partial<
   "vehicle-management-transaction": {
     primaryLabel: "Vehicle Number",
     secondaryLabel: "Trip Date",
+  },
+  "repair-maintenance": {
+    primaryLabel: "Asset / Vehicle",
+    secondaryLabel: "Logged At",
   },
 };
 

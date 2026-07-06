@@ -38,6 +38,7 @@ import ModulePlaceholder from "./module-placeholder";
 import OvertimeTrackerPanel from "./overtime-tracker-panel";
 import AttendanceLoggingWorkspacePanel from "./attendance-logging-workspace-panel";
 import VehicleManagementTransactionPanel from "./vehicle-management-transaction-panel";
+import RepairMaintenancePanel from "./repair-maintenance-panel";
 import TransactionPlaceholderPanel from "./transaction-placeholder-panel";
 import UnitConversionManagementPanel from "./unit-conversion-management-panel";
 import UnitsManagementPanel from "./units-management-panel";
@@ -244,6 +245,8 @@ function MasterPanelContent({ scope }: MasterPanelContentProps) {
           return <OvertimeTrackerPanel />;
         case "vehicle-management-transaction":
           return <VehicleManagementTransactionPanel />;
+        case "repair-maintenance":
+          return <RepairMaintenancePanel />;
         case "sales-dispatch":
           return (
             <InventoryVoucherPanel config={INVENTORY_VOUCHER_CONFIGS["sales-dispatch"]} />

@@ -1,0 +1,54 @@
+// Shaandar CRM — biometric attendance (22-column Excel import structure)
+// Generate client: npx prisma generate
+// Apply SQL to Supabase: supabase/migrations/007_biometric_attendance_22_columns.sql
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Structured storage for biometric Daily Performance Excel imports (22 optional columns).
+model BiometricAttendance {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employeeId     String?   @map("employee_id") @db.Uuid
+  attendanceDate DateTime? @map("attendance_date") @db.Date
+
+  srlNumber    String? @default("") @map("srl_number")
+  payCode      String? @default("") @map("pay_code")
+  cardNumber   String? @default("") @map("card_number")
+  employeeName String? @default("") @map("employee_name")
+  department   String? @default("")
+  designation  String? @default("")
+  shift        String? @default("")
+  start        String? @default("")
+  inTime       String? @default("") @map("in_time")
+  lunchOut     String? @default("") @map("lunch_out")
+  lunchIn      String? @default("") @map("lunch_in")
+  outTime      String? @default("") @map("out_time")
+  hoursWorked  String? @default("") @map("hours_worked")
+  status       String? @default("")
+  earlyArrival String? @default("") @map("early_arrival")
+  shiftLate    String? @default("") @map("shift_late")
+  shiftEarly   String? @default("") @map("shift_early")
+  excessLunch  String? @default("") @map("excess_lunch")
+  ot           String? @default("")
+  overtime     String? @default("")
+  overstay     String? @default("")
+  manual       String? @default("")
+
+  punchIn  String? @default("") @map("punch_in")
+  punchOut String? @default("") @map("punch_out")
+  remarks  String? @default("")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([employeeId, attendanceDate], map: "biometric_attendance_employee_date_key")
+  @@index([payCode], map: "idx_biometric_attendance_pay_code")
+  @@index([attendanceDate], map: "idx_biometric_attendance_date")
+  @@map("biometric_attendance")
+}

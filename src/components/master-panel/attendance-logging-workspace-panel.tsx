@@ -73,7 +73,9 @@ export default function AttendanceLoggingWorkspacePanel() {
       if (parsedRows.length === 0) {
         setImportPreview(null);
         setImportError(
-          "No valid attendance rows found. Include Employee Code, Employee Name, Attendance Status, and Overtime Shift columns."
+          warnings.length > 0
+            ? warnings.join(" ")
+            : "No valid attendance rows found. Include Employee Code, Employee Name, Attendance Status, and Overtime Shift columns."
         );
         return;
       }
@@ -253,8 +255,8 @@ export default function AttendanceLoggingWorkspacePanel() {
             <h3 className="text-sm font-bold text-corporate-text">Bulk Import — Excel / PDF / CSV</h3>
             <p className="mt-1 text-xs text-corporate-muted">
               Upload .xlsx, .xls, .pdf, or .csv with Employee Code, Employee Name, Attendance
-              Status, Shift, and Overtime Hours. Missing employee codes are auto-created when you
-              process the import.
+              Status, and Overtime Shift. Missing employee codes are auto-created when you process
+              the import.
             </p>
           </div>
         </div>

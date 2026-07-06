@@ -14,7 +14,8 @@ export type Biometric22ColumnRecord = {
   department: string;
   designation: string;
   shift: string;
-  startIn: string;
+  start: string;
+  in: string;
   lunchOut: string;
   lunchIn: string;
   out: string;
@@ -41,7 +42,8 @@ export const BIOMETRIC_22_COLUMN_KEYS: (keyof Biometric22ColumnRecord)[] = [
   "department",
   "designation",
   "shift",
-  "startIn",
+  "start",
+  "in",
   "lunchOut",
   "lunchIn",
   "out",
@@ -63,14 +65,15 @@ export const ATTENDANCE_BULK_IMPORT_COLUMNS: {
   key: keyof Biometric22ColumnRecord;
   label: string;
 }[] = [
-  { key: "serialNumber", label: "Serial Number" },
+  { key: "serialNumber", label: "SRL Number" },
   { key: "payCode", label: "Pay Code" },
   { key: "cardNumber", label: "Card Number" },
   { key: "employeeName", label: "Employee Name" },
   { key: "department", label: "Department" },
-  { key: "designation", label: "Designation" },
+  { key: "designation", label: "Designations" },
   { key: "shift", label: "Shift" },
-  { key: "startIn", label: "Start In" },
+  { key: "start", label: "Start" },
+  { key: "in", label: "In" },
   { key: "lunchOut", label: "Lunch Out" },
   { key: "lunchIn", label: "Lunch In" },
   { key: "out", label: "Out" },
@@ -94,7 +97,8 @@ export const EMPTY_BIOMETRIC_22_COLUMN_RECORD: Biometric22ColumnRecord = {
   department: "",
   designation: "",
   shift: "",
-  startIn: "",
+  start: "",
+  in: "",
   lunchOut: "",
   lunchIn: "",
   out: "",
@@ -142,11 +146,9 @@ export function normalizeBiometric22ColumnRecord(
 ): Biometric22ColumnRecord {
   try {
     const source = (partial ?? {}) as Record<string, unknown>;
-    const legacyStart = safeCell(source.start ?? source.startIn);
-    const legacyIn = safeCell(source.inTime ?? source.in);
-    const startIn =
-      safeCell(source.startIn) ||
-      [legacyStart, legacyIn].filter(Boolean).join(" ").trim();
+    const legacyStartIn = safeCell(source.startIn);
+    const legacyStart = safeCell(source.start ?? legacyStartIn);
+    const legacyIn = safeCell(source.inTime ?? source.in ?? "");
 
     const merged: Biometric22ColumnRecord = {
       ...EMPTY_BIOMETRIC_22_COLUMN_RECORD,
@@ -157,7 +159,8 @@ export function normalizeBiometric22ColumnRecord(
       department: safeCell(source.department),
       designation: safeCell(source.designation ?? source.designations),
       shift: safeCell(source.shift),
-      startIn,
+      start: legacyStart,
+      in: legacyIn,
       lunchOut: safeCell(source.lunchOut),
       lunchIn: safeCell(source.lunchIn),
       out: safeCell(source.out ?? source.outTime),
@@ -203,9 +206,6 @@ export function bulkRecordFromCells(cells: unknown): Biometric22ColumnRecord {
   try {
     const row = Array.isArray(cells) ? cells : [];
     const cell = (index: number) => safeCell(row[index] ?? "");
-    const startRaw = cell(7);
-    const inRaw = cell(8);
-    const startIn = [startRaw, inRaw].filter(Boolean).join(" ").trim() || startRaw || inRaw;
 
     return normalizeBiometric22ColumnRecord({
       serialNumber: cell(0),
@@ -215,7 +215,8 @@ export function bulkRecordFromCells(cells: unknown): Biometric22ColumnRecord {
       department: cell(4),
       designation: cell(5),
       shift: cell(6),
-      startIn,
+      start: cell(7),
+      in: cell(8),
       lunchOut: cell(9),
       lunchIn: cell(10),
       out: cell(11),

@@ -52,12 +52,12 @@ export const PDF_UPLOAD_SUCCESS_TOKEN = "📄 [PDF Document Uploaded Successfull
 
 const POSITIONAL = {
   code: 1,
-  name: 2,
-  shift: 5,
-  status: 11,
-  ot: 16,
+  name: 3,
+  shift: 6,
+  status: 13,
+  ot: 18,
   date: -1,
-  remarks: 19,
+  remarks: 21,
 } as const;
 
 let xlsxModulePromise: Promise<XlsxModule | null> | null = null;

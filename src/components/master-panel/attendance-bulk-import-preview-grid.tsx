@@ -340,7 +340,6 @@ export default function AttendanceBulkImportPreviewGrid({
       <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[2400px]")}>
         <thead className={MASTER_LIST_HEAD_CLASS}>
           <tr>
-            <th className={MASTER_LIST_HEADER_CELL_CLASS}>#</th>
             {ATTENDANCE_BULK_IMPORT_COLUMNS.map((column) => (
               <th key={column.key} className={MASTER_LIST_HEADER_CELL_CLASS}>
                 {column.label}
@@ -352,7 +351,7 @@ export default function AttendanceBulkImportPreviewGrid({
           {!localRows || localRows.length === 0 ? (
             <tr>
               <td
-                colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 1}
+                colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length}
                 className="px-3 py-8 text-center text-corporate-muted"
               >
                 No bulk import rows to preview.
@@ -390,9 +389,6 @@ export default function AttendanceBulkImportPreviewGrid({
                       isFocused && "bg-corporate-brand-light/40"
                     )}
                   >
-                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-medium")}>
-                      {index + 1}
-                    </td>
                     {ATTENDANCE_BULK_IMPORT_COLUMNS.map((column) => {
                       const isEditing =
                         editingCell?.rowIndex === index &&
@@ -448,7 +444,7 @@ export default function AttendanceBulkImportPreviewGrid({
                 return (
                   <tr key={`bulk-row-error-${index}`}>
                     <td
-                      colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 1}
+                      colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length}
                       className="px-3 py-2 text-xs text-amber-800"
                     >
                       Row {index + 1} recovered safely.

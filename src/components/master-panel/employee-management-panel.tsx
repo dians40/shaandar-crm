@@ -6,24 +6,35 @@ import EmployeeBioDataCard from "./employee-bio-data-card";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
 import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
-import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import SupabaseSetupBanner from "./supabase-setup-banner";
 import { useEmployees } from "@/hooks/use-employees";
 
-type EmployeeViewMode = "list" | "add" | "edit" | "detail" | "manual-attendance";
+type EmployeeWorkspaceTab = "list" | "add" | "manual-attendance";
+
+type EmployeeViewMode = EmployeeWorkspaceTab | "edit" | "detail";
 
 const EMPTY_EMPLOYEES: never[] = [];
 
+const WORKSPACE_TABS: { id: EmployeeWorkspaceTab; label: string }[] = [
+  { id: "list", label: "Employee List" },
+  { id: "add", label: "Add Employee" },
+  { id: "manual-attendance", label: "Manual Attendance & Wages" },
+];
+
 /**
- * Fully functional Employee Management workspace.
- * Includes: split first/last name form, mandatory gender, real-time search,
- * bio-data card, attendance-based delete protection (via EmployeeList + API),
- * and embedded manual attendance entry for supervisors.
+ * Employee Management workspace with embedded manual labor attendance entry.
  */
 export default function EmployeeManagementPanel() {
   const { employees, isLoading, error, reload } = useEmployees();
   const [view, setView] = useState<EmployeeViewMode>("list");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const activeTab: EmployeeWorkspaceTab =
+    view === "add"
+      ? "add"
+      : view === "manual-attendance"
+        ? "manual-attendance"
+        : "list";
 
   const handleBack = useCallback(() => {
     setView("list");
@@ -35,25 +46,12 @@ export default function EmployeeManagementPanel() {
     void reload();
   }, [handleBack, reload]);
 
-  const handleListTab = useCallback(() => {
-    setView("list");
-    setSelectedId(null);
-  }, []);
-
-  const handleAddTab = useCallback(() => {
-    setView("add");
-    setSelectedId(null);
-  }, []);
-
-  const handleManualAttendanceTab = useCallback(() => {
-    setView("manual-attendance");
+  const handleTabChange = useCallback((tab: EmployeeWorkspaceTab) => {
+    setView(tab);
     setSelectedId(null);
   }, []);
 
   const safeEmployees = Array.isArray(employees) ? employees : EMPTY_EMPLOYEES;
-
-  const subTab: "list" | "add" =
-    view === "add" ? "add" : view === "manual-attendance" ? "list" : "list";
 
   const withWorkspaceTabs = (content: ReactNode) => (
     <>
@@ -62,26 +60,23 @@ export default function EmployeeManagementPanel() {
         role="tablist"
         aria-label="Employee workspace views"
       >
-        <ModuleAddListTabBar
-          moduleName="Employee"
-          active={subTab}
-          onList={handleListTab}
-          onAdd={handleAddTab}
-        />
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "manual-attendance"}
-          onClick={handleManualAttendanceTab}
-          className={cn(
-            "rounded-full border px-5 py-2 text-sm font-semibold transition-colors",
-            view === "manual-attendance"
-              ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
-              : "border-corporate-border bg-white text-corporate-text hover:border-corporate-brand/40 hover:bg-corporate-brand/5"
-          )}
-        >
-          Manual Attendance
-        </button>
+        {WORKSPACE_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            onClick={() => handleTabChange(tab.id)}
+            className={cn(
+              "rounded-full border px-5 py-2 text-sm font-semibold transition-colors",
+              activeTab === tab.id
+                ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
+                : "border-corporate-border bg-white text-corporate-text hover:border-corporate-brand/40 hover:bg-corporate-brand/5"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
       {content}
     </>
@@ -126,7 +121,7 @@ export default function EmployeeManagementPanel() {
         isLoading={isLoading}
         error={error}
         onRetry={() => void reload()}
-        onAddNew={handleAddTab}
+        onAddNew={() => handleTabChange("add")}
         onView={(id) => {
           setSelectedId(typeof id === "string" ? id : null);
           setView("detail");

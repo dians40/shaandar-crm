@@ -108,7 +108,7 @@ function resolveDefaultModuleId(
   scope: MasterPanelModuleGroupId,
   moduleParam: string | null
 ): MasterPanelModuleId {
-  if (moduleParam === "attendance-manual-entry") {
+  if (moduleParam === "attendance-manual-entry" || moduleParam === "attendance-system") {
     return "employee-management";
   }
 

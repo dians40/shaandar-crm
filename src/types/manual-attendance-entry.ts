@@ -5,6 +5,7 @@ export type ManualAttendanceFormState = {
   attendanceDate: string;
   status: ManualAttendanceStatus | "";
   overtimeHours: string;
+  dailyWage: string;
   remarks: string;
 };
 
@@ -12,9 +13,9 @@ export const MANUAL_ATTENDANCE_STATUS_OPTIONS: {
   value: ManualAttendanceStatus;
   label: string;
 }[] = [
-  { value: "present", label: "Present (🔴 पूर्ण उपस्थिति)" },
-  { value: "absent", label: "Absent (❌ अनुपस्थित)" },
-  { value: "half_day", label: "Half Day (🟡 आधा दिन)" },
+  { value: "present", label: "Present — Full Day" },
+  { value: "absent", label: "Absent" },
+  { value: "half_day", label: "Half Day" },
   { value: "paid_leave", label: "Paid Leave" },
 ];
 
@@ -23,6 +24,7 @@ export const EMPTY_MANUAL_ATTENDANCE_FORM: ManualAttendanceFormState = {
   attendanceDate: new Date().toISOString().slice(0, 10),
   status: "",
   overtimeHours: "0",
+  dailyWage: "",
   remarks: "",
 };
 

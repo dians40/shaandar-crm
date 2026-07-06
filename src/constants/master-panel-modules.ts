@@ -331,15 +331,6 @@ const TRANSACTION_MODULES: MasterPanelModule[] = [
     placeholderMessage: "Receipt tracker coming soon",
   },
   {
-    id: "attendance-system",
-    serial: 26,
-    navLabel: "Attendance",
-    title: "Attendance System",
-    subtitle: "Daily labor attendance",
-    icon: CalendarCheck,
-    placeholderMessage: "Attendance System Coming Soon",
-  },
-  {
     id: "overtime-tracker",
     serial: 27,
     navLabel: "Overtime",
@@ -361,6 +352,15 @@ const TRANSACTION_MODULES: MasterPanelModule[] = [
 
 /** Workspace modules embedded inside administration screens — excluded from sidebar groups. */
 const INTERNAL_WORKSPACE_MODULES: MasterPanelModule[] = [
+  {
+    id: "attendance-system",
+    serial: 26,
+    navLabel: "Attendance",
+    title: "Attendance System",
+    subtitle: "Daily labor attendance workflow engine",
+    icon: CalendarCheck,
+    placeholderMessage: "Attendance System Coming Soon",
+  },
   {
     id: "attendance-manual-entry",
     serial: 29,
@@ -402,6 +402,12 @@ export function isMasterPanelModuleId(
   if (!id) return false;
   return MODULE_MAP.has(id as MasterPanelModuleId);
 }
+
+/** Labor attendance modules — routed via Employee Management, never the Transactions menu. */
+export const EMPLOYEE_EMBEDDED_MODULE_IDS: MasterPanelModuleId[] = [
+  "attendance-system",
+  "attendance-manual-entry",
+];
 
 /** Exactly two executive groups — Administration and Transaction. */
 export const MASTER_PANEL_MODULE_GROUPS: MasterPanelModuleGroup[] = [

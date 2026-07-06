@@ -8,6 +8,7 @@ import { sidebarNavItems } from "@/constants/nav-config";
 import {
   getGroupById,
   getMasterPanelModule,
+  EMPLOYEE_EMBEDDED_MODULE_IDS,
   isMasterPanelModuleId,
   MASTER_PANEL_MODULE_GROUPS,
   type MasterPanelModuleGroupId,
@@ -87,8 +88,10 @@ export default function Sidebar({
         "master-panel": (getGroupById("administration")?.moduleIds ?? []).filter((moduleId) =>
           canViewMasterPanelModule(selectedRole, moduleId)
         ),
-        // Transactions menu always lists the full pre-configured operational routes.
-        transactions: getGroupById("transaction")?.moduleIds ?? [],
+        // Transactions menu lists operational routes only (no labor attendance modules).
+        transactions: (getGroupById("transaction")?.moduleIds ?? []).filter(
+          (moduleId) => !EMPLOYEE_EMBEDDED_MODULE_IDS.includes(moduleId)
+        ),
       }) satisfies Record<ExpandableSectionId, MasterPanelModuleId[]>,
     [canViewMasterPanelModule, selectedRole]
   );

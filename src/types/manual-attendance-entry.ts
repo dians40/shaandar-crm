@@ -46,10 +46,16 @@ export function normalizeBiometricCode(value: unknown): BiometricShiftCode {
       .trim()
       .toUpperCase();
     if (!token) return BIOMETRIC_DAY_CODE;
-    if (token.includes(BIOMETRIC_NIGHT_CODE)) return BIOMETRIC_NIGHT_CODE;
-    if (token.includes(BIOMETRIC_DAY_CODE)) return BIOMETRIC_DAY_CODE;
-    if (token.includes("NIGHT") || token.includes("G11")) return BIOMETRIC_NIGHT_CODE;
-    if (token.includes("DAY") || token.includes("DY1")) return BIOMETRIC_DAY_CODE;
+    if (token.includes(BIOMETRIC_NIGHT_CODE) || token.includes("G11")) {
+      return BIOMETRIC_NIGHT_CODE;
+    }
+    if (
+      token.includes(BIOMETRIC_DAY_CODE) ||
+      token.includes("DY") ||
+      token.includes("DAY")
+    ) {
+      return BIOMETRIC_DAY_CODE;
+    }
     return BIOMETRIC_DAY_CODE;
   } catch {
     return BIOMETRIC_DAY_CODE;

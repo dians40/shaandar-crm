@@ -121,11 +121,238 @@ const BIOMETRIC_POSITIONAL_LAYOUT = {
 } as const;
 
 const BIOMETRIC_MIN_COLUMNS = 15;
-const BIOMETRIC_MAX_WIDTH = 32;
 
 const FALLBACK_EMPLOYEE_CODE = "TEMP_CODE";
 const FALLBACK_EMPLOYEE_NAME = "Unknown";
 const DEFAULT_IMPORT_STATUS: ManualAttendanceStatus = BIOMETRIC_DAY_CODE;
+
+/** Flat row bag — values resolved by fuzzy key scan, never row.Shift / row["Shift"]. */
+type FlatRowBag = {
+  entries: Array<{ key: string; value: string }>;
+  byIndex: string[];
+};
+
+const FLAT_CODE_HINTS = [/pay\s*code/i, /card\s*number/i, /cardnumber/i, /code/i, /\bid\b/i, /emp/i];
+const FLAT_NAME_HINTS = [/employee\s*name/i, /emp\s*name/i, /^name$/i, /worker/i, /staff/i];
+const FLAT_DATE_HINTS = [/attendancedate/i, /workdate/i, /attdate/i, /date/i];
+const FLAT_STATUS_HINTS = [/^status$/i, /attendancestatus/i, /attendance/i, /present/i];
+const FLAT_SHIFT_HINTS = [/\bshift\b/i, /workshift/i, /dayshift/i];
+const FLAT_OT_HINTS = [
+  /^ot$/i,
+  /overtime(?!\s*amount)/i,
+  /othours/i,
+  /overtimeamount/i,
+  /over\s*stay/i,
+  /overstay/i,
+];
+const FLAT_REMARKS_HINTS = [/remarks/i, /notes/i, /comment/i, /^manual$/i];
+
+type FlatRowPositionalHints = {
+  codeIndex?: number;
+  nameIndex?: number;
+  dateIndex?: number;
+  statusIndex?: number;
+  shiftIndex?: number;
+  otIndex?: number;
+  otShiftIndex?: number;
+  remarksIndex?: number;
+};
+
+function normalizeFlatKey(value: string): string {
+  try {
+    return String(value ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  } catch {
+    return "";
+  }
+}
+
+function buildFlatRowBag(rawRow: unknown, headerLabels: string[] = []): FlatRowBag {
+  const byIndex: string[] = [];
+  const entries: Array<{ key: string; value: string }> = [];
+  const seenKeys = new Set<string>();
+
+  const appendEntry = (rawKey: string, value: unknown) => {
+    try {
+      const text =
+        value != null && typeof value === "object" && !Array.isArray(value)
+          ? cellToString(value)
+          : safeString(value);
+      const normalized = normalizeFlatKey(rawKey);
+      if (normalized && !seenKeys.has(normalized)) {
+        seenKeys.add(normalized);
+        entries.push({ key: normalized, value: text });
+      }
+      const compact = normalizeHeader(rawKey);
+      if (compact && !seenKeys.has(compact)) {
+        seenKeys.add(compact);
+        entries.push({ key: compact, value: text });
+      }
+    } catch {
+      // Never throw from flat bag construction.
+    }
+  };
+
+  try {
+    if (Array.isArray(rawRow)) {
+      for (let index = 0; index < rawRow.length; index += 1) {
+        try {
+          const text = safeString(rawRow[index]);
+          byIndex.push(text);
+          appendEntry(String(index), text);
+          const header = headerLabels[index];
+          if (header) appendEntry(header, text);
+        } catch {
+          byIndex.push("");
+        }
+      }
+      return { entries, byIndex };
+    }
+
+    if (rawRow && typeof rawRow === "object") {
+      for (const [key, value] of Object.entries(rawRow as Record<string, unknown>)) {
+        try {
+          const text = cellToString(value);
+          byIndex.push(text);
+          appendEntry(key, text);
+        } catch {
+          continue;
+        }
+      }
+    }
+  } catch {
+    return { entries: [], byIndex: [] };
+  }
+
+  return { entries, byIndex };
+}
+
+function pickFromFlatBag(
+  bag: FlatRowBag,
+  patterns: RegExp[],
+  fallbackIndex = -1,
+  consumed: Set<string> = new Set()
+): string {
+  try {
+    for (const entry of bag.entries) {
+      if (consumed.has(entry.key)) continue;
+      const probe = `${entry.key} ${entry.value}`;
+      if (patterns.some((pattern) => pattern.test(probe) || pattern.test(entry.key))) {
+        consumed.add(entry.key);
+        return entry.value;
+      }
+    }
+
+    if (fallbackIndex >= 0 && fallbackIndex < bag.byIndex.length) {
+      return bag.byIndex[fallbackIndex] ?? "";
+    }
+  } catch {
+    return "";
+  }
+
+  return "";
+}
+
+function translateFlatRowToPartial(
+  rawRow: unknown,
+  headerLabels: string[],
+  positionalHints: FlatRowPositionalHints = {}
+): Partial<AttendanceImportRow> {
+  try {
+    const bag = buildFlatRowBag(rawRow, headerLabels);
+    const consumed = new Set<string>();
+
+    const codeFallback =
+      typeof positionalHints.codeIndex === "number" && positionalHints.codeIndex >= 0
+        ? positionalHints.codeIndex
+        : BIOMETRIC_POSITIONAL_LAYOUT.codeIndex;
+    const nameFallback =
+      typeof positionalHints.nameIndex === "number" && positionalHints.nameIndex >= 0
+        ? positionalHints.nameIndex
+        : BIOMETRIC_POSITIONAL_LAYOUT.nameIndex;
+    const dateFallback =
+      typeof positionalHints.dateIndex === "number" && positionalHints.dateIndex >= 0
+        ? positionalHints.dateIndex
+        : -1;
+    const statusFallback =
+      typeof positionalHints.statusIndex === "number" && positionalHints.statusIndex >= 0
+        ? positionalHints.statusIndex
+        : BIOMETRIC_POSITIONAL_LAYOUT.statusIndex;
+    const shiftFallback =
+      typeof positionalHints.shiftIndex === "number" && positionalHints.shiftIndex >= 0
+        ? positionalHints.shiftIndex
+        : BIOMETRIC_POSITIONAL_LAYOUT.shiftIndex;
+    const otFallback =
+      typeof positionalHints.otIndex === "number" && positionalHints.otIndex >= 0
+        ? positionalHints.otIndex
+        : BIOMETRIC_POSITIONAL_LAYOUT.otIndex;
+    const otShiftFallback =
+      typeof positionalHints.otShiftIndex === "number" && positionalHints.otShiftIndex >= 0
+        ? positionalHints.otShiftIndex
+        : otFallback;
+    const remarksFallback =
+      typeof positionalHints.remarksIndex === "number" && positionalHints.remarksIndex >= 0
+        ? positionalHints.remarksIndex
+        : BIOMETRIC_POSITIONAL_LAYOUT.manualIndex;
+
+    let employeeCode = pickFromFlatBag(bag, FLAT_CODE_HINTS, codeFallback, consumed);
+    let employeeName = pickFromFlatBag(bag, FLAT_NAME_HINTS, nameFallback, consumed);
+
+    if (!employeeCode && employeeName) {
+      employeeCode = pickFromFlatBag(bag, FLAT_CODE_HINTS, codeFallback + 1, consumed);
+    }
+    if (!employeeName && employeeCode) {
+      employeeName = pickFromFlatBag(bag, FLAT_NAME_HINTS, nameFallback + 1, consumed);
+    }
+
+    if (!employeeCode && !employeeName) {
+      const seed = bag.byIndex.find((cell) => cell.length > 0) ?? "";
+      employeeCode = seed ? deriveAutoEmployeeCode(seed) : FALLBACK_EMPLOYEE_CODE;
+      employeeName = seed || FALLBACK_EMPLOYEE_NAME;
+    }
+
+    const shiftRaw = sanitizeBiometricShiftToken(
+      pickFromFlatBag(bag, FLAT_SHIFT_HINTS, shiftFallback, consumed)
+    );
+    const statusRaw = pickFromFlatBag(bag, FLAT_STATUS_HINTS, statusFallback, consumed);
+    const otValue = sanitizeBiometricShiftToken(
+      pickFromFlatBag(bag, FLAT_OT_HINTS, otFallback, consumed)
+    );
+    const otShiftRaw = sanitizeBiometricShiftToken(
+      pickFromFlatBag(bag, FLAT_OT_HINTS, otShiftFallback, consumed) || otValue
+    );
+    const attendanceDate = normalizeAttendanceDate(
+      pickFromFlatBag(bag, FLAT_DATE_HINTS, dateFallback, consumed)
+    );
+    const remarks = pickFromFlatBag(bag, FLAT_REMARKS_HINTS, remarksFallback, consumed);
+
+    const status = parseBiometricStatus(statusRaw, shiftRaw);
+    const overtimeShift = parseBiometricOvertimeShift(otShiftRaw, otValue, shiftRaw);
+
+    const remarkParts = [
+      shiftRaw ? `Shift: ${normalizeBiometricCode(shiftRaw)}` : `Shift: ${BIOMETRIC_DAY_CODE}`,
+      remarks,
+    ].filter(Boolean);
+
+    return {
+      employeeCode: employeeCode || FALLBACK_EMPLOYEE_CODE,
+      employeeName: employeeName || FALLBACK_EMPLOYEE_NAME,
+      attendanceDate,
+      status,
+      overtimeShift,
+      remarks: remarkParts.join(" · "),
+    };
+  } catch {
+    return {
+      employeeCode: FALLBACK_EMPLOYEE_CODE,
+      employeeName: FALLBACK_EMPLOYEE_NAME,
+      status: DEFAULT_IMPORT_STATUS,
+      remarks: "Recovered by flat row translation layer.",
+    };
+  }
+}
 
 function safeString(value: unknown): string {
   try {
@@ -136,51 +363,6 @@ function safeString(value: unknown): string {
     return String(value).trim();
   } catch {
     return "";
-  }
-}
-
-function resolveMatrixCell(matrix: string[], index: number | undefined): string {
-  try {
-    if (index == null || index < 0 || index >= matrix.length) return "";
-    return safeString(matrix[index]);
-  } catch {
-    return "";
-  }
-}
-
-/** Ultra-safe 25+ column coercion — never throws on null, sparse, or object rows. */
-function buildBiometricSanitizationMatrix(rawCells: unknown): string[] {
-  try {
-    const matrix = Array.from({ length: BIOMETRIC_MAX_WIDTH }, () => "");
-
-    if (Array.isArray(rawCells)) {
-      for (let index = 0; index < rawCells.length && index < BIOMETRIC_MAX_WIDTH; index += 1) {
-        try {
-          matrix[index] = safeString(rawCells[index]);
-        } catch {
-          matrix[index] = "";
-        }
-      }
-      return matrix;
-    }
-
-    if (rawCells && typeof rawCells === "object") {
-      const record = rawCells as Record<string, unknown>;
-      for (const [key, value] of Object.entries(record)) {
-        try {
-          const index = Number(key);
-          if (Number.isInteger(index) && index >= 0 && index < BIOMETRIC_MAX_WIDTH) {
-            matrix[index] = safeString(value);
-          }
-        } catch {
-          continue;
-        }
-      }
-    }
-
-    return matrix;
-  } catch {
-    return Array.from({ length: BIOMETRIC_MAX_WIDTH }, () => "");
   }
 }
 
@@ -287,14 +469,13 @@ function parseBiometricOvertimeShift(
 
     return normalizeBiometricCode(shiftHint);
   } catch {
-    return BIOMETRIC_DAY_CODE;
+    return "";
   }
 }
 
 function parseBiometricStatus(
   statusRaw: string,
-  shiftRaw: string,
-  _hoursWorked = ""
+  shiftRaw: string
 ): ManualAttendanceStatus {
   try {
     const statusToken = sanitizeBiometricShiftToken(statusRaw);
@@ -313,111 +494,22 @@ function parseBiometricStatus(
   }
 }
 
-function processBiometricImportRow(
-  cells: unknown,
-  columnMap: ImportColumnMap
-): Partial<AttendanceImportRow> {
-  try {
-    const matrix = buildBiometricSanitizationMatrix(cells);
-
-    let employeeCode = resolveMatrixCell(matrix, columnMap.codeIndex);
-    let employeeName =
-      resolveMatrixCell(matrix, columnMap.nameIndex) ||
-      resolveMatrixCell(matrix, (columnMap.codeIndex ?? -1) + 1);
-
-    if (!employeeCode && !employeeName) {
-      const seedIndex = matrix.findIndex((cell) => cell.length > 0);
-      const seed = seedIndex >= 0 ? matrix[seedIndex]! : "";
-      employeeCode = seed ? deriveAutoEmployeeCode(seed) : FALLBACK_EMPLOYEE_CODE;
-      employeeName = seed || FALLBACK_EMPLOYEE_NAME;
-    }
-
-    const statusRaw = resolveMatrixCell(matrix, columnMap.statusIndex);
-    const shiftToken = sanitizeBiometricShiftToken(resolveMatrixCell(matrix, columnMap.shiftIndex));
-    const hoursWorked = resolveMatrixCell(matrix, columnMap.hoursWorkedIndex);
-    const otValue = sanitizeBiometricShiftToken(resolveMatrixCell(matrix, columnMap.otIndex));
-    const otAmount = sanitizeBiometricShiftToken(
-      resolveMatrixCell(matrix, columnMap.overtimeAmountIndex)
-    );
-    const overStay = sanitizeBiometricShiftToken(resolveMatrixCell(matrix, columnMap.overStayIndex));
-
-    const status = parseBiometricStatus(statusRaw, shiftToken, hoursWorked);
-    const overtimeShift = parseBiometricOvertimeShift(otValue, otAmount, shiftToken, overStay);
-
-    const remarks = [
-      shiftToken ? `Shift: ${normalizeBiometricCode(shiftToken)}` : `Shift: ${BIOMETRIC_DAY_CODE}`,
-      buildBiometricRemarks(matrix, columnMap),
-      resolveMatrixCell(matrix, columnMap.remarksIndex),
-    ]
-      .filter(Boolean)
-      .join(" · ");
-
-    return {
-      employeeCode: employeeCode || FALLBACK_EMPLOYEE_CODE,
-      employeeName: employeeName || FALLBACK_EMPLOYEE_NAME,
-      attendanceDate: normalizeAttendanceDate(resolveMatrixCell(matrix, columnMap.dateIndex)),
-      status,
-      overtimeShift,
-      remarks,
-    };
-  } catch {
-    return {
-      employeeCode: FALLBACK_EMPLOYEE_CODE,
-      employeeName: FALLBACK_EMPLOYEE_NAME,
-      status: DEFAULT_IMPORT_STATUS,
-      remarks: "Recovered by biometric sanitization matrix.",
-    };
-  }
-}
-
 function processRowThroughSanitizationMatrix(
   cells: unknown,
-  columnMap: ImportColumnMap
+  columnMap: ImportColumnMap,
+  headerLabels: string[] = []
 ): AttendanceImportRow {
   try {
-    if (columnMap.isBiometricLayout) {
-      return finalizeImportRow(processBiometricImportRow(cells, columnMap));
-    }
-
-    const parsed = parseGenericImportRow(cells, columnMap);
-    return finalizeImportRow(parsed ?? {});
-  } catch {
+    const partial = translateFlatRowToPartial(cells, headerLabels, columnMap);
+    return finalizeImportRow(partial);
+  } catch (error) {
+    console.log(error);
     return finalizeImportRow({
       employeeCode: FALLBACK_EMPLOYEE_CODE,
       employeeName: FALLBACK_EMPLOYEE_NAME,
       status: DEFAULT_IMPORT_STATUS,
       remarks: "Recovered by sanitization matrix.",
     });
-  }
-}
-
-function buildBiometricRemarks(rowCells: unknown, columnMap: ImportColumnMap): string {
-  try {
-    const parts: string[] = [];
-    const append = (index: number | undefined, label: string) => {
-      if (index == null || index < 0) return;
-      const value = safeCell(rowCells, index);
-      if (value) parts.push(`${label}: ${value}`);
-    };
-
-    append(columnMap.serialIndex, "Serial");
-    append(columnMap.departmentIndex, "Department");
-    append(columnMap.designationIndex, "Designation");
-    append(columnMap.startInIndex, "Start In");
-    append(columnMap.lunchOutIndex, "Lunch Out");
-    append(columnMap.lunchInIndex, "Lunch In");
-    append(columnMap.outIndex, "Out");
-    append(columnMap.hoursWorkedIndex, "Hours Worked");
-    append(columnMap.earlyArrivalIndex, "Early Arrival");
-    append(columnMap.shiftLateIndex, "Shift Late");
-    append(columnMap.earlyAccessIndex, "Early Access");
-    append(columnMap.lunchIndex, "Lunch");
-    append(columnMap.overStayIndex, "Over Stay");
-    append(columnMap.manualIndex, "Manual");
-
-    return parts.join(" · ");
-  } catch {
-    return "";
   }
 }
 
@@ -635,14 +727,6 @@ export function finalizeImportRow(row: Partial<AttendanceImportRow> | null | und
   }
 }
 
-function rowHasContent(cells: string[]): boolean {
-  try {
-    return cells.some((cell) => String(cell ?? "").trim().length > 0);
-  } catch {
-    return false;
-  }
-}
-
 function deriveAutoEmployeeCode(seed: string): string {
   const normalized = seed.trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
   return normalized ? `AUTO-${normalized}` : `AUTO-${Date.now().toString().slice(-8)}`;
@@ -784,6 +868,25 @@ function sheetToMatrix(XLSX: XlsxModule, sheet: import("xlsx").WorkSheet): strin
             matrix.push(row);
           }
           continue;
+        }
+
+        if (rawRow && typeof rawRow === "object") {
+          try {
+            const record = rawRow as Record<string, unknown>;
+            const row = Object.keys(record).map((key) => {
+              try {
+                return cellToString(record[key], XLSX);
+              } catch {
+                return "";
+              }
+            });
+            if (row.some((cell) => cell.length > 0)) {
+              matrix.push(row);
+            }
+            continue;
+          } catch {
+            continue;
+          }
         }
 
         const single = cellToString(rawRow, XLSX);
@@ -1320,59 +1423,6 @@ function normalizeAttendanceDate(value: string): string {
   return todayIsoDate();
 }
 
-function safeCell(cells: unknown, index: number): string {
-  try {
-    if (!Array.isArray(cells) || index < 0 || index >= cells.length) return "";
-    return safeString(cells[index]);
-  } catch {
-    return "";
-  }
-}
-
-function parseGenericImportRow(
-  cells: unknown,
-  columnMap: ImportColumnMap
-): Partial<AttendanceImportRow> | null {
-  try {
-    const rowCells = Array.isArray(cells)
-      ? cells.map((cell) => safeString(cell))
-      : buildBiometricSanitizationMatrix(cells);
-
-    if (!rowHasContent(rowCells)) {
-      return null;
-    }
-
-    let employeeCode = safeCell(rowCells, columnMap.codeIndex);
-    let employeeName =
-      safeCell(rowCells, columnMap.nameIndex) ||
-      (columnMap.codeIndex >= 0
-        ? safeCell(rowCells, columnMap.codeIndex + 1)
-        : safeCell(rowCells, 0));
-
-    if (!employeeName && !employeeCode) {
-      const seed = rowCells.find((cell) => safeString(cell).length > 0) ?? "";
-      employeeCode = deriveAutoEmployeeCode(safeString(seed));
-      employeeName = safeString(seed) || FALLBACK_EMPLOYEE_NAME;
-    }
-
-    const statusRaw = safeCell(rowCells, columnMap.statusIndex);
-    const shiftRaw = safeCell(rowCells, columnMap.shiftIndex);
-    const otShiftRaw =
-      safeCell(rowCells, columnMap.otShiftIndex) || safeCell(rowCells, columnMap.otIndex);
-
-    return {
-      employeeCode: employeeCode || FALLBACK_EMPLOYEE_CODE,
-      employeeName: employeeName || FALLBACK_EMPLOYEE_NAME,
-      attendanceDate: normalizeAttendanceDate(safeCell(rowCells, columnMap.dateIndex)),
-      status: parseStatus(statusRaw || BIOMETRIC_DAY_CODE, shiftRaw),
-      overtimeShift: parseOvertimeShift(otShiftRaw),
-      remarks: safeCell(rowCells, columnMap.remarksIndex),
-    };
-  } catch {
-    return null;
-  }
-}
-
 export function parseAttendanceImportMatrix(matrix: string[][]): AttendanceImportRow[] {
   return parseAttendanceImportMatrixSafe(matrix).rows;
 }
@@ -1392,12 +1442,13 @@ export function parseAttendanceImportMatrixSafe(
     const headerRowIndex = findHeaderRowIndex(sanitized);
     const rawHeaderCells = sanitized[headerRowIndex] ?? [];
     const headerCells = rawHeaderCells.map(normalizeHeader);
+    const headerLabels = rawHeaderCells.map((cell) => safeString(cell));
     const dataRows = sanitized.slice(headerRowIndex + 1);
     const columnMap = buildFallbackColumnMap(rawHeaderCells, headerCells, dataRows);
 
     if (columnMap.isBiometricLayout) {
       warnings.push(
-        "Industrial biometric 25+ column layout detected. Sanitization matrix applied with crash-proof field extraction."
+        "Industrial biometric layout detected. Flat fuzzy row translation applied with crash-proof field extraction."
       );
     }
 
@@ -1410,7 +1461,7 @@ export function parseAttendanceImportMatrixSafe(
 
     if (usedFallback) {
       warnings.push(
-        "Header row was shifted or missing. Fuzzy positional column mapping was applied with sanitized defaults."
+        "Header row was shifted or missing. Flat fuzzy key mapping was applied with sanitized defaults."
       );
     }
 
@@ -1424,29 +1475,36 @@ export function parseAttendanceImportMatrixSafe(
 
     const rows: AttendanceImportRow[] = [];
 
-    for (const cells of dataRows) {
-      try {
-        const hasContent = Array.isArray(cells)
-          ? cells.some((cell) => safeString(cell).length > 0)
-          : buildBiometricSanitizationMatrix(cells).some((cell) => cell.length > 0);
+    try {
+      for (const cells of dataRows) {
+        try {
+          const bag = buildFlatRowBag(cells, headerLabels);
+          const hasContent =
+            bag.byIndex.some((cell) => cell.length > 0) ||
+            bag.entries.some((entry) => entry.value.length > 0);
 
-        if (!hasContent) {
-          skippedRows += 1;
-          continue;
+          if (!hasContent) {
+            skippedRows += 1;
+            continue;
+          }
+
+          rows.push(processRowThroughSanitizationMatrix(cells, columnMap, headerLabels));
+        } catch (rowError) {
+          console.log(rowError);
+          rows.push(
+            finalizeImportRow({
+              employeeCode: FALLBACK_EMPLOYEE_CODE,
+              employeeName: FALLBACK_EMPLOYEE_NAME,
+              status: DEFAULT_IMPORT_STATUS,
+              remarks: "Recovered during bulk row sanitization.",
+            })
+          );
+          warnings.push("One row was recovered using fallback attendance values.");
         }
-
-        rows.push(processRowThroughSanitizationMatrix(cells, columnMap));
-      } catch {
-        rows.push(
-          finalizeImportRow({
-            employeeCode: FALLBACK_EMPLOYEE_CODE,
-            employeeName: FALLBACK_EMPLOYEE_NAME,
-            status: DEFAULT_IMPORT_STATUS,
-            remarks: "Recovered during bulk row sanitization.",
-          })
-        );
-        warnings.push("One row was recovered using fallback attendance values.");
       }
+    } catch (iterationError) {
+      console.log(iterationError);
+      warnings.push("Row iteration recovered safely after a parse interruption.");
     }
 
     const finalizedRows = rows.map((row) => finalizeImportRow(row));
@@ -1456,7 +1514,8 @@ export function parseAttendanceImportMatrixSafe(
     }
 
     return { rows: finalizedRows, skippedRows, warnings };
-  } catch {
+  } catch (matrixError) {
+    console.log(matrixError);
     warnings.push("Unexpected matrix parse failure. Returning empty sanitized result.");
     return { rows: [], skippedRows: 0, warnings };
   }
@@ -1507,47 +1566,78 @@ function mergeParseOutcomes(
 }
 
 function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     try {
       const reader = new FileReader();
       reader.onload = () => {
         try {
-          if (!(reader.result instanceof ArrayBuffer)) {
-            reject(new Error("Failed to read file as binary data."));
+          if (reader.result instanceof ArrayBuffer) {
+            resolve(reader.result);
             return;
           }
-          resolve(reader.result);
+          console.log("FileReader returned a non-ArrayBuffer result.");
+          resolve(new ArrayBuffer(0));
         } catch (error) {
-          reject(
-            error instanceof Error
-              ? error
-              : new Error("Failed to process the selected file buffer.")
-          );
+          console.log(error);
+          resolve(new ArrayBuffer(0));
         }
       };
-      reader.onerror = () => reject(new Error("Failed to read the selected file."));
-      reader.onabort = () => reject(new Error("File read was cancelled."));
+      reader.onerror = () => {
+        try {
+          console.log(new Error("Failed to read the selected file."));
+        } catch (error) {
+          console.log(error);
+        }
+        resolve(new ArrayBuffer(0));
+      };
+      reader.onabort = () => {
+        try {
+          console.log(new Error("File read was cancelled."));
+        } catch (error) {
+          console.log(error);
+        }
+        resolve(new ArrayBuffer(0));
+      };
       reader.readAsArrayBuffer(file);
     } catch (error) {
-      reject(
-        error instanceof Error ? error : new Error("Unable to initialize file reader for upload.")
-      );
+      console.log(error);
+      resolve(new ArrayBuffer(0));
     }
   });
 }
 
 function readFileAsText(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     try {
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ""));
-      reader.onerror = () => reject(new Error("Failed to read the selected file."));
-      reader.onabort = () => reject(new Error("File read was cancelled."));
+      reader.onload = () => {
+        try {
+          resolve(String(reader.result ?? ""));
+        } catch (error) {
+          console.log(error);
+          resolve("");
+        }
+      };
+      reader.onerror = () => {
+        try {
+          console.log(new Error("Failed to read the selected file."));
+        } catch (error) {
+          console.log(error);
+        }
+        resolve("");
+      };
+      reader.onabort = () => {
+        try {
+          console.log(new Error("File read was cancelled."));
+        } catch (error) {
+          console.log(error);
+        }
+        resolve("");
+      };
       reader.readAsText(file);
     } catch (error) {
-      reject(
-        error instanceof Error ? error : new Error("Unable to initialize file reader for upload.")
-      );
+      console.log(error);
+      resolve("");
     }
   });
 }
@@ -1584,13 +1674,15 @@ export async function parseAttendanceImportFileSafe(
         const text = await readFileAsText(file);
         const outcome = parseAttendanceImportMatrixSafe(matrixFromCsvText(text));
         return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
-      } catch {
+      } catch (csvError) {
+        console.log(csvError);
         try {
           const buffer = await readFileAsArrayBufferResilient(file);
           const fallback = parseAttendanceImportMatrixSafe(tryMatrixFromEmbeddedCsvText(buffer));
           warnings.push("CSV text decode failed. Recovered rows from embedded buffer text.");
           return { ...fallback, warnings: [...warnings, ...fallback.warnings] };
-        } catch {
+        } catch (csvFallbackError) {
+          console.log(csvFallbackError);
           return {
             rows: [],
             skippedRows: 0,
@@ -1618,7 +1710,8 @@ export async function parseAttendanceImportFileSafe(
         }
 
         return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
-      } catch {
+      } catch (excelError) {
+        console.log(excelError);
         return {
           rows: [],
           skippedRows: 0,
@@ -1634,7 +1727,8 @@ export async function parseAttendanceImportFileSafe(
         warnings.push(...pdfWarnings);
         const outcome = parseAttendanceImportMatrixSafe(matrix);
         return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
-      } catch {
+      } catch (pdfError) {
+        console.log(pdfError);
         return {
           rows: [],
           skippedRows: 0,
@@ -1648,7 +1742,8 @@ export async function parseAttendanceImportFileSafe(
       skippedRows: 0,
       warnings: [...warnings, "Unsupported file type. Upload a .xlsx, .xls, .pdf, or .csv file."],
     };
-  } catch {
+  } catch (fatalError) {
+    console.log(fatalError);
     return {
       rows: [],
       skippedRows: 0,

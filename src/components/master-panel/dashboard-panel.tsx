@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   Boxes,
@@ -11,6 +12,17 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import {
+  collectDashboardMaintenanceAlerts,
+  countUpcomingMaintenanceAlerts,
+  formatMaintenanceAlertLabel,
+  PREVENTIVE_ALERT_MAX_DAYS,
+  PREVENTIVE_ALERT_MIN_DAYS,
+} from "@/lib/repair-maintenance-alerts";
+import {
+  readMachineRepairLogs,
+  readVehicleRepairLogs,
+} from "@/lib/repair-maintenance-store";
 import { cn } from "@/lib/utils";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
@@ -45,10 +57,21 @@ const QUICK_GLANCE = {
 
 const FLEET_STATUS = {
   onRoute: 6,
-  maintenanceLock: 2,
   awaitingAccountant: 3,
   dieselBurnRate: 28450,
 };
+
+function formatRupee(value: number) {
+  return `₹${value.toLocaleString("en-IN")}`;
+}
+
+function formatDateLabel(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium" }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
+}
 
 function StaffingBadge({
   assigned,
@@ -82,11 +105,24 @@ function StaffingBadge({
   );
 }
 
-function formatRupee(value: number) {
-  return `₹${value.toLocaleString("en-IN")}`;
-}
-
 export default function DashboardPanel() {
+  const [maintenanceAlertCount, setMaintenanceAlertCount] = useState(0);
+  const [maintenanceAlerts, setMaintenanceAlerts] = useState<
+    ReturnType<typeof collectDashboardMaintenanceAlerts>
+  >([]);
+
+  useEffect(() => {
+    try {
+      const machineLogs = readMachineRepairLogs();
+      const vehicleLogs = readVehicleRepairLogs();
+      setMaintenanceAlerts(collectDashboardMaintenanceAlerts(machineLogs, vehicleLogs));
+      setMaintenanceAlertCount(countUpcomingMaintenanceAlerts(machineLogs, vehicleLogs));
+    } catch {
+      setMaintenanceAlerts([]);
+      setMaintenanceAlertCount(0);
+    }
+  }, []);
+
   const totalActiveLabor = useMemo(
     () => MACHINE_ALLOCATIONS.reduce((sum, row) => sum + row.assigned, 0),
     []
@@ -118,6 +154,44 @@ export default function DashboardPanel() {
           </div>
         </div>
       </div>
+
+      {maintenanceAlertCount > 0 && (
+        <div
+          className="rounded-xl border-2 border-amber-400 bg-amber-50 px-4 py-4 shadow-md"
+          role="alert"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="rounded-lg bg-amber-200 p-2 text-amber-900">
+                <Wrench className="h-5 w-5" aria-hidden />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-amber-950">
+                  Preventive Maintenance Alert — {maintenanceAlertCount} asset
+                  {maintenanceAlertCount === 1 ? "" : "s"} due within{" "}
+                  {PREVENTIVE_ALERT_MIN_DAYS}–{PREVENTIVE_ALERT_MAX_DAYS} days
+                </p>
+                <ul className="mt-2 space-y-1 text-xs text-amber-900">
+                  {maintenanceAlerts.slice(0, 4).map((alert) => (
+                    <li key={alert.id}>
+                      {alert.assetType === "machine" ? "Machine" : "Vehicle"}:{" "}
+                      <span className="font-semibold">{alert.assetLabel}</span> — due{" "}
+                      {formatDateLabel(alert.nextMaintenanceDate)} (
+                      {formatMaintenanceAlertLabel(alert.daysUntilDue)})
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <Link
+              href="/transactions?module=repair-maintenance"
+              className="inline-flex shrink-0 items-center rounded-full border border-amber-400 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wide text-amber-900 hover:bg-amber-100"
+            >
+              Open Repair &amp; Maintenance
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Row 1 — Labor & Attendance */}
       <div>
@@ -222,8 +296,9 @@ export default function DashboardPanel() {
               </div>
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                 <p className="text-xs uppercase tracking-wide text-amber-700">Maintenance Lock</p>
-                <p className="mt-1 text-3xl font-bold text-amber-800">
-                  {FLEET_STATUS.maintenanceLock}
+                <p className="mt-1 text-3xl font-bold text-amber-800">{maintenanceAlertCount}</p>
+                <p className="mt-1 text-[10px] text-amber-800">
+                  {PREVENTIVE_ALERT_MIN_DAYS}–{PREVENTIVE_ALERT_MAX_DAYS} day alert window
                 </p>
               </div>
               <div className="rounded-xl border border-red-200 bg-red-50 p-4">

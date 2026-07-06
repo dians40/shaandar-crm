@@ -1,8 +1,13 @@
-import type { PreventiveMaintenanceRule } from "@/types/preventive-maintenance";
-import { computeDueDate } from "@/lib/preventive-maintenance-alerts";
+import type { PreventiveMaintenanceCycle } from "@/types/repair-maintenance-log";
+import type {
+  MachineRepairLogRow,
+  VehicleRepairLogRow,
+} from "@/types/repair-maintenance-log";
+import { PREVENTIVE_CYCLE_OPTIONS } from "@/types/repair-maintenance-log";
 
-export const REPAIR_MAINTENANCE_ALERT_WINDOW_DAYS = 15;
-export const DEFAULT_NEXT_SERVICE_DAYS = 90;
+/** Proactive alert fires exactly 10–15 days before scheduled service. */
+export const PREVENTIVE_ALERT_MIN_DAYS = 10;
+export const PREVENTIVE_ALERT_MAX_DAYS = 15;
 
 export type MaintenanceAlertStatus = {
   daysUntilDue: number;
@@ -10,9 +15,18 @@ export type MaintenanceAlertStatus = {
   isUpcomingAlert: boolean;
 };
 
-function addDays(base: Date, days: number): Date {
+export type MaintenanceDashboardAlert = {
+  id: string;
+  assetType: "machine" | "vehicle";
+  assetLabel: string;
+  nextMaintenanceDate: string;
+  daysUntilDue: number;
+  preventiveCycle: PreventiveMaintenanceCycle;
+};
+
+function addMonths(base: Date, months: number): Date {
   const result = new Date(base);
-  result.setDate(result.getDate() + days);
+  result.setMonth(result.getMonth() + months);
   return result;
 }
 
@@ -21,41 +35,30 @@ function daysBetween(from: Date, to: Date): number {
   return Math.ceil(ms / (1000 * 60 * 60 * 24));
 }
 
-export function computeNextMaintenanceDate(
-  loggedAt: string,
-  targetType: "machine" | "vehicle",
-  targetId: string,
-  targetName: string,
-  preventiveRules: PreventiveMaintenanceRule[]
-): string {
-  const matchingRule = preventiveRules.find(
-    (rule) =>
-      rule.targetType === targetType &&
-      (rule.targetId === targetId || rule.targetName.trim() === targetName.trim())
+export function cycleToMonths(cycle: PreventiveMaintenanceCycle): number {
+  return (
+    PREVENTIVE_CYCLE_OPTIONS.find((option) => option.value === cycle)?.months ??
+    (cycle === "yearly" ? 12 : 6)
   );
+}
 
-  if (matchingRule?.components.length) {
-    let earliestDue: Date | null = null;
-
-    for (const component of matchingRule.components) {
-      const dueDate = computeDueDate(component.lastReplacedDate, component.lifespanMonths);
-      if (!dueDate) continue;
-      if (!earliestDue || dueDate < earliestDue) {
-        earliestDue = dueDate;
-      }
-    }
-
-    if (earliestDue) {
-      return earliestDue.toISOString().slice(0, 10);
-    }
-  }
-
+export function computeNextMaintenanceDateFromCycle(
+  loggedAt: string,
+  cycle: PreventiveMaintenanceCycle
+): string {
+  const months = cycleToMonths(cycle);
   const serviceBase = new Date(loggedAt);
   if (Number.isNaN(serviceBase.getTime())) {
-    return addDays(new Date(), DEFAULT_NEXT_SERVICE_DAYS).toISOString().slice(0, 10);
+    return addMonths(new Date(), months).toISOString().slice(0, 10);
   }
+  return addMonths(serviceBase, months).toISOString().slice(0, 10);
+}
 
-  return addDays(serviceBase, DEFAULT_NEXT_SERVICE_DAYS).toISOString().slice(0, 10);
+export function isWithinPreventiveAlertWindow(daysUntilDue: number): boolean {
+  return (
+    daysUntilDue >= PREVENTIVE_ALERT_MIN_DAYS &&
+    daysUntilDue <= PREVENTIVE_ALERT_MAX_DAYS
+  );
 }
 
 export function resolveMaintenanceAlertStatus(
@@ -73,17 +76,87 @@ export function resolveMaintenanceAlertStatus(
   return {
     daysUntilDue,
     nextMaintenanceDate: nextMaintenanceDate.slice(0, 10),
-    isUpcomingAlert:
-      daysUntilDue >= 0 && daysUntilDue <= REPAIR_MAINTENANCE_ALERT_WINDOW_DAYS,
+    isUpcomingAlert: isWithinPreventiveAlertWindow(daysUntilDue),
   };
 }
 
 export function formatMaintenanceAlertLabel(daysUntilDue: number): string {
-  if (daysUntilDue === 0) {
-    return "Upcoming Maintenance - Due Today";
+  if (daysUntilDue === PREVENTIVE_ALERT_MIN_DAYS) {
+    return `Preventive Service Due in ${daysUntilDue} Days`;
   }
-  if (daysUntilDue <= REPAIR_MAINTENANCE_ALERT_WINDOW_DAYS) {
-    return "Upcoming Maintenance - 15 Day Alert";
+  if (daysUntilDue <= PREVENTIVE_ALERT_MAX_DAYS) {
+    return `Preventive Service Due in ${daysUntilDue} Days (10–15 Day Alert)`;
   }
-  return `Upcoming Maintenance - ${daysUntilDue} Day Alert`;
+  return `Next Service in ${daysUntilDue} Days`;
+}
+
+function mapLogToDashboardAlert(
+  id: string,
+  assetType: "machine" | "vehicle",
+  assetLabel: string,
+  nextMaintenanceDate: string,
+  preventiveCycle: PreventiveMaintenanceCycle
+): MaintenanceDashboardAlert | null {
+  const status = resolveMaintenanceAlertStatus(nextMaintenanceDate);
+  if (!status?.isUpcomingAlert) return null;
+  return {
+    id,
+    assetType,
+    assetLabel,
+    nextMaintenanceDate: status.nextMaintenanceDate,
+    daysUntilDue: status.daysUntilDue,
+    preventiveCycle,
+  };
+}
+
+export function collectDashboardMaintenanceAlerts(
+  machineLogs: MachineRepairLogRow[],
+  vehicleLogs: VehicleRepairLogRow[]
+): MaintenanceDashboardAlert[] {
+  const alerts: MaintenanceDashboardAlert[] = [];
+  const latestMachineByKey = new Map<string, MachineRepairLogRow>();
+  const latestVehicleByKey = new Map<string, VehicleRepairLogRow>();
+
+  for (const row of machineLogs) {
+    const key = row.machineId.trim() || row.machineIdName.trim();
+    if (!key || latestMachineByKey.has(key)) continue;
+    latestMachineByKey.set(key, row);
+  }
+
+  for (const row of vehicleLogs) {
+    const key = row.vehicleId.trim() || row.vehicleNumber.trim();
+    if (!key || latestVehicleByKey.has(key)) continue;
+    latestVehicleByKey.set(key, row);
+  }
+
+  for (const row of latestMachineByKey.values()) {
+    const alert = mapLogToDashboardAlert(
+      row.id,
+      "machine",
+      row.machineIdName,
+      row.nextMaintenanceDate,
+      row.preventiveCycle
+    );
+    if (alert) alerts.push(alert);
+  }
+
+  for (const row of latestVehicleByKey.values()) {
+    const alert = mapLogToDashboardAlert(
+      row.id,
+      "vehicle",
+      row.vehicleNumber,
+      row.nextMaintenanceDate,
+      row.preventiveCycle
+    );
+    if (alert) alerts.push(alert);
+  }
+
+  return alerts.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+}
+
+export function countUpcomingMaintenanceAlerts(
+  machineLogs: MachineRepairLogRow[],
+  vehicleLogs: VehicleRepairLogRow[]
+): number {
+  return collectDashboardMaintenanceAlerts(machineLogs, vehicleLogs).length;
 }

@@ -5,6 +5,9 @@ import {
   resolveOvertimeShiftFromBulkRow,
 } from "@/lib/attendance-bulk-employee-resolver";
 import { sanitizeIncomingBulkRow } from "@/lib/attendance-bulk-row-sanitizer";
+import {
+  detectBiometricColumnStructure,
+} from "@/lib/attendance-bulk-dynamic-alignment";
 import { virtualBulkRowToDbPayload } from "@/lib/attendance-bulk-virtual-mapper";
 import {
   mapToAttendanceCreate,
@@ -41,6 +44,9 @@ function todayIsoDate(): string {
 }
 
 const BATCH_SIZE = 50;
+const BULK_SAVE_TIMEOUT_MS = 15_000;
+
+export const maxDuration = 15;
 
 function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -127,6 +133,17 @@ async function persistWorkflowRowsSupabase(
   return { saved, errors };
 }
 
+async function withBulkSaveTimeout<T>(operation: () => Promise<T>): Promise<T> {
+  return Promise.race([
+    operation(),
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error("Bulk attendance save timed out after 15 seconds."));
+      }, BULK_SAVE_TIMEOUT_MS);
+    }),
+  ]);
+}
+
 async function persistAttendanceRowsPrisma(
   rows: Prisma.AttendanceCreateManyInput[]
 ): Promise<{ saved: number; errors: string[] }> {
@@ -134,38 +151,26 @@ async function persistAttendanceRowsPrisma(
   if (!prisma || rows.length === 0) return { saved: 0, errors };
 
   try {
-    const result = await prisma.attendance.createMany({
-      data: rows,
-      skipDuplicates: true,
-    });
-    return { saved: result.count, errors };
-  } catch (error) {
-    console.error("[bulk-import] prisma.attendance.createMany failed:", error);
-    errors.push(error instanceof Error ? error.message : "prisma createMany failed");
-
     let saved = 0;
-    for (const row of rows) {
+    for (const chunk of chunkArray(rows, BATCH_SIZE)) {
       try {
-        if (row.employeeId && row.attendanceDate) {
-          await prisma.attendance.upsert({
-            where: {
-              employeeId_attendanceDate: {
-                employeeId: row.employeeId,
-                attendanceDate: row.attendanceDate,
-              },
-            },
-            create: row,
-            update: row,
-          });
-        } else {
-          await prisma.attendance.create({ data: row });
-        }
-        saved += 1;
-      } catch (rowError) {
-        console.error("[bulk-import] prisma.attendance upsert row:", rowError);
+        const result = await prisma.attendance.createMany({
+          data: chunk,
+          skipDuplicates: true,
+        });
+        saved += result.count;
+      } catch (chunkError) {
+        console.error("[bulk-import] prisma.attendance createMany chunk:", chunkError);
+        errors.push(
+          chunkError instanceof Error ? chunkError.message : "prisma createMany chunk failed"
+        );
       }
     }
     return { saved, errors };
+  } catch (error) {
+    console.error("[bulk-import] prisma.attendance createMany failed:", error);
+    errors.push(error instanceof Error ? error.message : "prisma createMany failed");
+    return { saved: 0, errors };
   }
 }
 
@@ -194,11 +199,21 @@ export async function POST(request: Request) {
       }
 
       const rawRow = raw as Record<string, unknown>;
-      const defaultDate = todayIsoDate();
+      const rowCells = Array.isArray(raw) ? (raw as unknown[]) : null;
+      const structure = detectBiometricColumnStructure({}, rowCells ?? undefined);
+
+      let defaultDate = normalizeAttendanceDateIso(
+        safeString(rawRow.date) || safeString(rawRow.attendance_date) || todayIsoDate()
+      );
+      if (structure === "grid-23" && rowCells?.[7]) {
+        defaultDate = normalizeAttendanceDateIso(String(rowCells[7]), defaultDate);
+      }
 
       const normalized =
-        virtualBulkRowToDbPayload(rawRow, { defaultDate }) ??
-        sanitizeIncomingBulkRow(rawRow);
+        virtualBulkRowToDbPayload(
+          { ...rawRow, date: rawRow.date ?? defaultDate },
+          { defaultDate }
+        ) ?? sanitizeIncomingBulkRow(rawRow);
       if (!normalized) {
         rowErrors.push(`Row ${index + 1}: missing employee identity fields.`);
         continue;
@@ -235,6 +250,8 @@ export async function POST(request: Request) {
     );
   }
 
+  try {
+    return await withBulkSaveTimeout(async () => {
   const records: ReturnType<typeof normalizeAttendanceWorkflowRecord>[] = [];
   const prismaAttendanceRows: Prisma.AttendanceCreateManyInput[] = [];
   const supabaseBiometricRows: Record<string, unknown>[] = [];
@@ -431,4 +448,23 @@ export async function POST(request: Request) {
     errors: rowErrors.slice(0, 20),
     records,
   });
+    });
+  } catch (error) {
+    console.error("[bulk-import] bulk save interceptor:", error);
+    const message =
+      error instanceof Error ? error.message : "Bulk attendance save failed.";
+    const timedOut = message.toLowerCase().includes("timed out");
+    return NextResponse.json(
+      {
+        error: message,
+        ok: false,
+        debug: {
+          cause: timedOut
+            ? "Bulk save exceeded 15-second limit — rows were not fully persisted."
+            : "Bulk save failed during database transaction.",
+        },
+      },
+      { status: timedOut ? 504 : 500 }
+    );
+  }
 }

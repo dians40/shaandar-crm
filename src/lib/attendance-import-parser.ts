@@ -7,21 +7,24 @@ import {
   normalizeBiometricCode,
 } from "@/types/manual-attendance-entry";
 import {
-  bulkRecordFromCells,
   bulkRecordHasContent,
   bulkRecordToWorkflowFields,
   normalizeBiometric23ColumnRecord,
   type Biometric22ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 import {
-  buildHeaderColumnMap,
-  bulkRecordFromHeaderMap,
   collapseHeaderWhitespace,
   extractReportDateFromMatrix,
   findBiometricHeaderRowIndex,
   normalizeHeaderKey,
-  shouldUseHeaderMapping,
 } from "@/lib/attendance-bulk-header-normalizer";
+import {
+  buildHeaderColumnMap,
+  detectBiometricColumnStructure,
+  formatHeaderAlignmentMessage,
+  resolveBulkRecordFromDynamicRow,
+  shouldUseHeaderMapping,
+} from "@/lib/attendance-bulk-dynamic-alignment";
 
 export type { Biometric22ColumnRecord as AttendanceBulkImportRecord };
 
@@ -525,15 +528,22 @@ export function parseAttendanceImportMatrixSafe(
     const columnMap = buildHeaderColumnMap(headers);
     const useHeaderMapping = shouldUseHeaderMapping(columnMap);
     const dataRows = matrix.slice(headerIndex + 1);
+    const columnStructure = detectBiometricColumnStructure(
+      columnMap,
+      dataRows.find((row) => Array.isArray(row) && row.some((cell) => String(cell ?? "").trim()))
+    );
     const rows: AttendanceImportRow[] = [];
     const bulkRows: Biometric22ColumnRecord[] = [];
 
     try {
       for (const rawRow of dataRows) {
         try {
-          const bulkRecord = useHeaderMapping
-            ? bulkRecordFromHeaderMap(rawRow, columnMap, reportDate)
-            : bulkRecordFromCells(rawRow, reportDate);
+          const bulkRecord = resolveBulkRecordFromDynamicRow(rawRow, {
+            columnMap,
+            reportDate,
+            useHeaderMapping,
+            structure: columnStructure,
+          });
           const hasBulkContent = bulkRecordHasContent(bulkRecord);
 
           if (!hasBulkContent) {
@@ -562,9 +572,7 @@ export function parseAttendanceImportMatrixSafe(
     }
 
     if (useHeaderMapping) {
-      warnings.push(
-        `Header mapping aligned ${Object.keys(columnMap).length} of 23 biometric columns from the attached Excel structure.`
-      );
+      warnings.push(formatHeaderAlignmentMessage(columnMap, reportDate, columnStructure));
     }
 
     return { rows, bulkRows, skippedRows, warnings, reportDate };

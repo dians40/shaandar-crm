@@ -76,6 +76,8 @@ function safeBulkNumericFromRecord(record: {
   }
 }
 
+const BULK_SAVE_TIMEOUT_MS = 15_000;
+
 export default function AttendanceLoggingWorkspacePanel() {
   const { employees, prependEmployee } = useEmployees();
   const { ingestManualEntry } = useAttendanceWorkflow();
@@ -270,11 +272,27 @@ export default function AttendanceLoggingWorkspacePanel() {
         return;
       }
 
-      const response = await fetch("/api/v1/attendance/workflow/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rows: bulkPayloadRows }),
-      });
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), BULK_SAVE_TIMEOUT_MS);
+
+      let response: Response;
+      try {
+        response = await fetch("/api/v1/attendance/workflow/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: bulkPayloadRows }),
+          signal: controller.signal,
+        });
+      } catch (fetchError) {
+        if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
+          throw new Error(
+            "Bulk save timed out after 15 seconds. Please verify database connectivity and try again."
+          );
+        }
+        throw fetchError;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
 
       const body = (await response.json()) as {
         error?: string;

@@ -66,23 +66,20 @@ export default function Sidebar({
     }
   }, [pathname]);
 
-  const toggleSection = useCallback((sectionId: ExpandableSectionId) => {
-    setExpandedSections((current) => ({
-      ...current,
-      [sectionId]: !current[sectionId],
-    }));
-  }, []);
+  const handleSectionToggle = useCallback(
+    (sectionId: ExpandableSectionId, href: string) => {
+      setExpandedSections((current) => {
+        const willExpand = !current[sectionId];
 
-  const openSection = useCallback((sectionId: ExpandableSectionId, href: string) => {
-    setExpandedSections((current) => ({
-      ...current,
-      [sectionId]: true,
-    }));
+        if (willExpand && !pathname.startsWith(href)) {
+          router.push(href);
+        }
 
-    if (!pathname.startsWith(href)) {
-      router.push(href);
-    }
-  }, [pathname, router]);
+        return { ...current, [sectionId]: willExpand };
+      });
+    },
+    [pathname, router]
+  );
 
   const nestedModules = useMemo(
     () =>
@@ -145,47 +142,33 @@ export default function Sidebar({
                       isSectionActive && "bg-corporate-brand-light/60"
                     )}
                   >
-                    <div className="flex items-center">
-                      <button
-                        type="button"
-                        onClick={() => openSection(expandableKey, sectionConfig.href)}
+                    <button
+                      type="button"
+                      onClick={() => handleSectionToggle(expandableKey, sectionConfig.href)}
+                      className={cn(
+                        "flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-3 text-left text-base font-medium transition-colors sm:text-sm",
+                        isSectionActive
+                          ? "text-corporate-brand"
+                          : "text-corporate-muted hover:bg-corporate-bg hover:text-corporate-text"
+                      )}
+                      aria-expanded={isExpanded}
+                      aria-controls={`sidebar-section-${expandableKey}`}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                      <ChevronDown
                         className={cn(
-                          "flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-3 text-left text-base font-medium transition-colors sm:text-sm",
-                          isSectionActive
-                            ? "text-corporate-brand"
-                            : "text-corporate-muted hover:bg-corporate-bg hover:text-corporate-text"
+                          "h-4 w-4 shrink-0 transition-transform",
+                          isExpanded ? "rotate-0" : "-rotate-90"
                         )}
-                        aria-expanded={isExpanded}
-                        aria-controls={`sidebar-section-${expandableKey}`}
-                      >
-                        <Icon className="h-4 w-4 shrink-0" aria-hidden />
-                        <span className="truncate">{item.label}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleSection(expandableKey)}
-                        className={cn(
-                          "mr-2 flex h-11 w-11 items-center justify-center rounded-md text-corporate-muted transition-colors hover:bg-corporate-bg hover:text-corporate-text",
-                          isExpanded && "text-corporate-brand"
-                        )}
-                        aria-expanded={isExpanded}
-                        aria-controls={`sidebar-section-${expandableKey}`}
-                        aria-label={`${isExpanded ? "Collapse" : "Expand"} ${item.label} modules`}
-                      >
-                        <ChevronDown
-                          className={cn(
-                            "h-4 w-4 transition-transform",
-                            isExpanded ? "rotate-0" : "-rotate-90"
-                          )}
-                          aria-hidden
-                        />
-                      </button>
-                    </div>
+                        aria-hidden
+                      />
+                    </button>
 
                     {isExpanded && (
                       <ul
                         id={`sidebar-section-${expandableKey}`}
-                        className="space-y-0.5 pb-2 pl-3"
+                        className="mt-0.5 space-y-0.5 border-l-2 border-corporate-brand/20 pb-2 pl-3"
                         aria-label={`${group?.label ?? item.label} modules`}
                       >
                         {nestedModules[expandableKey].length === 0 ? (

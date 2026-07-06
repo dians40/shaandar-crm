@@ -14,7 +14,6 @@ import {
 import {
   buildImportAttendanceRemarks,
   buildImportPunchTimes,
-  formatImportOvertimeShiftLabel,
   formatImportShiftLabel,
 } from "@/lib/attendance-import-process";
 import {
@@ -70,7 +69,7 @@ export default function AttendanceLoggingWorkspacePanel() {
       if (parsedRows.length === 0) {
         setImportPreview(null);
         setImportError(
-          "No valid attendance rows found. Include Employee Code, Employee Name, Date, Status, Work Shift, Overtime Hours, and Overtime Shift columns."
+          "No valid attendance rows found. Include Employee Code, Employee Name, Attendance Status, Shift, and Overtime Hours columns."
         );
         return;
       }
@@ -92,7 +91,7 @@ export default function AttendanceLoggingWorkspacePanel() {
       const message =
         error instanceof Error
           ? error.message
-          : "Unable to read the selected file. Check the Excel or CSV structure and try again.";
+          : "Unable to read the selected file. Check the Excel, PDF, or CSV structure and try again.";
       setImportError(message);
     } finally {
       setIsParsing(false);
@@ -242,11 +241,11 @@ export default function AttendanceLoggingWorkspacePanel() {
             <FileSpreadsheet className="h-5 w-5" aria-hidden />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-bold text-corporate-text">Bulk Import — Excel / CSV</h3>
+            <h3 className="text-sm font-bold text-corporate-text">Bulk Import — Excel / PDF / CSV</h3>
             <p className="mt-1 text-xs text-corporate-muted">
-              Upload .xlsx, .xls, or .csv with Employee Code, Employee Name, Date, Status, Work
-              Shift, Overtime Hours, and Overtime Shift. Missing employee codes are auto-created
-              when you process the import.
+              Upload .xlsx, .xls, .pdf, or .csv with Employee Code, Employee Name, Attendance
+              Status, Shift, and Overtime Hours. Missing employee codes are auto-created when you
+              process the import.
             </p>
           </div>
         </div>
@@ -258,15 +257,15 @@ export default function AttendanceLoggingWorkspacePanel() {
           )}
         >
           <Upload className="mb-2 h-8 w-8 text-corporate-muted" aria-hidden />
-          <p className="text-sm font-medium text-corporate-text">Select Excel or CSV file</p>
-          <p className="mt-1 text-xs text-corporate-muted">Supported: .xlsx, .xls, .csv</p>
+          <p className="text-sm font-medium text-corporate-text">Select Excel, PDF, or CSV file</p>
+          <p className="mt-1 text-xs text-corporate-muted">Supported: .xlsx, .xls, .pdf, .csv</p>
           <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-corporate-brand px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
             <Upload className="h-4 w-4" aria-hidden />
             Choose File
             <input
               ref={fileInputRef}
               type="file"
-              accept=".xlsx,.xls,.csv"
+              accept=".xlsx,.xls,.pdf,.csv"
               className="sr-only"
               disabled={isParsing || isProcessing}
               onChange={(event) => {
@@ -315,13 +314,12 @@ export default function AttendanceLoggingWorkspacePanel() {
               <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[960px]")}>
                 <thead className={MASTER_LIST_HEAD_CLASS}>
                   <tr>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Code</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee Code</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee Name</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Attendance Status</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Shift</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Overtime Hours</th>
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Status</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Work Shift</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>OT Hours</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>OT Shift</th>
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Match</th>
                   </tr>
                 </thead>
@@ -346,15 +344,12 @@ export default function AttendanceLoggingWorkspacePanel() {
                           {employeeCode}
                         </td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.employeeName}</td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.attendanceDate}</td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.status}</td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>
                           {formatImportShiftLabel(row.workShift)}
                         </td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.overtimeHours}</td>
-                        <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                          {formatImportOvertimeShiftLabel(row.overtimeShift)}
-                        </td>
+                        <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.attendanceDate}</td>
                         <td className={MASTER_LIST_BODY_CELL_CLASS}>
                           <span
                             className={cn(

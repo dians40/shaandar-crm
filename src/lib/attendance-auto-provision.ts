@@ -105,6 +105,19 @@ export function resolveImportEmployee(
       (row) => normalizeCode(row.employeeCode) === code
     );
     if (fromRegistry) return fromRegistry;
+
+    const fromMasterByCode = masterEmployees.find(
+      (row) =>
+        "employeeCode" in row &&
+        typeof (row as AutoProvisionedEmployeeRecord).employeeCode === "string" &&
+        normalizeCode((row as AutoProvisionedEmployeeRecord).employeeCode) === code
+    );
+    if (fromMasterByCode) return fromMasterByCode;
+
+    const fromMasterById = masterEmployees.find(
+      (row) => normalizeCode(row.id) === code || row.id.endsWith(code)
+    );
+    if (fromMasterById) return fromMasterById;
   }
 
   const fromMasterByName = findMasterEmployeeByName(masterEmployees, employeeName);
@@ -131,11 +144,13 @@ export function detectPendingAutoEmployees(
 
   for (const row of rows) {
     const employeeName = row.employeeName.trim();
-    if (!employeeName) continue;
-
     const employeeCode =
       row.employeeCode.trim() ||
-      `AUTO-${employeeName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12)}`;
+      (employeeName
+        ? `AUTO-${employeeName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12)}`
+        : "");
+
+    if (!employeeName && !employeeCode) continue;
 
     if (resolveImportEmployee(employeeCode, employeeName, masterEmployees, autoProvisioned)) {
       continue;
@@ -143,7 +158,7 @@ export function detectPendingAutoEmployees(
 
     pending.set(normalizeCode(employeeCode), {
       employeeCode: normalizeCode(employeeCode),
-      employeeName,
+      employeeName: employeeName || employeeCode,
     });
   }
 

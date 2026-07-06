@@ -3,9 +3,9 @@
 import { useCallback, useRef, useState } from "react";
 import { CalendarCheck, FileSpreadsheet, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseAttendanceImportFile } from "@/lib/attendance-import-parser";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
 import { useEmployees } from "@/hooks/use-employees";
-import type { ManualAttendanceStatus } from "@/types/manual-attendance-entry";
 import AttendanceSystemPanel from "./attendance-system-panel";
 import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 
@@ -14,96 +14,6 @@ type ImportResult = {
   skipped: number;
   errors: string[];
 };
-
-const VALID_STATUSES = new Set<ManualAttendanceStatus>([
-  "present",
-  "absent",
-  "half_day",
-  "paid_leave",
-]);
-
-function parseCsvLine(line: string): string[] {
-  const cells: string[] = [];
-  let current = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < line.length; index += 1) {
-    const char = line[index];
-    if (char === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (char === "," && !inQuotes) {
-      cells.push(current.trim());
-      current = "";
-      continue;
-    }
-    current += char;
-  }
-
-  cells.push(current.trim());
-  return cells;
-}
-
-function normalizeHeader(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function parseAttendanceCsv(text: string): Array<{
-  employeeName: string;
-  attendanceDate: string;
-  status: ManualAttendanceStatus;
-  overtimeHours: number;
-  remarks: string;
-}> {
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  if (lines.length === 0) return [];
-
-  const headerCells = parseCsvLine(lines[0]).map(normalizeHeader);
-  const nameIndex = headerCells.findIndex((cell) =>
-    ["employeename", "staffname", "name", "employee"].includes(cell)
-  );
-  const dateIndex = headerCells.findIndex((cell) =>
-    ["attendancedate", "date", "workdate"].includes(cell)
-  );
-  const statusIndex = headerCells.findIndex((cell) => cell === "status");
-  const otIndex = headerCells.findIndex((cell) =>
-    ["overtimehours", "overtime", "othours"].includes(cell)
-  );
-  const remarksIndex = headerCells.findIndex((cell) =>
-    ["remarks", "notes", "shiftinfo"].includes(cell)
-  );
-
-  const rows: Array<{
-    employeeName: string;
-    attendanceDate: string;
-    status: ManualAttendanceStatus;
-    overtimeHours: number;
-    remarks: string;
-  }> = [];
-
-  for (const line of lines.slice(1)) {
-    const cells = parseCsvLine(line);
-    const employeeName = cells[nameIndex >= 0 ? nameIndex : 0]?.trim() ?? "";
-    const attendanceDate = cells[dateIndex >= 0 ? dateIndex : 1]?.trim() ?? "";
-    const statusRaw = (cells[statusIndex >= 0 ? statusIndex : 2]?.trim() ?? "present")
-      .toLowerCase()
-      .replace(/\s+/g, "_") as ManualAttendanceStatus;
-    const status = VALID_STATUSES.has(statusRaw) ? statusRaw : "present";
-    const overtimeHours = Number(cells[otIndex >= 0 ? otIndex : 3]) || 0;
-    const remarks = cells[remarksIndex >= 0 ? remarksIndex : 4]?.trim() ?? "";
-
-    if (!employeeName || !attendanceDate) continue;
-
-    rows.push({ employeeName, attendanceDate, status, overtimeHours, remarks });
-  }
-
-  return rows;
-}
 
 export default function AttendanceLoggingWorkspacePanel() {
   const { employees } = useEmployees();
@@ -127,22 +37,15 @@ export default function AttendanceLoggingWorkspacePanel() {
   const handleFileImport = async (file: File) => {
     setImportMessage(null);
     setImportError(null);
-
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      setImportError(
-        "Excel (.xlsx) files must be saved as CSV before import. Please export to CSV and retry."
-      );
-      return;
-    }
-
     setIsImporting(true);
 
     try {
-      const text = await file.text();
-      const parsedRows = parseAttendanceCsv(text);
+      const parsedRows = await parseAttendanceImportFile(file);
 
       if (parsedRows.length === 0) {
-        setImportError("No valid attendance rows found in the file.");
+        setImportError(
+          "No valid attendance rows found. Check column headers: Employee Name, Date, Status, Overtime Hours, Remarks."
+        );
         return;
       }
 
@@ -184,7 +87,7 @@ export default function AttendanceLoggingWorkspacePanel() {
       }
 
       setImportMessage(
-        `Imported ${result.imported} row(s)` +
+        `Imported ${result.imported} row(s) from ${file.name}` +
           (result.skipped > 0 ? ` · Skipped ${result.skipped}` : "") +
           "."
       );
@@ -192,8 +95,12 @@ export default function AttendanceLoggingWorkspacePanel() {
       if (result.errors.length > 0) {
         setImportError(result.errors.slice(0, 3).join(" · "));
       }
-    } catch {
-      setImportError("Unable to read the selected file. Check the CSV format and try again.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Unable to read the selected file. Check the Excel or CSV structure and try again.";
+      setImportError(message);
     } finally {
       setIsImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -208,7 +115,7 @@ export default function AttendanceLoggingWorkspacePanel() {
           <div>
             <h2 className="text-lg font-semibold text-corporate-text">Attendance Logging</h2>
             <p className="text-sm text-corporate-muted">
-              Bulk CSV import, manual entry, and the four-stage verification workflow
+              Direct Excel import, manual entry, and the four-stage verification workflow
             </p>
           </div>
         </div>
@@ -220,10 +127,11 @@ export default function AttendanceLoggingWorkspacePanel() {
             <FileSpreadsheet className="h-5 w-5" aria-hidden />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-bold text-corporate-text">Bulk Import — CSV / Excel</h3>
+            <h3 className="text-sm font-bold text-corporate-text">Bulk Import — Excel / CSV</h3>
             <p className="mt-1 text-xs text-corporate-muted">
-              Upload a CSV file with columns: Employee Name, Date, Status, Overtime Hours,
-              Remarks. Save Excel sheets as CSV before uploading.
+              Upload .xlsx, .xls, or .csv files with columns: Employee Name, Date, Status,
+              Overtime Hours, Remarks. Excel workbooks are parsed directly — no manual CSV
+              conversion required.
             </p>
           </div>
         </div>
@@ -235,17 +143,15 @@ export default function AttendanceLoggingWorkspacePanel() {
           )}
         >
           <Upload className="mb-2 h-8 w-8 text-corporate-muted" aria-hidden />
-          <p className="text-sm font-medium text-corporate-text">Select CSV or Excel export file</p>
-          <p className="mt-1 text-xs text-corporate-muted">
-            Supported: .csv (Excel files — save as CSV first)
-          </p>
+          <p className="text-sm font-medium text-corporate-text">Select Excel or CSV file</p>
+          <p className="mt-1 text-xs text-corporate-muted">Supported: .xlsx, .xls, .csv</p>
           <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-corporate-brand px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
             <Upload className="h-4 w-4" aria-hidden />
             Choose File
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,.xlsx,.xls"
+              accept=".xlsx,.xls,.csv"
               className="sr-only"
               disabled={isImporting}
               onChange={(event) => {

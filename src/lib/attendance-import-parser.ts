@@ -281,9 +281,9 @@ function parseBiometricOvertimeShift(
 ): OvertimeShiftType | "" {
   try {
     if (!hasOvertimeSignal(otValue, overtimeAmount, overStay)) return "";
-    return parseWorkShift(shiftHint) === "night" ? "night" : "day";
+    return resolveBiometricShiftCode(shiftHint) === "night" ? "night" : "day";
   } catch {
-    return "";
+    return "day";
   }
 }
 
@@ -294,36 +294,36 @@ function parseBiometricStatus(
 ): ManualAttendanceStatus {
   try {
     const status = safeString(statusRaw);
-    const shift = safeString(shiftRaw);
+    const shiftBand = resolveBiometricShiftCode(shiftRaw);
     const hours = safeString(hoursWorked);
 
-    if (!status && !shift && !hours) {
-      return parseStatus(FALLBACK_STATUS_LABEL, shift);
+    if (!status && !shiftRaw && !hours) {
+      return parseStatus(FALLBACK_STATUS_LABEL, shiftBand);
     }
 
     if (/^p(resent)?$/i.test(status) || /^p$/i.test(status)) {
-      return parseWorkShift(shift) === "night" ? "Present Night Shift" : "Present Day Shift";
+      return shiftBand === "night" ? "Present Night Shift" : "Present Day Shift";
     }
     if (/^a(bs(ent)?)?$/i.test(status) || /^a$/i.test(status)) {
-      return parseStatus(FALLBACK_STATUS_LABEL, shift);
+      return parseStatus(FALLBACK_STATUS_LABEL, shiftBand);
     }
     if (/^h(alf)?$/i.test(status) || /^h$/i.test(status) || /half/i.test(status)) {
-      return parseWorkShift(shift) === "night" ? "Half Night Shift" : "Half Day Shift";
+      return shiftBand === "night" ? "Half Night Shift" : "Half Day Shift";
     }
 
     if (!status && hours) {
       const hoursNum = Number(hours.replace(/[^\d.-]/g, ""));
       if (Number.isFinite(hoursNum) && hoursNum > 0 && hoursNum < 4) {
-        return parseWorkShift(shift) === "night" ? "Half Night Shift" : "Half Day Shift";
+        return shiftBand === "night" ? "Half Night Shift" : "Half Day Shift";
       }
       if (Number.isFinite(hoursNum) && hoursNum >= 4) {
-        return parseWorkShift(shift) === "night" ? "Present Night Shift" : "Present Day Shift";
+        return shiftBand === "night" ? "Present Night Shift" : "Present Day Shift";
       }
     }
 
-    return parseStatus(status || FALLBACK_STATUS_LABEL, shift);
+    return parseStatus(status || FALLBACK_STATUS_LABEL, shiftBand);
   } catch {
-    return parseStatus(FALLBACK_STATUS_LABEL, shiftRaw);
+    return parseStatus(FALLBACK_STATUS_LABEL, "day");
   }
 }
 
@@ -347,16 +347,18 @@ function processBiometricImportRow(
     }
 
     const statusRaw = resolveMatrixCell(matrix, columnMap.statusIndex);
-    const shiftRaw = resolveMatrixCell(matrix, columnMap.shiftIndex);
+    const shiftToken = sanitizeBiometricShiftToken(resolveMatrixCell(matrix, columnMap.shiftIndex));
+    const shiftLabel = formatBiometricShiftLabel(shiftToken);
     const hoursWorked = resolveMatrixCell(matrix, columnMap.hoursWorkedIndex);
     const otValue = resolveMatrixCell(matrix, columnMap.otIndex);
     const otAmount = resolveMatrixCell(matrix, columnMap.overtimeAmountIndex);
     const overStay = resolveMatrixCell(matrix, columnMap.overStayIndex);
 
-    const status = parseBiometricStatus(statusRaw, shiftRaw, hoursWorked);
-    const overtimeShift = parseBiometricOvertimeShift(otValue, otAmount, shiftRaw, overStay);
+    const status = parseBiometricStatus(statusRaw, shiftToken, hoursWorked);
+    const overtimeShift = parseBiometricOvertimeShift(otValue, otAmount, shiftToken, overStay);
 
     const remarks = [
+      shiftToken ? `Shift: ${shiftToken} → ${shiftLabel}` : `Shift: ${shiftLabel}`,
       buildBiometricRemarks(matrix, columnMap),
       resolveMatrixCell(matrix, columnMap.remarksIndex),
     ]
@@ -533,6 +535,36 @@ function cellToString(cell: unknown, xlsx?: XlsxModule, depth = 0): string {
   }
 }
 
+const BIOMETRIC_DAY_SHIFT_CODE = "DY1";
+const BIOMETRIC_NIGHT_SHIFT_CODE = "G11";
+
+/** Safe uppercase intercept for biometric Shift column tokens (DY1 / G11). */
+function sanitizeBiometricShiftToken(value: unknown): string {
+  try {
+    if (value == null) return "";
+    return safeString(value).trim().toUpperCase();
+  } catch {
+    return "";
+  }
+}
+
+function resolveBiometricShiftCode(value: unknown): WorkShift {
+  try {
+    const token = sanitizeBiometricShiftToken(value);
+    if (token === BIOMETRIC_NIGHT_SHIFT_CODE) return "night";
+    if (token === BIOMETRIC_DAY_SHIFT_CODE) return "day";
+    if (token.includes("NIGHT") || token.includes("G11")) return "night";
+    if (token.includes("DAY") || token.includes("DY1")) return "day";
+    return "day";
+  } catch {
+    return "day";
+  }
+}
+
+export function formatBiometricShiftLabel(value: unknown): string {
+  return resolveBiometricShiftCode(value) === "night" ? "Night Shift" : "Day Shift";
+}
+
 function parseCsvLine(line: string): string[] {
   try {
     const cells: string[] = [];
@@ -561,10 +593,19 @@ function parseCsvLine(line: string): string[] {
 }
 
 function parseWorkShift(value: string): WorkShift | "" {
-  const normalized = value.toLowerCase();
-  if (normalized.includes("night")) return "night";
-  if (normalized.includes("day")) return "day";
-  return "";
+  try {
+    const token = sanitizeBiometricShiftToken(value);
+    if (!token) return "";
+    if (token === BIOMETRIC_NIGHT_SHIFT_CODE) return "night";
+    if (token === BIOMETRIC_DAY_SHIFT_CODE) return "day";
+
+    const normalized = token.toLowerCase();
+    if (normalized.includes("night") || normalized.includes("g11")) return "night";
+    if (normalized.includes("day") || normalized.includes("dy1")) return "day";
+    return "day";
+  } catch {
+    return "day";
+  }
 }
 
 function parseStatus(value: string, shiftHint = ""): ManualAttendanceStatus {

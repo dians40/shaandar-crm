@@ -9,6 +9,7 @@ import {
   ClipboardList,
   ClipboardPen,
   Factory,
+  FileSpreadsheet,
   FileText,
   FolderTree,
   Layers,
@@ -62,6 +63,7 @@ export type MasterPanelModuleId =
   | "receipt"
   | "attendance-system"
   | "attendance-manual-entry"
+  | "attendance-biometric-log"
   | "overtime-tracker"
   | "vehicle-management-transaction"
   | "repair-maintenance";
@@ -381,6 +383,15 @@ const INTERNAL_WORKSPACE_MODULES: MasterPanelModule[] = [
     icon: ClipboardPen,
     placeholderMessage: "",
   },
+  {
+    id: "attendance-biometric-log",
+    serial: 31,
+    navLabel: "Biometric Log",
+    title: "Biometric Attendance Log",
+    subtitle: "22-column Daily Performance import records stored in database",
+    icon: FileSpreadsheet,
+    placeholderMessage: "",
+  },
 ];
 
 /** Full serialized ERP module list — Administration first, then Transaction. */
@@ -417,6 +428,7 @@ export function isMasterPanelModuleId(
 /** Manual attendance entry — Employee Management only, not the Transactions menu. */
 export const EMPLOYEE_EMBEDDED_MODULE_IDS: MasterPanelModuleId[] = [
   "attendance-manual-entry",
+  "attendance-biometric-log",
 ];
 
 /** Exactly two executive groups — Administration and Transaction. */

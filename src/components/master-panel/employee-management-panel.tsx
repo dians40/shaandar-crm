@@ -5,21 +5,23 @@ import { cn } from "@/lib/utils";
 import EmployeeBioDataCard from "./employee-bio-data-card";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
+import BiometricAttendanceRecordsPanel from "./biometric-attendance-records-panel";
 import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 import SupabaseSetupBanner from "./supabase-setup-banner";
 import { useEmployees } from "@/hooks/use-employees";
 
-type EmployeeWorkspaceTab = "list" | "add" | "manual-attendance";
+type EmployeeWorkspaceTab = "list" | "add" | "manual-attendance" | "biometric-attendance-log";
 
 type EmployeeViewMode = EmployeeWorkspaceTab | "edit" | "detail";
-
-const EMPTY_EMPLOYEES: never[] = [];
 
 const WORKSPACE_TABS: { id: EmployeeWorkspaceTab; label: string }[] = [
   { id: "list", label: "Employee List" },
   { id: "add", label: "Add Employee" },
   { id: "manual-attendance", label: "Manual Attendance & Wages" },
+  { id: "biometric-attendance-log", label: "Biometric Attendance Log" },
 ];
+
+const EMPTY_EMPLOYEES: never[] = [];
 
 /**
  * Employee Management workspace with embedded manual labor attendance entry.
@@ -34,7 +36,9 @@ export default function EmployeeManagementPanel() {
       ? "add"
       : view === "manual-attendance"
         ? "manual-attendance"
-        : "list";
+        : view === "biometric-attendance-log"
+          ? "biometric-attendance-log"
+          : "list";
 
   const handleBack = useCallback(() => {
     setView("list");
@@ -84,6 +88,10 @@ export default function EmployeeManagementPanel() {
 
   if (view === "manual-attendance") {
     return withWorkspaceTabs(<ManualAttendanceEntryPanel />);
+  }
+
+  if (view === "biometric-attendance-log") {
+    return withWorkspaceTabs(<BiometricAttendanceRecordsPanel />);
   }
 
   if (view === "add") {

@@ -41,6 +41,7 @@ export const TRANSACTION_LIST_COLUMN_LABELS: Partial<
   receipt: { primaryLabel: "Party Name", secondaryLabel: "Receipt #" },
   "attendance-system": { primaryLabel: "Employee Name", secondaryLabel: "Date" },
   "attendance-manual-entry": { primaryLabel: "Employee Name", secondaryLabel: "Date" },
+  "attendance-biometric-log": { primaryLabel: "Employee Name", secondaryLabel: "Date" },
   "overtime-tracker": { primaryLabel: "Employee Name", secondaryLabel: "Work Date" },
   "vehicle-management-transaction": {
     primaryLabel: "Vehicle Number",

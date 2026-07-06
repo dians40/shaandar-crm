@@ -30,6 +30,7 @@ const MASTER_PANEL_PERMISSION_MAP: Partial<Record<MasterPanelModuleId, Permissio
   "journal-entry": "expenses",
   "attendance-system": "attendance",
   "attendance-manual-entry": "attendance",
+  "attendance-biometric-log": "attendance",
   "overtime-tracker": "overtime",
   "vehicle-management-transaction": "vehicle-trips",
   "parts-order": "parts-orders",

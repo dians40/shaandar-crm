@@ -6,6 +6,8 @@ import {
   type Biometric22ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 
+export type AttendanceCreateManyInput = Prisma.AttendanceCreateManyInput;
+
 function safeString(value: unknown): string {
   try {
     if (value == null) return "";
@@ -45,9 +47,9 @@ function parseAttendanceDate(value: unknown): Date {
   }
 }
 
-function emptyBiometricCreateInput(
+function emptyAttendanceRow(
   employeeId: string | null | undefined
-): Prisma.BiometricAttendanceCreateManyInput {
+): AttendanceCreateManyInput {
   return {
     employeeId: safeString(employeeId) || null,
     attendanceDate: new Date(`${todayIsoDate()}T00:00:00.000Z`),
@@ -91,11 +93,11 @@ function toBiometricRecord(
   return normalizeBiometric22ColumnRecord(row as Record<string, unknown>);
 }
 
-/** Map preview grid / API payload into Prisma BiometricAttendance create input (22 columns). */
-export function mapToBiometricAttendanceCreate(
+/** Map preview grid row → Prisma Attendance create input (22 independent columns). */
+export function mapToAttendanceCreate(
   row: AttendanceBulkDbPayload | Biometric22ColumnRecord | Record<string, unknown>,
   employeeId: string | null | undefined
-): Prisma.BiometricAttendanceCreateManyInput {
+): AttendanceCreateManyInput {
   try {
     const biometric = toBiometricRecord(row);
     const payload =
@@ -137,17 +139,20 @@ export function mapToBiometricAttendanceCreate(
       remarks: safeString(payload?.remarks),
     };
   } catch (error) {
-    console.error("[biometric-mapper] fallback row:", error);
-    return emptyBiometricCreateInput(employeeId);
+    console.error("[attendance-mapper] fallback row:", error);
+    return emptyAttendanceRow(employeeId);
   }
 }
 
-/** Map snake_case bulk payload for Supabase direct insert (same 22 columns). */
+/** @deprecated Use mapToAttendanceCreate */
+export const mapToBiometricAttendanceCreate = mapToAttendanceCreate;
+
+/** Map to Supabase snake_case row (same 22 columns). */
 export function mapToBiometricAttendanceRow(
   row: AttendanceBulkDbPayload,
   employeeId: string | null | undefined
 ): Record<string, unknown> {
-  const prismaRow = mapToBiometricAttendanceCreate(row, employeeId);
+  const prismaRow = mapToAttendanceCreate(row, employeeId);
   return {
     employee_id: prismaRow.employeeId,
     attendance_date: prismaRow.attendanceDate
@@ -178,5 +183,35 @@ export function mapToBiometricAttendanceRow(
     punch_in: prismaRow.punchIn ?? "",
     punch_out: prismaRow.punchOut ?? "",
     remarks: prismaRow.remarks ?? "",
+  };
+}
+
+export function mapAttendanceRecordFromDb(row: Record<string, unknown>) {
+  return {
+    id: safeString(row.id),
+    employeeId: safeString(row.employee_id ?? row.employeeId),
+    attendanceDate: safeString(row.attendance_date ?? row.attendanceDate),
+    srlNumber: safeString(row.srl_number ?? row.srlNumber),
+    payCode: safeString(row.pay_code ?? row.payCode),
+    cardNumber: safeString(row.card_number ?? row.cardNumber),
+    employeeName: safeString(row.employee_name ?? row.employeeName),
+    department: safeString(row.department),
+    designation: safeString(row.designation),
+    shift: safeString(row.shift),
+    start: safeString(row.start),
+    inTime: safeString(row.in_time ?? row.inTime),
+    lunchOut: safeString(row.lunch_out ?? row.lunchOut),
+    lunchIn: safeString(row.lunch_in ?? row.lunchIn),
+    outTime: safeString(row.out_time ?? row.outTime),
+    hoursWorked: safeString(row.hours_worked ?? row.hoursWorked),
+    status: safeString(row.status),
+    earlyArrival: safeString(row.early_arrival ?? row.earlyArrival),
+    shiftLate: safeString(row.shift_late ?? row.shiftLate),
+    shiftEarly: safeString(row.shift_early ?? row.shiftEarly),
+    excessLunch: safeString(row.excess_lunch ?? row.excessLunch),
+    ot: safeString(row.ot),
+    overtime: safeString(row.overtime),
+    overstay: safeString(row.overstay),
+    manual: safeString(row.manual),
   };
 }

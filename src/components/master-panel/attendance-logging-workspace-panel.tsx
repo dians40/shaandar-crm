@@ -11,7 +11,10 @@ import {
   upsertAutoProvisionedEmployee,
   type PendingAutoEmployee,
 } from "@/lib/attendance-auto-provision";
-import { buildBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
+import {
+  atomicFinalizeBulkDbPayload,
+  buildBulkDbPayload,
+} from "@/lib/attendance-bulk-payload-bridge";
 import { bulkRecordToWorkflowFields } from "@/types/attendance-bulk-import-row";
 import {
   finalizeImportRow,
@@ -212,20 +215,17 @@ export default function AttendanceLoggingWorkspacePanel() {
             result.createdEmployees += 1;
           }
 
-          const dbPayload = buildBulkDbPayload({
-            row: safeBulk,
-            employeeId: employee.id,
-          });
+          const dbPayload = atomicFinalizeBulkDbPayload(
+            buildBulkDbPayload({
+              row: safeBulk,
+              employeeId: employee.id,
+            })
+          );
 
           bulkPayloadRows.push({
             ...dbPayload,
             employee_id: employee.id,
             employee_name: employee.name,
-            employeeId: employee.id,
-            employeeName: employee.name,
-            "SRL number": dbPayload.srl_number,
-            "pay code": dbPayload.pay_code,
-            "hours worked": dbPayload.hours_worked,
           });
         } catch (rowError) {
           console.error(rowError);

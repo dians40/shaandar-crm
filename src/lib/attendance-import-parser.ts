@@ -13,6 +13,12 @@ import {
   normalizeBiometric22ColumnRecord,
   type Biometric22ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
+import {
+  buildHeaderColumnMap,
+  bulkRecordFromHeaderMap,
+  normalizeHeaderKey,
+  shouldUseHeaderMapping,
+} from "@/lib/attendance-bulk-header-normalizer";
 
 export type { Biometric22ColumnRecord as AttendanceBulkImportRecord };
 
@@ -501,7 +507,9 @@ export function parseAttendanceImportMatrixSafe(
 
     const headerIndex = findHeaderRowIndex(matrix);
     const headerRow = matrix[headerIndex] ?? [];
-    const headers = headerRow.map((cell) => safeText(cell));
+    const headers = headerRow.map((cell) => normalizeHeaderKey(safeText(cell) || cell));
+    const columnMap = buildHeaderColumnMap(headers);
+    const useHeaderMapping = shouldUseHeaderMapping(columnMap);
     const dataRows = matrix.slice(headerIndex + 1);
     const rows: AttendanceImportRow[] = [];
     const bulkRows: Biometric22ColumnRecord[] = [];
@@ -509,7 +517,9 @@ export function parseAttendanceImportMatrixSafe(
     try {
       for (const rawRow of dataRows) {
         try {
-          const bulkRecord = bulkRecordFromCells(rawRow);
+          const bulkRecord = useHeaderMapping
+            ? bulkRecordFromHeaderMap(rawRow, columnMap)
+            : bulkRecordFromCells(rawRow);
           const hasBulkContent = bulkRecordHasContent(bulkRecord);
 
           if (!hasBulkContent) {
@@ -533,6 +543,12 @@ export function parseAttendanceImportMatrixSafe(
 
     if (rows.length === 0) {
       warnings.push("No attendance rows were extracted from the sheet.");
+    }
+
+    if (useHeaderMapping) {
+      warnings.push(
+        `Header fuzzy mapping aligned ${Object.keys(columnMap).length} of 22 biometric columns.`
+      );
     }
 
     return { rows, bulkRows, skippedRows, warnings };

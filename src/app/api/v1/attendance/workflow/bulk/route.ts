@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import {
+  atomicFinalizeBulkDbPayload,
   buildBulkDbPayload,
   safeBulkNumeric,
   sanitizeBulkRowInput,
   type AttendanceBulkDbPayload,
 } from "@/lib/attendance-bulk-payload-bridge";
+import { normalizeRawRowKeys } from "@/lib/attendance-bulk-header-normalizer";
 import { bulkRecordToWorkflowFields } from "@/types/attendance-bulk-import-row";
 import { BIOMETRIC_DAY_CODE, normalizeBiometricCode } from "@/types/manual-attendance-entry";
 import {
@@ -81,30 +83,42 @@ async function resolveEmployeeId(
 
 function normalizeIncomingRow(raw: Record<string, unknown>): AttendanceBulkDbPayload | null {
   try {
-    const employeeId = safeString(raw.employee_id ?? raw.employeeId);
-    const employeeName = safeString(raw.employee_name ?? raw.employeeName);
-    const payCode = safeString(raw.pay_code ?? raw.payCode);
+    const normalizedKeys = normalizeRawRowKeys(raw);
+    const employeeId = safeString(
+      normalizedKeys.employee_id ?? normalizedKeys.employeeId
+    );
+    const employeeName = safeString(
+      normalizedKeys.employee_name ?? normalizedKeys.employeeName
+    );
+    const payCode = safeString(normalizedKeys.pay_code ?? normalizedKeys.payCode);
     const attendanceDate =
-      safeString(raw.attendance_date ?? raw.attendanceDate) || todayIsoDate();
+      safeString(normalizedKeys.attendance_date ?? normalizedKeys.attendanceDate) ||
+      todayIsoDate();
 
     if (!employeeId && !employeeName && !payCode) return null;
 
-    const biometric = sanitizeBulkRowInput(raw);
-    const payload = buildBulkDbPayload({
-      row: biometric,
-      employeeId: employeeId || payCode || employeeName,
-      attendanceDate,
-    });
+    const biometric = sanitizeBulkRowInput(normalizedKeys);
+    const payload = atomicFinalizeBulkDbPayload(
+      buildBulkDbPayload({
+        row: biometric,
+        employeeId: employeeId || payCode || employeeName,
+        attendanceDate,
+      })
+    );
 
     return {
       ...payload,
       employee_name: payload.employee_name || employeeName,
       pay_code: payload.pay_code || payCode,
-      punch_in: safeString(raw.punch_in ?? raw.punchIn) || payload.punch_in,
-      punch_out: safeString(raw.punch_out ?? raw.punchOut) || payload.punch_out,
+      punch_in:
+        safeString(normalizedKeys.punch_in ?? normalizedKeys.punchIn) || payload.punch_in,
+      punch_out:
+        safeString(normalizedKeys.punch_out ?? normalizedKeys.punchOut) || payload.punch_out,
       overtime_hours:
-        safeBulkNumeric(raw.overtime_hours ?? raw.overtimeHours) || payload.overtime_hours,
-      remarks: safeString(raw.remarks ?? raw.shift_remarks) || payload.remarks,
+        safeBulkNumeric(normalizedKeys.overtime_hours ?? normalizedKeys.overtimeHours) ||
+        payload.overtime_hours,
+      remarks:
+        safeString(normalizedKeys.remarks ?? normalizedKeys.shift_remarks) || payload.remarks,
     };
   } catch (error) {
     console.error(error);

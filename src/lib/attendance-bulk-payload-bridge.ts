@@ -4,6 +4,12 @@ import {
   type Biometric22ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 import {
+  BULK_HEADER_FUZZY_PATTERNS,
+  fuzzyHeaderToken,
+  normalizeHeaderKey,
+  normalizeRawRowKeys,
+} from "@/lib/attendance-bulk-header-normalizer";
+import {
   BIOMETRIC_DAY_CODE,
   normalizeBiometricCode,
   type ManualAttendanceStatus,
@@ -46,33 +52,14 @@ export type AttendanceBulkDbPayload = {
 type FieldAliasMap = {
   camel: keyof Biometric22ColumnRecord;
   snake: string;
-  labels: string[];
+  tokens: string[];
 };
 
-const BULK_FIELD_ALIASES: FieldAliasMap[] = [
-  { camel: "serialNumber", snake: "srl_number", labels: ["SRL number", "srl number", "srl"] },
-  { camel: "payCode", snake: "pay_code", labels: ["pay code", "paycode"] },
-  { camel: "cardNumber", snake: "card_number", labels: ["card number", "cardnumber"] },
-  { camel: "employeeName", snake: "employee_name", labels: ["employee name", "name"] },
-  { camel: "department", snake: "department", labels: ["department"] },
-  { camel: "designation", snake: "designation", labels: ["designations", "designation"] },
-  { camel: "shift", snake: "shift", labels: ["shift"] },
-  { camel: "start", snake: "start", labels: ["start"] },
-  { camel: "in", snake: "in", labels: ["in", "in time", "intime"] },
-  { camel: "lunchOut", snake: "lunch_out", labels: ["lunch out", "lunchout"] },
-  { camel: "lunchIn", snake: "lunch_in", labels: ["lunch in", "lunchin"] },
-  { camel: "out", snake: "out", labels: ["out", "out time", "outtime"] },
-  { camel: "hoursWorked", snake: "hours_worked", labels: ["hours worked", "hoursworked"] },
-  { camel: "status", snake: "status", labels: ["status", "attendance status"] },
-  { camel: "earlyArrival", snake: "early_arrival", labels: ["early arrival", "earlyarrival"] },
-  { camel: "shiftLate", snake: "shift_late", labels: ["shift late", "shiftlate"] },
-  { camel: "shiftEarly", snake: "shift_early", labels: ["shift early", "shiftearly"] },
-  { camel: "excessLunch", snake: "excess_lunch", labels: ["excess lunch", "excesslunch"] },
-  { camel: "ot", snake: "ot", labels: ["ot"] },
-  { camel: "overtime", snake: "overtime", labels: ["overtime"] },
-  { camel: "overstay", snake: "overstay", labels: ["overstay"] },
-  { camel: "manual", snake: "manual", labels: ["manual"] },
-];
+const BULK_FIELD_ALIASES: FieldAliasMap[] = BULK_HEADER_FUZZY_PATTERNS.map((pattern) => ({
+  camel: pattern.key,
+  snake: pattern.snake,
+  tokens: pattern.tokens,
+}));
 
 function safeString(value: unknown): string {
   try {
@@ -94,11 +81,14 @@ export function safeBulkNumeric(value: unknown): number {
   }
 }
 
-function normalizeLabelKey(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+function tokenMatchesField(token: string, keyFuzzy: string): boolean {
+  if (!token || !keyFuzzy) return false;
+  if (keyFuzzy === token) return true;
+  if (token.length <= 3) return keyFuzzy === token;
+  return keyFuzzy.includes(token) || token.includes(keyFuzzy);
 }
 
-/** Resolve one biometric field from camelCase, snake_case, or spreadsheet label keys. */
+/** Resolve one biometric field from camelCase, snake_case, or fuzzy header keys. */
 export function resolveBulkField(
   row: Record<string, unknown>,
   alias: FieldAliasMap
@@ -110,24 +100,28 @@ export function resolveBulkField(
     const snake = safeString(row[alias.snake]);
     if (snake) return snake;
 
-    for (const label of alias.labels) {
-      const direct = safeString(row[label]);
+    for (const token of alias.tokens) {
+      const direct = safeString(row[token] ?? row[normalizeHeaderKey(token)]);
       if (direct) return direct;
     }
 
-    const normalizedEntries = Object.entries(row);
-    for (const label of alias.labels) {
-      const target = normalizeLabelKey(label);
-      for (const [key, value] of normalizedEntries) {
-        if (normalizeLabelKey(key) === target) {
+    for (const [key, value] of Object.entries(row)) {
+      const keyFuzzy = fuzzyHeaderToken(key);
+      const keyLower = normalizeHeaderKey(key);
+      for (const token of alias.tokens) {
+        if (tokenMatchesField(token, keyFuzzy) || tokenMatchesField(token, keyLower)) {
           const resolved = safeString(value);
           if (resolved) return resolved;
         }
       }
+      if (keyFuzzy === fuzzyHeaderToken(alias.snake) || keyFuzzy === fuzzyHeaderToken(alias.camel)) {
+        const resolved = safeString(value);
+        if (resolved) return resolved;
+      }
     }
 
     if (alias.camel === "serialNumber") {
-      return safeString(row.srlNumber ?? row.srl_number);
+      return safeString(row.srlNumber ?? row.srl_number ?? row["srl number"]);
     }
     if (alias.camel === "designation") {
       return safeString(row.designations);
@@ -154,7 +148,7 @@ export function sanitizeBulkRowInput(
   raw: Record<string, unknown> | Biometric22ColumnRecord | null | undefined
 ): Biometric22ColumnRecord {
   try {
-    const source = (raw ?? {}) as Record<string, unknown>;
+    const source = normalizeRawRowKeys((raw ?? {}) as Record<string, unknown>);
     const partial: Partial<Biometric22ColumnRecord> = {};
 
     for (const alias of BULK_FIELD_ALIASES) {
@@ -165,6 +159,79 @@ export function sanitizeBulkRowInput(
   } catch (error) {
     console.error(error);
     return normalizeBiometric22ColumnRecord(null);
+  }
+}
+
+/** Atomic defaults — every string field to "" and numeric metrics to 0 before POST. */
+export function atomicFinalizeBulkDbPayload(
+  payload: AttendanceBulkDbPayload
+): AttendanceBulkDbPayload {
+  try {
+    return {
+      srl_number: safeString(payload.srl_number),
+      pay_code: safeString(payload.pay_code),
+      card_number: safeString(payload.card_number),
+      employee_name: safeString(payload.employee_name),
+      department: safeString(payload.department),
+      designation: safeString(payload.designation),
+      shift: safeString(payload.shift),
+      start: safeString(payload.start),
+      in: safeString(payload.in),
+      lunch_out: safeString(payload.lunch_out),
+      lunch_in: safeString(payload.lunch_in),
+      out: safeString(payload.out),
+      hours_worked: safeString(payload.hours_worked),
+      status: safeString(payload.status) || BIOMETRIC_DAY_CODE,
+      early_arrival: safeString(payload.early_arrival),
+      shift_late: safeString(payload.shift_late),
+      shift_early: safeString(payload.shift_early),
+      excess_lunch: safeString(payload.excess_lunch),
+      ot: safeString(payload.ot),
+      overtime: safeString(payload.overtime),
+      overstay: safeString(payload.overstay),
+      manual: safeString(payload.manual),
+      employee_id: safeString(payload.employee_id),
+      attendance_date: safeString(payload.attendance_date) || todayIsoDate(),
+      punch_in: safeString(payload.punch_in),
+      punch_out: safeString(payload.punch_out),
+      overtime_hours: safeBulkNumeric(payload.overtime_hours),
+      overtime_shift: safeString(payload.overtime_shift) || BIOMETRIC_DAY_CODE,
+      remarks: safeString(payload.remarks),
+    };
+  } catch (error) {
+    console.error(error);
+    const date = todayIsoDate();
+    return {
+      srl_number: "",
+      pay_code: "",
+      card_number: "",
+      employee_name: "",
+      department: "",
+      designation: "",
+      shift: "",
+      start: "",
+      in: "",
+      lunch_out: "",
+      lunch_in: "",
+      out: "",
+      hours_worked: "",
+      status: BIOMETRIC_DAY_CODE,
+      early_arrival: "",
+      shift_late: "",
+      shift_early: "",
+      excess_lunch: "",
+      ot: "",
+      overtime: "",
+      overstay: "",
+      manual: "",
+      employee_id: "",
+      attendance_date: date,
+      punch_in: `${date}T09:00:00.000Z`,
+      punch_out: "",
+      overtime_hours: 0,
+      overtime_shift: BIOMETRIC_DAY_CODE,
+      remarks: "",
+    };
   }
 }
 
@@ -299,7 +366,7 @@ export function buildBulkDbPayload(input: {
     const status = normalizeBiometricCode(mapped.status) as ManualAttendanceStatus;
     const overtimeShift = normalizeBiometricCode(mapped.overtimeShift) as OvertimeShiftType;
 
-    return {
+    return atomicFinalizeBulkDbPayload({
       ...biometricRecordToSnakeCase(safe),
       employee_id: safeString(input.employeeId),
       attendance_date: attendanceDate,
@@ -308,11 +375,11 @@ export function buildBulkDbPayload(input: {
       overtime_hours: resolveBulkOvertimeHours(safe),
       overtime_shift: overtimeShift || status || BIOMETRIC_DAY_CODE,
       remarks: mapped.remarks || "",
-    };
+    });
   } catch (error) {
     console.error(error);
     const date = todayIsoDate();
-    return {
+    return atomicFinalizeBulkDbPayload({
       srl_number: "",
       pay_code: "",
       card_number: "",
@@ -342,7 +409,7 @@ export function buildBulkDbPayload(input: {
       overtime_hours: 0,
       overtime_shift: BIOMETRIC_DAY_CODE,
       remarks: "",
-    };
+    });
   }
 }
 
@@ -360,11 +427,13 @@ export function sanitizeBulkPayloadArray(
             source.employee_id ?? source.employeeId ?? source.pay_code ?? source.payCode
           );
           if (!employeeId) return null;
-          return buildBulkDbPayload({
-            row: source,
-            employeeId,
-            attendanceDate: safeString(source.attendance_date ?? source.attendanceDate),
-          });
+          return atomicFinalizeBulkDbPayload(
+            buildBulkDbPayload({
+              row: source,
+              employeeId,
+              attendanceDate: safeString(source.attendance_date ?? source.attendanceDate),
+            })
+          );
         } catch (rowError) {
           console.error(rowError);
           return null;

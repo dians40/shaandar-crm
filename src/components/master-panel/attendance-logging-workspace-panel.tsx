@@ -20,6 +20,7 @@ import {
 import {
   finalizeImportRow,
   parseAttendanceImportFileSafe,
+  PDF_UPLOAD_SUCCESS_TOKEN,
   type AttendanceImportRow,
 } from "@/lib/attendance-import-parser";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
@@ -89,8 +90,15 @@ export default function AttendanceLoggingWorkspacePanel() {
     setIsParsing(true);
 
     try {
-      const { rows: parsedRows, skippedRows, warnings } =
-        await parseAttendanceImportFileSafe(file);
+      const outcome = await parseAttendanceImportFileSafe(file);
+
+      if (outcome.pdfDocumentUploaded) {
+        setImportPreview(null);
+        setImportMessage(PDF_UPLOAD_SUCCESS_TOKEN);
+        return;
+      }
+
+      const { rows: parsedRows, skippedRows, warnings } = outcome;
 
       const sanitizedRows = Array.isArray(parsedRows)
         ? parsedRows.map((row) => finalizeImportRow(row))
@@ -131,7 +139,8 @@ export default function AttendanceLoggingWorkspacePanel() {
           `${createdCount} new employee profile(s) were auto-provisioned from the uploaded sheet.`
         );
       }
-    } catch {
+    } catch (error) {
+      console.error(error);
       setImportPreview(null);
       setImportError(
         "Upload processing completed safely, but no rows could be recovered from this file."

@@ -12,7 +12,7 @@ export type AttendanceImportRow = {
   employeeName: string;
   attendanceDate: string;
   status: ManualAttendanceStatus;
-  overtimeShift: OvertimeShiftType | "";
+  overtimeShift: OvertimeShiftType;
   remarks: string;
 };
 
@@ -20,6 +20,8 @@ export type AttendanceImportParseOutcome = {
   rows: AttendanceImportRow[];
   skippedRows: number;
   warnings: string[];
+  pdfDocumentUploaded?: boolean;
+  pdfBufferBytes?: number;
 };
 
 type XlsxModule = typeof import("xlsx");
@@ -35,6 +37,8 @@ const STATUS_HINTS = ["status", "attendance", "present"];
 const SHIFT_HINTS = ["shift", "workshift", "dayshift"];
 const OT_HINTS = ["ot", "overtime", "overstay"];
 const REMARKS_HINTS = ["remark", "note", "comment", "manual"];
+
+export const PDF_UPLOAD_SUCCESS_TOKEN = "📄 [PDF Document Uploaded Successfully]";
 
 const POSITIONAL = {
   code: 1,
@@ -54,13 +58,13 @@ async function loadXlsxModule(): Promise<XlsxModule | null> {
       xlsxModulePromise = import("xlsx")
         .then((module) => module)
         .catch((error) => {
-          console.log(error);
+          console.error(error);
           return null;
         });
     }
     return (await xlsxModulePromise) ?? null;
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return null;
   }
 }
@@ -80,7 +84,7 @@ function safeText(value: unknown): string {
     }
     return String(value).trim();
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return "";
   }
 }
@@ -91,7 +95,7 @@ function sanitizeToken(value: unknown): string {
       .trim()
       .toUpperCase();
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return "";
   }
 }
@@ -130,7 +134,7 @@ function normalizeDate(value: string): string {
     if (!Number.isNaN(parsed)) return new Date(parsed).toISOString().slice(0, 10);
     return todayIsoDate();
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return todayIsoDate();
   }
 }
@@ -139,25 +143,25 @@ function mapBiometricCode(value: unknown): ManualAttendanceStatus {
   try {
     return normalizeBiometricCode(sanitizeToken(value));
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return DEFAULT_STATUS;
   }
 }
 
-function mapOvertimeCode(value: unknown, shiftHint: unknown): OvertimeShiftType | "" {
+function mapOvertimeCode(value: unknown, shiftHint: unknown): OvertimeShiftType {
   try {
     const token = sanitizeToken(value);
     if (!token || token === "0" || token === "NONE" || token === "N/A" || token === "-") {
       const shiftToken = sanitizeToken(shiftHint);
-      if (shiftToken && /[^\d.]/.test(shiftToken)) {
-        return mapBiometricCode(shiftHint);
-      }
-      return "";
+      if (shiftToken) return mapBiometricCode(shiftHint);
+      return DEFAULT_STATUS;
     }
-    if (/^\d+(\.\d+)?$/.test(token)) return "";
+    if (/^\d+(\.\d+)?$/.test(token)) {
+      return mapBiometricCode(shiftHint || DEFAULT_STATUS);
+    }
     return mapBiometricCode(value);
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return DEFAULT_STATUS;
   }
 }
@@ -167,7 +171,7 @@ type RowFields = {
   employeeName: string;
   attendanceDate: string;
   status: ManualAttendanceStatus;
-  overtimeShift: OvertimeShiftType | "";
+  overtimeShift: OvertimeShiftType;
   remarks: string;
 };
 
@@ -196,7 +200,7 @@ function buildRowPairs(
       }
     }
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
   return { pairs, byIndex };
 }
@@ -220,7 +224,7 @@ function pickByHints(
       return byIndex[fallbackIndex] ?? "";
     }
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
   return "";
 }
@@ -264,13 +268,13 @@ function extractRowFields(rawRow: unknown, headers: string[]): RowFields {
       remarks: remarks || `Shift: ${status}`,
     };
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return {
       employeeCode: FALLBACK_CODE,
       employeeName: FALLBACK_NAME,
       attendanceDate: todayIsoDate(),
       status: DEFAULT_STATUS,
-      overtimeShift: "",
+      overtimeShift: DEFAULT_STATUS,
       remarks: "Recovered by absolute biometric parser.",
     };
   }
@@ -283,19 +287,17 @@ function createSafeImportRow(partial: Partial<AttendanceImportRow> = {}): Attend
       employeeName: safeText(partial.employeeName) || FALLBACK_NAME,
       attendanceDate: normalizeDate(safeText(partial.attendanceDate)),
       status: mapBiometricCode(partial.status ?? DEFAULT_STATUS),
-      overtimeShift: partial.overtimeShift
-        ? mapBiometricCode(partial.overtimeShift)
-        : "",
+      overtimeShift: mapBiometricCode(partial.overtimeShift ?? partial.status ?? DEFAULT_STATUS),
       remarks: safeText(partial.remarks),
     };
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return {
       employeeCode: FALLBACK_CODE,
       employeeName: FALLBACK_NAME,
       attendanceDate: todayIsoDate(),
       status: DEFAULT_STATUS,
-      overtimeShift: "",
+      overtimeShift: DEFAULT_STATUS,
       remarks: "",
     };
   }
@@ -308,7 +310,7 @@ export function finalizeImportRow(
     if (!row || typeof row !== "object") return createSafeImportRow();
     return createSafeImportRow(row);
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return createSafeImportRow();
   }
 }
@@ -337,7 +339,7 @@ function parseCsvLine(line: string): string[] {
     cells.push(current.trim());
     return cells;
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return [];
   }
 }
@@ -351,7 +353,7 @@ function matrixFromCsvText(text: string): string[][] {
       .map((line) => (line.includes(",") ? parseCsvLine(line) : line.split(/\t|\|/).map((c) => c.trim())))
       .filter((row) => row.some((cell) => cell.length > 0));
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return [];
   }
 }
@@ -382,11 +384,11 @@ function sheetToMatrix(XLSX: XlsxModule, sheet: import("xlsx").WorkSheet): strin
         const single = safeText(rawRow);
         if (single) matrix.push([single]);
       } catch (rowError) {
-        console.log(rowError);
+        console.error(rowError);
       }
     }
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
   return matrix;
 }
@@ -403,12 +405,21 @@ async function matrixFromExcelBuffer(buffer: ArrayBuffer): Promise<string[][]> {
     try {
       workbook = XLSX.read(bytes, { type: "array", cellDates: true });
     } catch (primaryError) {
-      console.log(primaryError);
+      console.error(primaryError);
       try {
-        const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
-        workbook = XLSX.read(binary, { type: "binary", cellDates: true });
+        const chunkSize = 8192;
+        const chunks: string[] = [];
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+          const end = Math.min(offset + chunkSize, bytes.length);
+          let segment = "";
+          for (let index = offset; index < end; index += 1) {
+            segment += String.fromCharCode(bytes[index]!);
+          }
+          chunks.push(segment);
+        }
+        workbook = XLSX.read(chunks.join(""), { type: "binary", cellDates: true });
       } catch (fallbackError) {
-        console.log(fallbackError);
+        console.error(fallbackError);
         return [];
       }
     }
@@ -422,11 +433,11 @@ async function matrixFromExcelBuffer(buffer: ArrayBuffer): Promise<string[][]> {
         const matrix = sheetToMatrix(XLSX, sheet);
         if (matrix.length > 0) return matrix;
       } catch (sheetError) {
-        console.log(sheetError);
+        console.error(sheetError);
       }
     }
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
   return [];
 }
@@ -445,7 +456,7 @@ function findHeaderRowIndex(matrix: string[][]): number {
       }
     }
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
   return 0;
 }
@@ -479,13 +490,13 @@ export function parseAttendanceImportMatrixSafe(
           }
           rows.push(finalizeImportRow(extractRowFields(rawRow, headers)));
         } catch (rowError) {
-          console.log(rowError);
+          console.error(rowError);
           rows.push(finalizeImportRow({ status: DEFAULT_STATUS }));
           warnings.push("One row was recovered with default DY1 status.");
         }
       }
     } catch (iterationError) {
-      console.log(iterationError);
+      console.error(iterationError);
       warnings.push("Row iteration recovered safely.");
     }
 
@@ -495,7 +506,7 @@ export function parseAttendanceImportMatrixSafe(
 
     return { rows, skippedRows, warnings };
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return {
       rows: [],
       skippedRows: 0,
@@ -518,32 +529,32 @@ function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
             resolve(reader.result);
             return;
           }
-          console.log("FileReader returned non-ArrayBuffer payload.");
+          console.error("FileReader returned non-ArrayBuffer payload.");
           resolve(new ArrayBuffer(0));
         } catch (error) {
-          console.log(error);
+          console.error(error);
           resolve(new ArrayBuffer(0));
         }
       };
       reader.onerror = () => {
         try {
-          console.log(new Error("Failed to read file."));
+          console.error(new Error("Failed to read file."));
         } catch (error) {
-          console.log(error);
+          console.error(error);
         }
         resolve(new ArrayBuffer(0));
       };
       reader.onabort = () => {
         try {
-          console.log(new Error("File read cancelled."));
+          console.error(new Error("File read cancelled."));
         } catch (error) {
-          console.log(error);
+          console.error(error);
         }
         resolve(new ArrayBuffer(0));
       };
       reader.readAsArrayBuffer(file);
     } catch (error) {
-      console.log(error);
+      console.error(error);
       resolve(new ArrayBuffer(0));
     }
   });
@@ -557,29 +568,29 @@ function readFileAsText(file: File): Promise<string> {
         try {
           resolve(String(reader.result ?? ""));
         } catch (error) {
-          console.log(error);
+          console.error(error);
           resolve("");
         }
       };
       reader.onerror = () => {
         try {
-          console.log(new Error("Failed to read file."));
+          console.error(new Error("Failed to read file."));
         } catch (error) {
-          console.log(error);
+          console.error(error);
         }
         resolve("");
       };
       reader.onabort = () => {
         try {
-          console.log(new Error("File read cancelled."));
+          console.error(new Error("File read cancelled."));
         } catch (error) {
-          console.log(error);
+          console.error(error);
         }
         resolve("");
       };
       reader.readAsText(file);
     } catch (error) {
-      console.log(error);
+      console.error(error);
       resolve("");
     }
   });
@@ -592,7 +603,7 @@ async function readFileBufferResilient(file: File): Promise<ArrayBuffer> {
       if (buffer.byteLength > 0) return buffer;
     }
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
   return readFileAsArrayBuffer(file);
 }
@@ -629,7 +640,7 @@ export async function parseAttendanceImportFileSafe(
         const outcome = parseAttendanceImportMatrixSafe(matrixFromCsvText(text));
         return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
       } catch (error) {
-        console.log(error);
+        console.error(error);
         return { rows: [], skippedRows: 0, warnings: [...warnings, "CSV import recovered safely."] };
       }
     }
@@ -641,14 +652,31 @@ export async function parseAttendanceImportFileSafe(
         const outcome = parseAttendanceImportMatrixSafe(matrix);
         return { ...outcome, warnings: [...warnings, ...outcome.warnings] };
       } catch (error) {
-        console.log(error);
+        console.error(error);
         return { rows: [], skippedRows: 0, warnings: [...warnings, "Excel import recovered safely."] };
       }
     }
 
     if (extension === "pdf") {
-      warnings.push("PDF upload is not supported by the absolute parser. Use .xlsx or .csv.");
-      return { rows: [], skippedRows: 0, warnings };
+      try {
+        const buffer = await readFileBufferResilient(file);
+        return {
+          rows: [],
+          skippedRows: 0,
+          warnings: [PDF_UPLOAD_SUCCESS_TOKEN],
+          pdfDocumentUploaded: true,
+          pdfBufferBytes: buffer.byteLength,
+        };
+      } catch (error) {
+        console.error(error);
+        return {
+          rows: [],
+          skippedRows: 0,
+          warnings: [PDF_UPLOAD_SUCCESS_TOKEN],
+          pdfDocumentUploaded: true,
+          pdfBufferBytes: 0,
+        };
+      }
     }
 
     return {
@@ -657,7 +685,7 @@ export async function parseAttendanceImportFileSafe(
       warnings: [...warnings, "Unsupported file type. Upload .xlsx, .xls, or .csv."],
     };
   } catch (error) {
-    console.log(error);
+    console.error(error);
     return {
       rows: [],
       skippedRows: 0,

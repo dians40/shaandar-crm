@@ -1,5 +1,5 @@
--- Biometric attendance — explicit 22-column structure for Excel bulk import.
--- Matches prisma/schema.prisma → BiometricAttendance model.
+-- Biometric attendance — explicit 23-column structure for Excel bulk import.
+-- Matches prisma/schema.prisma → Attendance model.
 
 CREATE TABLE IF NOT EXISTS public.biometric_attendance (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.biometric_attendance (
   department TEXT DEFAULT '',
   designation TEXT DEFAULT '',
   shift TEXT DEFAULT '',
+  date TEXT DEFAULT '',
   start TEXT DEFAULT '',
   in_time TEXT DEFAULT '',
   lunch_out TEXT DEFAULT '',
@@ -55,4 +56,4 @@ CREATE TRIGGER biometric_attendance_set_updated_at
   EXECUTE FUNCTION public.set_updated_at();
 
 COMMENT ON TABLE public.biometric_attendance IS
-  'Structured 22-column biometric Daily Performance import log aligned with Excel export.';
+  'Structured 23-column biometric Daily Performance import log aligned with Excel export.';

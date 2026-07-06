@@ -141,9 +141,9 @@ export function mapToAttendanceCreate(
       shiftEarly: safeNumericString(biometric.shiftEarly),
       excessLunch: safeNumericString(biometric.excessLunch),
       ot: safeNumericString(biometric.ot),
-      overtime: safeNumericString(biometric.overtimeAmount) || "",
-      overstay: safeNumericString(biometric.overStay) || "",
-      manual: safeNumericString(biometric.manual) || "",
+      overtime: safeNumericString(biometric.overtimeAmount) || "0",
+      overstay: safeNumericString(biometric.overStay) || "0",
+      manual: safeNumericString(biometric.manual) || "0",
       punchIn:
         safeString(payload?.punch_in) ||
         `${attendanceDate.toISOString().slice(0, 10)}T09:00:00.000Z`,

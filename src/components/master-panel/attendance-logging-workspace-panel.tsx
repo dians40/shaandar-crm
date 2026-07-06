@@ -39,6 +39,7 @@ type ImportPreviewState = {
   pendingNewEmployees: PendingAutoEmployee[];
   skippedRows: number;
   warnings: string[];
+  reportDate?: string;
 };
 
 type ImportResult = {
@@ -106,7 +107,8 @@ export default function AttendanceLoggingWorkspacePanel() {
         return;
       }
 
-      const { rows: parsedRows, bulkRows: parsedBulkRows, skippedRows, warnings } = outcome;
+      const { rows: parsedRows, bulkRows: parsedBulkRows, skippedRows, warnings, reportDate } =
+        outcome;
 
       const sanitizedRows = Array.isArray(parsedRows)
         ? parsedRows.map((row) => finalizeImportRow(row))
@@ -139,6 +141,7 @@ export default function AttendanceLoggingWorkspacePanel() {
         bulkRows: sanitizedBulkRows,
         pendingNewEmployees,
         skippedRows,
+        reportDate,
         warnings:
           createdCount > 0
             ? [
@@ -219,6 +222,7 @@ export default function AttendanceLoggingWorkspacePanel() {
             buildBulkDbPayload({
               row: safeBulk,
               employeeId: employee.id,
+              attendanceDate: importPreview.reportDate,
             })
           );
 
@@ -366,9 +370,9 @@ export default function AttendanceLoggingWorkspacePanel() {
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-bold text-corporate-text">Bulk Import — Excel / PDF / CSV</h3>
             <p className="mt-1 text-xs text-corporate-muted">
-              Upload .xlsx, .xls, .pdf, or .csv with Employee Code, Employee Name, Attendance
-              Status, and Overtime Shift. Missing employee codes are auto-created when you process
-              the import.
+              Upload the biometric Daily Performance export (.xls/.xlsx) with all 22 columns —
+              Srl No., Pay Code, Card No, Employee Name through Manual. Missing employee codes are
+              auto-created when you process the import.
             </p>
           </div>
         </div>

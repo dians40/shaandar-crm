@@ -37,8 +37,8 @@ export type AttendanceBulkDbPayload = {
   shift_early: string;
   excess_lunch: string;
   ot: string;
-  overtime: string;
-  overstay: string;
+  overtime_amount: string;
+  over_stay: string;
   manual: string;
   employee_id: string;
   attendance_date: string;
@@ -72,7 +72,7 @@ function safeString(value: unknown): string {
 
 export function safeBulkNumeric(value: unknown): number {
   try {
-    const token = safeString(value);
+    const token = safeString(value).replace(/[$,]/g, "");
     if (!token) return 0;
     const parsed = Number(token);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -121,10 +121,10 @@ export function resolveBulkField(
     }
 
     if (alias.camel === "serialNumber") {
-      return safeString(row.srlNumber ?? row.srl_number ?? row["srl number"]);
+      return safeString(row.srlNumber ?? row.srl_number ?? row["srl no."]);
     }
-    if (alias.camel === "designation") {
-      return safeString(row.designations);
+    if (alias.camel === "cardNumber") {
+      return safeString(row["card no"]);
     }
     if (alias.camel === "in") {
       return safeString(row.inTime ?? row.in_time);
@@ -132,8 +132,11 @@ export function resolveBulkField(
     if (alias.camel === "out") {
       return safeString(row.outTime ?? row.out_time);
     }
-    if (alias.camel === "start") {
-      return safeString(row.startIn ?? row.start_in);
+    if (alias.camel === "overtimeAmount") {
+      return safeString(row.overtime ?? row["overtime amount"]);
+    }
+    if (alias.camel === "overStay") {
+      return safeString(row.overstay ?? row["over stay"]);
     }
 
     return "";
@@ -187,8 +190,8 @@ export function atomicFinalizeBulkDbPayload(
       shift_early: safeString(payload.shift_early),
       excess_lunch: safeString(payload.excess_lunch),
       ot: safeString(payload.ot),
-      overtime: safeString(payload.overtime),
-      overstay: safeString(payload.overstay),
+      overtime_amount: safeString(payload.overtime_amount),
+      over_stay: safeString(payload.over_stay),
       manual: safeString(payload.manual),
       employee_id: safeString(payload.employee_id),
       attendance_date: safeString(payload.attendance_date) || todayIsoDate(),
@@ -221,8 +224,8 @@ export function atomicFinalizeBulkDbPayload(
       shift_early: "",
       excess_lunch: "",
       ot: "",
-      overtime: "",
-      overstay: "",
+      overtime_amount: "",
+      over_stay: "",
       manual: "",
       employee_id: "",
       attendance_date: date,
@@ -271,13 +274,13 @@ export function resolveBulkOvertimeHours(record: Biometric22ColumnRecord): numbe
     const safe = normalizeBiometric22ColumnRecord(record);
     const fromOt = safeBulkNumeric(safe.ot);
     if (fromOt > 0) return fromOt;
-    const fromOvertime = safeBulkNumeric(safe.overtime);
-    if (fromOvertime > 0) return fromOvertime;
-    const fromOverstay = safeBulkNumeric(safe.overstay);
-    if (fromOverstay > 0) return fromOverstay;
+    const fromOvertimeAmount = safeBulkNumeric(safe.overtimeAmount);
+    if (fromOvertimeAmount > 0) return fromOvertimeAmount;
+    const fromOverStay = safeBulkNumeric(safe.overStay);
+    if (fromOverStay > 0) return fromOverStay;
     const fromManual = safeBulkNumeric(safe.manual);
     if (fromManual > 0) return fromManual;
-    return safe.ot || safe.overtime || safe.overstay ? 1 : 0;
+    return safe.ot || safe.overtimeAmount || safe.overStay ? 1 : 0;
   } catch (error) {
     console.error(error);
     return 0;
@@ -347,8 +350,8 @@ export function biometricRecordToSnakeCase(
     shift_early: safe.shiftEarly,
     excess_lunch: safe.excessLunch,
     ot: safe.ot,
-    overtime: safe.overtime,
-    overstay: safe.overstay,
+    overtime_amount: safe.overtimeAmount,
+    over_stay: safe.overStay,
     manual: safe.manual,
   };
 }
@@ -399,8 +402,8 @@ export function buildBulkDbPayload(input: {
       shift_early: "",
       excess_lunch: "",
       ot: "",
-      overtime: "",
-      overstay: "",
+      overtime_amount: "",
+      over_stay: "",
       manual: "",
       employee_id: safeString(input.employeeId),
       attendance_date: date,

@@ -16,6 +16,9 @@ import {
 import {
   buildHeaderColumnMap,
   bulkRecordFromHeaderMap,
+  collapseHeaderWhitespace,
+  extractReportDateFromMatrix,
+  findBiometricHeaderRowIndex,
   normalizeHeaderKey,
   shouldUseHeaderMapping,
 } from "@/lib/attendance-bulk-header-normalizer";
@@ -36,6 +39,7 @@ export type AttendanceImportParseOutcome = {
   bulkRows: Biometric22ColumnRecord[];
   skippedRows: number;
   warnings: string[];
+  reportDate?: string;
   pdfDocumentUploaded?: boolean;
   pdfBufferBytes?: number;
 };
@@ -245,20 +249,24 @@ function pickByHints(
   return "";
 }
 
-function bulkRecordToImportRow(record: Biometric22ColumnRecord): AttendanceImportRow {
+function bulkRecordToImportRow(
+  record: Biometric22ColumnRecord,
+  attendanceDate?: string
+): AttendanceImportRow {
   try {
     const safe = normalizeBiometric22ColumnRecord(record);
     const mapped = bulkRecordToWorkflowFields(safe);
     return createSafeImportRow({
       employeeCode: mapped.employeeCode,
       employeeName: mapped.employeeName,
+      attendanceDate: attendanceDate || todayIsoDate(),
       status: mapped.status,
       overtimeShift: mapped.overtimeShift,
       remarks: mapped.remarks,
     });
   } catch (error) {
     console.error(error);
-    return createSafeImportRow();
+    return createSafeImportRow({ attendanceDate: attendanceDate || todayIsoDate() });
   }
 }
 
@@ -477,6 +485,9 @@ async function matrixFromExcelBuffer(buffer: ArrayBuffer): Promise<string[][]> {
 
 function findHeaderRowIndex(matrix: string[][]): number {
   try {
+    const biometricIndex = findBiometricHeaderRowIndex(matrix);
+    if (biometricIndex > 0) return biometricIndex;
+
     for (let index = 0; index < Math.min(matrix.length, 20); index += 1) {
       const row = matrix[index] ?? [];
       const probe = row.map((cell) => normalizeKey(cell)).join(" ");
@@ -505,9 +516,12 @@ export function parseAttendanceImportMatrixSafe(
       return { rows: [], bulkRows: [], skippedRows: 0, warnings };
     }
 
+    const reportDate = extractReportDateFromMatrix(matrix);
     const headerIndex = findHeaderRowIndex(matrix);
     const headerRow = matrix[headerIndex] ?? [];
-    const headers = headerRow.map((cell) => normalizeHeaderKey(safeText(cell) || cell));
+    const headers = headerRow.map((cell) =>
+      normalizeHeaderKey(collapseHeaderWhitespace(safeText(cell) || cell))
+    );
     const columnMap = buildHeaderColumnMap(headers);
     const useHeaderMapping = shouldUseHeaderMapping(columnMap);
     const dataRows = matrix.slice(headerIndex + 1);
@@ -528,11 +542,11 @@ export function parseAttendanceImportMatrixSafe(
           }
 
           bulkRows.push(normalizeBiometric22ColumnRecord(bulkRecord));
-          rows.push(bulkRecordToImportRow(bulkRecord));
+          rows.push(bulkRecordToImportRow(bulkRecord, reportDate));
         } catch (rowError) {
           console.error(rowError);
           bulkRows.push(normalizeBiometric22ColumnRecord(null));
-          rows.push(finalizeImportRow({ status: DEFAULT_STATUS }));
+          rows.push(finalizeImportRow({ status: DEFAULT_STATUS, attendanceDate: reportDate }));
           warnings.push("One row was recovered with default DY1 status.");
         }
       }
@@ -547,11 +561,11 @@ export function parseAttendanceImportMatrixSafe(
 
     if (useHeaderMapping) {
       warnings.push(
-        `Header fuzzy mapping aligned ${Object.keys(columnMap).length} of 22 biometric columns.`
+        `Header mapping aligned ${Object.keys(columnMap).length} of 22 biometric columns from the attached Excel structure.`
       );
     }
 
-    return { rows, bulkRows, skippedRows, warnings };
+    return { rows, bulkRows, skippedRows, warnings, reportDate };
   } catch (error) {
     console.error(error);
     return {

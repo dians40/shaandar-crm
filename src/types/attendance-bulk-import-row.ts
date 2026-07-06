@@ -5,6 +5,32 @@ import {
   type OvertimeShiftType,
 } from "@/types/manual-attendance-entry";
 
+/** Exact biometric column labels from 06-07-2026.xls (row index 5). */
+export const BIOMETRIC_EXCEL_HEADER_LABELS = [
+  "Srl No.",
+  "Pay Code",
+  "Card No",
+  "Employee Name",
+  "Department",
+  "Designation",
+  "Shift",
+  "Start",
+  "In",
+  "Lunch Out",
+  "Lunch In",
+  "Out",
+  "Hours Worked",
+  "Status",
+  "Early Arrival",
+  "Shift Late",
+  "Shift Early",
+  "Excess Lunch",
+  "OT",
+  "Overtime Amount",
+  "Over Stay",
+  "Manual",
+] as const;
+
 /** Stable flat 22-column biometric bulk import record — every key defaults to "". */
 export type Biometric22ColumnRecord = {
   serialNumber: string;
@@ -26,8 +52,8 @@ export type Biometric22ColumnRecord = {
   shiftEarly: string;
   excessLunch: string;
   ot: string;
-  overtime: string;
-  overstay: string;
+  overtimeAmount: string;
+  overStay: string;
   manual: string;
 };
 
@@ -54,8 +80,8 @@ export const BIOMETRIC_22_COLUMN_KEYS: (keyof Biometric22ColumnRecord)[] = [
   "shiftEarly",
   "excessLunch",
   "ot",
-  "overtime",
-  "overstay",
+  "overtimeAmount",
+  "overStay",
   "manual",
 ];
 
@@ -65,28 +91,28 @@ export const ATTENDANCE_BULK_IMPORT_COLUMNS: {
   key: keyof Biometric22ColumnRecord;
   label: string;
 }[] = [
-  { key: "serialNumber", label: "SRL Number" },
-  { key: "payCode", label: "Pay Code" },
-  { key: "cardNumber", label: "Card Number" },
-  { key: "employeeName", label: "Employee Name" },
-  { key: "department", label: "Department" },
-  { key: "designation", label: "Designations" },
-  { key: "shift", label: "Shift" },
-  { key: "start", label: "Start" },
-  { key: "in", label: "In" },
-  { key: "lunchOut", label: "Lunch Out" },
-  { key: "lunchIn", label: "Lunch In" },
-  { key: "out", label: "Out" },
-  { key: "hoursWorked", label: "Hours Worked" },
-  { key: "status", label: "Status" },
-  { key: "earlyArrival", label: "Early Arrival" },
-  { key: "shiftLate", label: "Shift Late" },
-  { key: "shiftEarly", label: "Shift Early" },
-  { key: "excessLunch", label: "Excess Lunch" },
-  { key: "ot", label: "OT" },
-  { key: "overtime", label: "Overtime" },
-  { key: "overstay", label: "Overstay" },
-  { key: "manual", label: "Manual" },
+  { key: "serialNumber", label: BIOMETRIC_EXCEL_HEADER_LABELS[0] },
+  { key: "payCode", label: BIOMETRIC_EXCEL_HEADER_LABELS[1] },
+  { key: "cardNumber", label: BIOMETRIC_EXCEL_HEADER_LABELS[2] },
+  { key: "employeeName", label: BIOMETRIC_EXCEL_HEADER_LABELS[3] },
+  { key: "department", label: BIOMETRIC_EXCEL_HEADER_LABELS[4] },
+  { key: "designation", label: BIOMETRIC_EXCEL_HEADER_LABELS[5] },
+  { key: "shift", label: BIOMETRIC_EXCEL_HEADER_LABELS[6] },
+  { key: "start", label: BIOMETRIC_EXCEL_HEADER_LABELS[7] },
+  { key: "in", label: BIOMETRIC_EXCEL_HEADER_LABELS[8] },
+  { key: "lunchOut", label: BIOMETRIC_EXCEL_HEADER_LABELS[9] },
+  { key: "lunchIn", label: BIOMETRIC_EXCEL_HEADER_LABELS[10] },
+  { key: "out", label: BIOMETRIC_EXCEL_HEADER_LABELS[11] },
+  { key: "hoursWorked", label: BIOMETRIC_EXCEL_HEADER_LABELS[12] },
+  { key: "status", label: BIOMETRIC_EXCEL_HEADER_LABELS[13] },
+  { key: "earlyArrival", label: BIOMETRIC_EXCEL_HEADER_LABELS[14] },
+  { key: "shiftLate", label: BIOMETRIC_EXCEL_HEADER_LABELS[15] },
+  { key: "shiftEarly", label: BIOMETRIC_EXCEL_HEADER_LABELS[16] },
+  { key: "excessLunch", label: BIOMETRIC_EXCEL_HEADER_LABELS[17] },
+  { key: "ot", label: BIOMETRIC_EXCEL_HEADER_LABELS[18] },
+  { key: "overtimeAmount", label: BIOMETRIC_EXCEL_HEADER_LABELS[19] },
+  { key: "overStay", label: BIOMETRIC_EXCEL_HEADER_LABELS[20] },
+  { key: "manual", label: BIOMETRIC_EXCEL_HEADER_LABELS[21] },
 ];
 
 export const EMPTY_BIOMETRIC_22_COLUMN_RECORD: Biometric22ColumnRecord = {
@@ -109,8 +135,8 @@ export const EMPTY_BIOMETRIC_22_COLUMN_RECORD: Biometric22ColumnRecord = {
   shiftEarly: "",
   excessLunch: "",
   ot: "",
-  overtime: "",
-  overstay: "",
+  overtimeAmount: "",
+  overStay: "",
   manual: "",
 };
 
@@ -149,12 +175,16 @@ export function normalizeBiometric22ColumnRecord(
     const legacyStartIn = safeCell(source.startIn);
     const legacyStart = safeCell(source.start ?? legacyStartIn);
     const legacyIn = safeCell(source.inTime ?? source.in ?? "");
+    const legacyOvertimeAmount = safeCell(
+      source.overtimeAmount ?? source.overtime ?? source["overtime amount"]
+    );
+    const legacyOverStay = safeCell(source.overStay ?? source.overstay ?? source["over stay"]);
 
     const merged: Biometric22ColumnRecord = {
       ...EMPTY_BIOMETRIC_22_COLUMN_RECORD,
-      serialNumber: safeCell(source.serialNumber ?? source.srlNumber),
+      serialNumber: safeCell(source.serialNumber ?? source.srlNumber ?? source["srl no."]),
       payCode: safeCell(source.payCode),
-      cardNumber: safeCell(source.cardNumber),
+      cardNumber: safeCell(source.cardNumber ?? source["card no"]),
       employeeName: safeCell(source.employeeName),
       department: safeCell(source.department),
       designation: safeCell(source.designation ?? source.designations),
@@ -171,23 +201,20 @@ export function normalizeBiometric22ColumnRecord(
       shiftEarly: safeCell(source.shiftEarly),
       excessLunch: safeCell(source.excessLunch),
       ot: safeCell(source.ot),
-      overtime: safeCell(source.overtime),
-      overstay: safeCell(source.overstay),
+      overtimeAmount: legacyOvertimeAmount,
+      overStay: legacyOverStay,
       manual: safeCell(source.manual),
     };
 
     const shift = normalizeBiometricField(merged.shift) || merged.shift;
-    const status =
-      normalizeBiometricField(merged.status) || merged.status || shift || BIOMETRIC_DAY_CODE;
+    const status = safeCell(merged.status) || shift || BIOMETRIC_DAY_CODE;
     const ot = normalizeBiometricField(merged.ot) || merged.ot;
-    const overtime = normalizeBiometricField(merged.overtime) || merged.overtime;
 
     return {
       ...merged,
       shift: shift || "",
       status: status || BIOMETRIC_DAY_CODE,
       ot: ot || "",
-      overtime: overtime || "",
     };
   } catch (error) {
     console.error(error);
@@ -202,9 +229,10 @@ export function finalizeBulkImportRecord(
   return normalizeBiometric22ColumnRecord(partial);
 }
 
+/** Positional mapping for the first 22 columns — ignores trailing hash / empty columns. */
 export function bulkRecordFromCells(cells: unknown): Biometric22ColumnRecord {
   try {
-    const row = Array.isArray(cells) ? cells : [];
+    const row = Array.isArray(cells) ? cells.slice(0, ATTENDANCE_BULK_IMPORT_COLUMN_COUNT) : [];
     const cell = (index: number) => safeCell(row[index] ?? "");
 
     return normalizeBiometric22ColumnRecord({
@@ -227,8 +255,8 @@ export function bulkRecordFromCells(cells: unknown): Biometric22ColumnRecord {
       shiftEarly: cell(16),
       excessLunch: cell(17),
       ot: cell(18),
-      overtime: cell(19),
-      overstay: cell(20),
+      overtimeAmount: cell(19),
+      overStay: cell(20),
       manual: cell(21),
     });
   } catch (error) {
@@ -276,12 +304,13 @@ export function bulkRecordToWorkflowFields(record: Biometric22ColumnRecord): {
     const safe = normalizeBiometric22ColumnRecord(record);
     const employeeCode = safe.payCode || safe.cardNumber || "TEMP_CODE";
     const employeeName = safe.employeeName || "Unknown";
-    const statusSource = safe.status || safe.shift || BIOMETRIC_DAY_CODE;
+    const statusSource = safe.shift || safe.status || BIOMETRIC_DAY_CODE;
     const status = normalizeBiometricCode(statusSource);
-    const otSource = safe.ot || safe.overtime || safe.overstay || "";
+    const otSource = safe.ot || safe.overtimeAmount || safe.overStay || "";
     const overtimeShift = otSource ? normalizeBiometricCode(otSource) : status;
 
     const remarks = [
+      safe.status ? `Attendance Status: ${safe.status}` : "",
       safe.department ? `Department: ${safe.department}` : "",
       safe.designation ? `Designation: ${safe.designation}` : "",
       safe.shift ? `Shift: ${safe.shift}` : "",

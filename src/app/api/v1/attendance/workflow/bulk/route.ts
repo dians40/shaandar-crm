@@ -232,7 +232,7 @@ export async function POST(request: Request) {
 
         const status = normalizeBiometricCode(row.status || row.shift || BIOMETRIC_DAY_CODE);
         const overtimeShift = normalizeBiometricCode(
-          row.overtime_shift || row.ot || row.overtime || status
+          row.overtime_shift || row.ot || row.overtime_amount || status
         );
         const overtimeHours = safeBulkNumeric(row.overtime_hours);
         const remarks = row.remarks || "";

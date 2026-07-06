@@ -327,7 +327,7 @@ function parseBiometricStatus(
   }
 }
 
-function processRowThroughSanitizationMatrix(
+function processBiometricImportRow(
   cells: unknown,
   columnMap: ImportColumnMap
 ): Partial<AttendanceImportRow> {
@@ -398,27 +398,6 @@ function processRowThroughSanitizationMatrix(
       employeeName: FALLBACK_EMPLOYEE_NAME,
       status: parseStatus(FALLBACK_STATUS_LABEL),
       remarks: "Recovered by sanitization matrix.",
-    });
-  }
-}
-
-function parseImportRow(
-  cells: unknown,
-  columnMap: ImportColumnMap
-): AttendanceImportRow | null {
-  try {
-    const rowCells = Array.isArray(cells)
-      ? cells.map((cell) => safeString(cell))
-      : buildBiometricSanitizationMatrix(cells);
-
-    if (!rowHasContent(rowCells)) {
-      return null;
-    }
-
-    return processRowThroughSanitizationMatrix(cells, columnMap);
-  } catch {
-    return finalizeImportRow({
-      remarks: "Recovered from malformed import row.",
     });
   }
 }

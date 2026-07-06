@@ -20,7 +20,13 @@ function writeRows(rows: RoleModelRecord[]) {
 }
 
 export function readRoleModels(): RoleModelRecord[] {
-  return readRows();
+  return readRows()
+    .map((row) => ({
+      id: row.id,
+      role: typeof row.role === "string" ? row.role : "",
+      createdAt: row.createdAt ?? new Date().toISOString(),
+    }))
+    .filter((row) => row.role.trim().length > 0);
 }
 
 export function appendRoleModel(record: RoleModelRecord): RoleModelRecord[] {

@@ -87,9 +87,8 @@ export default function Sidebar({
         "master-panel": (getGroupById("administration")?.moduleIds ?? []).filter((moduleId) =>
           canViewMasterPanelModule(selectedRole, moduleId)
         ),
-        transactions: (getGroupById("transaction")?.moduleIds ?? []).filter((moduleId) =>
-          canViewMasterPanelModule(selectedRole, moduleId)
-        ),
+        // Transactions menu always lists the full pre-configured operational routes.
+        transactions: getGroupById("transaction")?.moduleIds ?? [],
       }) satisfies Record<ExpandableSectionId, MasterPanelModuleId[]>,
     [canViewMasterPanelModule, selectedRole]
   );

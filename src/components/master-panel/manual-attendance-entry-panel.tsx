@@ -142,7 +142,7 @@ export default function ManualAttendanceEntryPanel() {
             }
           />
           <TextInput
-            label="Attendance Date (तारीख)"
+            label="Attendance Date"
             type="date"
             required
             value={form.attendanceDate}
@@ -170,7 +170,7 @@ export default function ManualAttendanceEntryPanel() {
             }
           />
           <TextInput
-            label="Overtime Hours (ओवरटाइम घंटे)"
+            label="Overtime Hours"
             type="number"
             min="0"
             step="0.5"

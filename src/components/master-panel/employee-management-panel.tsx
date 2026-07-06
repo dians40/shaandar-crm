@@ -1,21 +1,24 @@
 "use client";
 
 import { useCallback, useState, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
 import EmployeeBioDataCard from "./employee-bio-data-card";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
+import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import SupabaseSetupBanner from "./supabase-setup-banner";
 import { useEmployees } from "@/hooks/use-employees";
 
-type EmployeeViewMode = "list" | "add" | "edit" | "detail";
+type EmployeeViewMode = "list" | "add" | "edit" | "detail" | "manual-attendance";
 
 const EMPTY_EMPLOYEES: never[] = [];
 
 /**
  * Fully functional Employee Management workspace.
  * Includes: split first/last name form, mandatory gender, real-time search,
- * bio-data card, and attendance-based delete protection (via EmployeeList + API).
+ * bio-data card, attendance-based delete protection (via EmployeeList + API),
+ * and embedded manual attendance entry for supervisors.
  */
 export default function EmployeeManagementPanel() {
   const { employees, isLoading, error, reload } = useEmployees();
@@ -42,30 +45,60 @@ export default function EmployeeManagementPanel() {
     setSelectedId(null);
   }, []);
 
+  const handleManualAttendanceTab = useCallback(() => {
+    setView("manual-attendance");
+    setSelectedId(null);
+  }, []);
+
   const safeEmployees = Array.isArray(employees) ? employees : EMPTY_EMPLOYEES;
 
-  const subTab: "list" | "add" = view === "add" ? "add" : "list";
+  const subTab: "list" | "add" =
+    view === "add" ? "add" : view === "manual-attendance" ? "list" : "list";
 
-  const withSubTabs = (content: ReactNode) => (
+  const withWorkspaceTabs = (content: ReactNode) => (
     <>
-      <ModuleAddListTabBar
-        moduleName="Employee"
-        active={subTab}
-        onList={handleListTab}
-        onAdd={handleAddTab}
-      />
+      <div
+        className="mb-4 flex flex-wrap gap-2"
+        role="tablist"
+        aria-label="Employee workspace views"
+      >
+        <ModuleAddListTabBar
+          moduleName="Employee"
+          active={subTab}
+          onList={handleListTab}
+          onAdd={handleAddTab}
+        />
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "manual-attendance"}
+          onClick={handleManualAttendanceTab}
+          className={cn(
+            "rounded-full border px-5 py-2 text-sm font-semibold transition-colors",
+            view === "manual-attendance"
+              ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
+              : "border-corporate-border bg-white text-corporate-text hover:border-corporate-brand/40 hover:bg-corporate-brand/5"
+          )}
+        >
+          Manual Attendance
+        </button>
+      </div>
       {content}
     </>
   );
 
+  if (view === "manual-attendance") {
+    return withWorkspaceTabs(<ManualAttendanceEntryPanel />);
+  }
+
   if (view === "add") {
-    return withSubTabs(
+    return withWorkspaceTabs(
       <EmployeeForm mode="add" onBack={handleBack} onSuccess={handleSuccess} />
     );
   }
 
   if (view === "edit" && selectedId) {
-    return withSubTabs(
+    return withWorkspaceTabs(
       <EmployeeForm
         mode="edit"
         employeeId={selectedId}
@@ -76,7 +109,7 @@ export default function EmployeeManagementPanel() {
   }
 
   if (view === "detail" && selectedId) {
-    return withSubTabs(
+    return withWorkspaceTabs(
       <EmployeeBioDataCard
         employeeId={selectedId}
         onBack={handleBack}
@@ -85,7 +118,7 @@ export default function EmployeeManagementPanel() {
     );
   }
 
-  return withSubTabs(
+  return withWorkspaceTabs(
     <>
       <SupabaseSetupBanner />
       <EmployeeList

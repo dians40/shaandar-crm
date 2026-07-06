@@ -79,7 +79,7 @@ export default function DisplayReportCriteriaWizard({
             {REPORT_TYPE_CATEGORIES.map((category) => (
               <optgroup
                 key={category.id}
-                label={`${category.label} (${category.labelHi})`}
+                label={category.label}
               >
                 {category.reports.map((report) => (
                   <option key={report.id} value={report.id}>
@@ -234,7 +234,7 @@ export default function DisplayReportCriteriaWizard({
           onClick={onGenerate}
           className="btn-primary h-12 min-h-[48px] rounded-full px-6 text-base font-bold shadow-sm"
         >
-          Generate Report / रिपोर्ट देखें
+          Generate Report
         </button>
       </div>
     </section>

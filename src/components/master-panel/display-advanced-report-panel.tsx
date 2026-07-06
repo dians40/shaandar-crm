@@ -164,7 +164,7 @@ export default function DisplayAdvancedReportPanel({
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Type</th>
               <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Overdue Days</th>
               <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Balance</th>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>साधारी Status</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Settlement Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">

@@ -52,7 +52,7 @@ const INCOMING_PARTIES: IncomingPartyRow[] = [
     date: "2026-07-05",
     partyName: "Sharma Traders",
     amount: 45000,
-    sadhariStatus: "Sadhari Satisfied (साधारी संतुष्टि)",
+    sadhariStatus: "Sadhari Satisfied",
   },
   {
     date: "2026-07-05",
@@ -64,7 +64,7 @@ const INCOMING_PARTIES: IncomingPartyRow[] = [
     date: "2026-07-05",
     partyName: "Cash Counter — Gate 1",
     amount: 18200,
-    sadhariStatus: "Sadhari Satisfied (साधारी संतुष्टि)",
+    sadhariStatus: "Sadhari Satisfied",
   },
   {
     date: "2026-07-05",
@@ -76,7 +76,7 @@ const INCOMING_PARTIES: IncomingPartyRow[] = [
     date: "2026-07-05",
     partyName: "Patel Packaging",
     amount: 8600,
-    sadhariStatus: "Sadhari Satisfied (साधारी संतुष्टि)",
+    sadhariStatus: "Sadhari Satisfied",
   },
 ];
 
@@ -261,12 +261,12 @@ export default function CashBankSummaryPanel({
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        {/* LEFT — Receipts / आवक */}
+        {/* LEFT — Receipts */}
         <article className="flex min-w-0 flex-col rounded-xl border-2 border-emerald-300 bg-corporate-surface shadow-card">
           <header className="flex items-center gap-2 border-b border-emerald-200 bg-emerald-50 px-4 py-3">
             <ArrowDownToLine className="h-5 w-5 text-emerald-700" aria-hidden />
             <div>
-              <h4 className="text-sm font-bold text-emerald-900">Receipts / आवक Part</h4>
+              <h4 className="text-sm font-bold text-emerald-900">Receipts</h4>
               <p className="text-xs text-emerald-800">Incoming funds &amp; party receipts</p>
             </div>
           </header>
@@ -343,12 +343,12 @@ export default function CashBankSummaryPanel({
           </div>
         </article>
 
-        {/* RIGHT — Payments / जावक */}
+        {/* RIGHT — Payments */}
         <article className="flex min-w-0 flex-col rounded-xl border-2 border-red-300 bg-corporate-surface shadow-card">
           <header className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-3">
             <ArrowUpFromLine className="h-5 w-5 text-red-700" aria-hidden />
             <div>
-              <h4 className="text-sm font-bold text-red-900">Payments / जावक Part</h4>
+              <h4 className="text-sm font-bold text-red-900">Payments</h4>
               <p className="text-xs text-red-800">Head-wise &amp; vehicle expense outflows</p>
             </div>
           </header>

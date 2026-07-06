@@ -138,7 +138,7 @@ const DISPATCH_OUTWARD_ROWS: DispatchOutwardRow[] = [
 function VehicleBadge({ vehicleNo }: { vehicleNo: string }) {
   return (
     <span className="inline-flex rounded-full border-2 border-corporate-brand bg-corporate-brand-light px-3 py-1 text-xs font-bold uppercase tracking-wide text-corporate-brand">
-      गाड़ी Number: {vehicleNo}
+      Vehicle Number: {vehicleNo}
     </span>
   );
 }
@@ -220,12 +220,12 @@ export default function MaterialLedgerPanel({
       </p>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Left — Inward / आवक */}
+        {/* Left — Inward */}
         <article className="min-w-0 rounded-xl border-2 border-emerald-300 bg-corporate-surface shadow-card">
           <header className="flex items-center gap-2 border-b border-emerald-200 bg-emerald-50 px-4 py-3">
             <ArrowDownToLine className="h-5 w-5 text-emerald-700" aria-hidden />
             <div>
-              <h3 className="text-sm font-bold text-emerald-900">Inward Stream / आवक</h3>
+              <h3 className="text-sm font-bold text-emerald-900">Inward Stream</h3>
               <p className="text-xs text-emerald-800">Purchase, received, and repair material logs</p>
             </div>
           </header>
@@ -236,7 +236,7 @@ export default function MaterialLedgerPanel({
                 <tr>
                   <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date / Time</th>
                   <th className={MASTER_LIST_HEADER_CELL_CLASS}>Category</th>
-                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>किसने दिया (Supplier)</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Supplier</th>
                   <th className={MASTER_LIST_HEADER_CELL_CLASS}>Item</th>
                   <th className={MASTER_LIST_HEADER_CELL_CLASS}>Qty</th>
                   <th className={MASTER_LIST_HEADER_CELL_CLASS}>Vehicle / LR</th>
@@ -264,13 +264,13 @@ export default function MaterialLedgerPanel({
           </div>
         </article>
 
-        {/* Right — Outward / जावक */}
+        {/* Right — Outward */}
         <article className="min-w-0 space-y-4">
           <header className="rounded-xl border-2 border-red-300 bg-red-50 px-4 py-3">
             <div className="flex items-center gap-2">
               <ArrowUpFromLine className="h-5 w-5 text-red-700" aria-hidden />
               <div>
-                <h3 className="text-sm font-bold text-red-900">Outward &amp; Dispatch / जावक</h3>
+                <h3 className="text-sm font-bold text-red-900">Outward &amp; Dispatch</h3>
                 <p className="text-xs text-red-800">Sales entries and dispatch logs for day-end clarity</p>
               </div>
             </div>
@@ -287,7 +287,7 @@ export default function MaterialLedgerPanel({
                 <thead className={MASTER_LIST_HEAD_CLASS}>
                   <tr>
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date / Time</th>
-                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>किसको भेजा (Customer)</th>
+                    <th className={MASTER_LIST_HEADER_CELL_CLASS}>Customer</th>
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Goods</th>
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Qty</th>
                     <th className={MASTER_LIST_HEADER_CELL_CLASS}>Vehicle</th>

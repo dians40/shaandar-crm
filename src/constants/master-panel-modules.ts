@@ -340,15 +340,6 @@ const TRANSACTION_MODULES: MasterPanelModule[] = [
     placeholderMessage: "Attendance System Coming Soon",
   },
   {
-    id: "attendance-manual-entry",
-    serial: 29,
-    navLabel: "Manual Entry",
-    title: "Attendance Manual Entry",
-    subtitle: "Supervisor staff attendance self-entry",
-    icon: ClipboardPen,
-    placeholderMessage: "",
-  },
-  {
     id: "overtime-tracker",
     serial: 27,
     navLabel: "Overtime",
@@ -368,10 +359,24 @@ const TRANSACTION_MODULES: MasterPanelModule[] = [
   },
 ];
 
+/** Workspace modules embedded inside administration screens — excluded from sidebar groups. */
+const INTERNAL_WORKSPACE_MODULES: MasterPanelModule[] = [
+  {
+    id: "attendance-manual-entry",
+    serial: 29,
+    navLabel: "Manual Entry",
+    title: "Attendance Manual Entry",
+    subtitle: "Supervisor staff attendance self-entry",
+    icon: ClipboardPen,
+    placeholderMessage: "",
+  },
+];
+
 /** Full serialized ERP module list — Administration first, then Transaction. */
 export const MASTER_PANEL_MODULES: MasterPanelModule[] = [
   ...ADMINISTRATION_MODULES,
   ...TRANSACTION_MODULES,
+  ...INTERNAL_WORKSPACE_MODULES,
 ];
 
 const MODULE_MAP = new Map(

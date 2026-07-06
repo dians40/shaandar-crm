@@ -295,15 +295,15 @@ export default function ItemsManagementPanel() {
               value: `₹${viewingRecord.openingStockValue.toLocaleString("en-IN")}`,
             },
             {
-              label: "Minimum Stock Level (न्यूनतम सीमा)",
+              label: "Minimum Stock Level",
               value: viewingRecord.minimumStockLevel.toLocaleString("en-IN"),
             },
             {
-              label: "Maximum Stock Level (अधिकतम सीमा)",
+              label: "Maximum Stock Level",
               value: viewingRecord.maximumStockLevel.toLocaleString("en-IN"),
             },
             {
-              label: "Reorder Level (पुनः ऑर्डर बिंदु)",
+              label: "Reorder Level",
               value: viewingRecord.reorderLevel.toLocaleString("en-IN"),
             },
             {
@@ -429,7 +429,7 @@ export default function ItemsManagementPanel() {
             </div>
             <div className="form-grid">
               <TextInput
-                label="Minimum Stock Level (न्यूनतम सीमा)"
+                label="Minimum Stock Level"
                 type="number"
                 min="0"
                 step="0.01"
@@ -443,7 +443,7 @@ export default function ItemsManagementPanel() {
                 }
               />
               <TextInput
-                label="Maximum Stock Level (अधिकतम सीमा)"
+                label="Maximum Stock Level"
                 type="number"
                 min="0"
                 step="0.01"
@@ -457,7 +457,7 @@ export default function ItemsManagementPanel() {
                 }
               />
               <TextInput
-                label="Reorder Level (पुनः ऑर्डर बिंदु)"
+                label="Reorder Level"
                 type="number"
                 min="0"
                 step="0.01"

@@ -84,9 +84,9 @@ export default function ManufacturingStockLedgerPanel({
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Item / SKU</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Category / Group</th>
               <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Closing Balance</th>
-              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Min (न्यूनतम)</th>
-              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Max (अधिकतम)</th>
-              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Reorder (पुनः ऑर्डर)</th>
+              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Min</th>
+              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Max</th>
+              <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Reorder</th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Stock Signal</th>
             </tr>
           </thead>

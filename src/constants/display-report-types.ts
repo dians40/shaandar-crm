@@ -91,7 +91,7 @@ export const REPORT_TYPE_CATEGORIES: ReportTypeCategory[] = [
       },
       {
         id: "outstanding.overdue-party-logs",
-        label: "Overdue Party Logs (साधारी Status Flags)",
+        label: "Overdue Party Logs (Settlement Status Flags)",
         labelHi: "अतिदेय पार्टी लॉग",
         requiresDateRange: true,
         showEntityFilter: true,
@@ -178,7 +178,7 @@ export function getReportTypeDefinition(reportTypeId: string): ReportTypeDefinit
 }
 
 export function formatReportTypeLabel(report: ReportTypeDefinition): string {
-  return `${report.label} (${report.labelHi})`;
+  return report.label;
 }
 
 export const TRANSACTION_FILTER_OPTIONS: {

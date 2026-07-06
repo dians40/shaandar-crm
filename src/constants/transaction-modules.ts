@@ -3,7 +3,6 @@ import type { MasterPanelModuleId } from "@/constants/master-panel-modules";
 /** Transaction modules with full panel implementations (not placeholders). */
 export const IMPLEMENTED_TRANSACTION_MODULE_IDS = new Set<MasterPanelModuleId>([
   "attendance-system",
-  "attendance-manual-entry",
   "overtime-tracker",
   "vehicle-management-transaction",
   "sales-dispatch",

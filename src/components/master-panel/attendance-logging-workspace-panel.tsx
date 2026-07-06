@@ -19,10 +19,12 @@ import {
   finalizeImportRow,
   parseAttendanceImportFileSafe,
   PDF_UPLOAD_SUCCESS_TOKEN,
-  type AttendanceBulkImportRecord,
   type AttendanceImportRow,
 } from "@/lib/attendance-import-parser";
-import { finalizeBulkImportRecord } from "@/types/attendance-bulk-import-row";
+import {
+  normalizeBiometric22ColumnRecord,
+  type Biometric22ColumnRecord,
+} from "@/types/attendance-bulk-import-row";
 import AttendanceBulkImportPreviewGrid from "./attendance-bulk-import-preview-grid";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
 import { useEmployees } from "@/hooks/use-employees";
@@ -32,7 +34,7 @@ import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 type ImportPreviewState = {
   fileName: string;
   rows: AttendanceImportRow[];
-  bulkRows: AttendanceBulkImportRecord[];
+  bulkRows: Biometric22ColumnRecord[];
   pendingNewEmployees: PendingAutoEmployee[];
   skippedRows: number;
   warnings: string[];
@@ -97,7 +99,7 @@ export default function AttendanceLoggingWorkspacePanel() {
         ? parsedRows.map((row) => finalizeImportRow(row))
         : [];
       const sanitizedBulkRows = Array.isArray(parsedBulkRows)
-        ? parsedBulkRows.map((row) => finalizeBulkImportRecord(row))
+        ? parsedBulkRows.map((row) => normalizeBiometric22ColumnRecord(row))
         : [];
 
       if (sanitizedRows.length === 0) {
@@ -286,6 +288,21 @@ export default function AttendanceLoggingWorkspacePanel() {
     }
   }, [importPreview?.bulkRows]);
 
+  const handleBulkRowsChange = useCallback((nextRows: Biometric22ColumnRecord[]) => {
+    try {
+      if (!importPreview) return;
+      if (!Array.isArray(nextRows)) return;
+
+      const bulkRows = nextRows.map((row) => normalizeBiometric22ColumnRecord(row));
+      setImportPreview((current) => {
+        if (!current) return current;
+        return { ...current, bulkRows };
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  }, [importPreview]);
+
   return (
     <div className="w-full space-y-6">
       <div className="flex flex-col gap-2 border-b border-corporate-border pb-3 sm:flex-row sm:items-center sm:justify-between">
@@ -392,6 +409,7 @@ export default function AttendanceLoggingWorkspacePanel() {
               rows={importPreview.bulkRows}
               selectedRowIndex={selectedBulkRowIndex}
               onSelectedRowIndexChange={handleBulkRowIndexChange}
+              onRowsChange={handleBulkRowsChange}
             />
             <p className="text-xs text-corporate-muted">
               Press Enter on a row to move focus to the next row. Use arrow keys or click to select

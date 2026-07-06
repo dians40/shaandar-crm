@@ -10,11 +10,11 @@ import {
   bulkRecordFromCells,
   bulkRecordHasContent,
   bulkRecordToWorkflowFields,
-  finalizeBulkImportRecord,
-  type AttendanceBulkImportRecord,
+  normalizeBiometric22ColumnRecord,
+  type Biometric22ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 
-export type { AttendanceBulkImportRecord };
+export type { Biometric22ColumnRecord as AttendanceBulkImportRecord };
 
 export type AttendanceImportRow = {
   employeeCode: string;
@@ -27,7 +27,7 @@ export type AttendanceImportRow = {
 
 export type AttendanceImportParseOutcome = {
   rows: AttendanceImportRow[];
-  bulkRows: AttendanceBulkImportRecord[];
+  bulkRows: Biometric22ColumnRecord[];
   skippedRows: number;
   warnings: string[];
   pdfDocumentUploaded?: boolean;
@@ -239,9 +239,9 @@ function pickByHints(
   return "";
 }
 
-function bulkRecordToImportRow(record: AttendanceBulkImportRecord): AttendanceImportRow {
+function bulkRecordToImportRow(record: Biometric22ColumnRecord): AttendanceImportRow {
   try {
-    const safe = finalizeBulkImportRecord(record);
+    const safe = normalizeBiometric22ColumnRecord(record);
     const mapped = bulkRecordToWorkflowFields(safe);
     return createSafeImportRow({
       employeeCode: mapped.employeeCode,
@@ -504,7 +504,7 @@ export function parseAttendanceImportMatrixSafe(
     const headers = headerRow.map((cell) => safeText(cell));
     const dataRows = matrix.slice(headerIndex + 1);
     const rows: AttendanceImportRow[] = [];
-    const bulkRows: AttendanceBulkImportRecord[] = [];
+    const bulkRows: Biometric22ColumnRecord[] = [];
 
     try {
       for (const rawRow of dataRows) {
@@ -517,11 +517,11 @@ export function parseAttendanceImportMatrixSafe(
             continue;
           }
 
-          bulkRows.push(finalizeBulkImportRecord(bulkRecord));
+          bulkRows.push(normalizeBiometric22ColumnRecord(bulkRecord));
           rows.push(bulkRecordToImportRow(bulkRecord));
         } catch (rowError) {
           console.error(rowError);
-          bulkRows.push(finalizeBulkImportRecord(null));
+          bulkRows.push(normalizeBiometric22ColumnRecord(null));
           rows.push(finalizeImportRow({ status: DEFAULT_STATUS }));
           warnings.push("One row was recovered with default DY1 status.");
         }

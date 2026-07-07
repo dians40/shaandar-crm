@@ -1,6 +1,6 @@
 // Shaandar CRM — public.biometric_attendance canonical schema
 // Generate client: npx prisma generate
-// Apply SQL: supabase/migrations/010_biometric_attendance_canonical_schema.sql
+// Apply SQL: supabase/migrations/011_ensure_attendance_tables.sql
 
 generator client {
   provider = "prisma-client-js"

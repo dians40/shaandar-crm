@@ -554,9 +554,14 @@ export default function AttendanceControlCenter() {
       const savedLocallyOnly = body.message?.toLowerCase().includes("locally") ?? false;
 
       if (biometricSaved === 0 && workflowSaved === 0 && bulkPayloadRows.length > 0) {
+        const schemaHint =
+          body.errors?.some((entry) => /schema cache|not find table/i.test(entry)) ??
+          false;
         throw new Error(
           body.errors?.slice(0, 2).join(" · ") ||
-            "Save returned zero rows. Check Supabase connection and run migration 010_biometric_attendance_canonical_schema.sql."
+            (schemaHint
+              ? "Attendance tables are missing. Run supabase/migrations/011_ensure_attendance_tables.sql in Supabase SQL Editor, or npm run migrate:attendance."
+              : "Save returned zero rows. Check Supabase connection and run migration 011_ensure_attendance_tables.sql.")
         );
       }
 

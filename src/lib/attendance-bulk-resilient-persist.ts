@@ -1,4 +1,8 @@
 import type { Prisma } from "@prisma/client";
+import {
+  ensureAttendanceTablesSchema,
+  isAttendanceSchemaError,
+} from "@/lib/attendance-schema-ensure";
 import { normalizeAttendanceDateIso, todayIsoDateString } from "@/types/attendance-bulk-import-row";
 import { prisma } from "@/lib/prisma";
 
@@ -112,6 +116,16 @@ export async function persistBiometricRowsResilient(
   return { saved, errors };
 }
 
+async function upsertBiometricChunk(
+  supabase: ReturnType<typeof import("@/lib/supabase/admin").createAdminClient>,
+  chunk: Record<string, unknown>[]
+): Promise<{ error?: string }> {
+  const { error } = await supabase.from("biometric_attendance").upsert(chunk, {
+    onConflict: "pay_code,date",
+  });
+  return error ? { error: error.message ?? "batch upsert failed" } : {};
+}
+
 /** Supabase upsert with per-row fallback when batch conflict fails. */
 export async function persistBiometricRowsSupabaseResilient(
   supabase: ReturnType<typeof import("@/lib/supabase/admin").createAdminClient>,
@@ -120,13 +134,26 @@ export async function persistBiometricRowsSupabaseResilient(
 ): Promise<{ saved: number; errors: string[] }> {
   const errors: string[] = [];
   let saved = 0;
+  let schemaRetried = false;
 
   for (const chunk of chunkArray(rows, batchSize)) {
     try {
-      const { error } = await supabase.from("biometric_attendance").upsert(chunk, {
-        onConflict: "pay_code,date",
-      });
-      if (error) {
+      let batch = await upsertBiometricChunk(supabase, chunk);
+
+      if (batch.error && isAttendanceSchemaError(batch.error) && !schemaRetried) {
+        const ensure = await ensureAttendanceTablesSchema();
+        schemaRetried = true;
+        if (ensure.ok) {
+          batch = await upsertBiometricChunk(supabase, chunk);
+        } else {
+          errors.push(
+            `${batch.error} — Run supabase/migrations/011_ensure_attendance_tables.sql in Supabase SQL Editor.`
+          );
+          continue;
+        }
+      }
+
+      if (batch.error) {
         for (const row of chunk) {
           try {
             const { error: rowError } = await supabase
@@ -145,7 +172,32 @@ export async function persistBiometricRowsSupabaseResilient(
       }
       saved += chunk.length;
     } catch (error) {
-      errors.push(error instanceof Error ? error.message : "batch upsert failed");
+      const message = error instanceof Error ? error.message : "batch upsert failed";
+      if (isAttendanceSchemaError(message) && !schemaRetried) {
+        const ensure = await ensureAttendanceTablesSchema();
+        schemaRetried = true;
+        if (!ensure.ok) {
+          errors.push(
+            `${message} — Run supabase/migrations/011_ensure_attendance_tables.sql in Supabase SQL Editor.`
+          );
+          continue;
+        }
+        try {
+          const retry = await upsertBiometricChunk(supabase, chunk);
+          if (retry.error) {
+            errors.push(retry.error);
+          } else {
+            saved += chunk.length;
+          }
+          continue;
+        } catch (retryError) {
+          errors.push(
+            retryError instanceof Error ? retryError.message : "batch upsert failed"
+          );
+          continue;
+        }
+      }
+      errors.push(message);
     }
   }
 

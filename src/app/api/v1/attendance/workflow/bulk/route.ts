@@ -24,6 +24,10 @@ import {
 } from "@/types/attendance-workflow";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  ensureAttendanceTablesSchema,
+  isAttendanceSchemaError,
+} from "@/lib/attendance-schema-ensure";
 import { isPrismaConfigured } from "@/lib/prisma";
 import type { AttendanceBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
 import type { Prisma } from "@prisma/client";
@@ -56,6 +60,24 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+async function upsertWorkflowChunk(
+  supabase: ReturnType<typeof createAdminClient>,
+  chunk: Array<{
+    employee_id: string;
+    attendance_date: string;
+    status: string;
+    notes: string;
+  }>
+): Promise<{ saved: number; error?: string }> {
+  const { error } = await supabase.from(ATTENDANCE_TABLE).upsert(chunk, {
+    onConflict: "employee_id,attendance_date",
+  });
+  if (error) {
+    return { saved: 0, error: error.message ?? "employee_attendance upsert failed" };
+  }
+  return { saved: chunk.length };
+}
+
 async function persistWorkflowRowsSupabase(
   supabase: ReturnType<typeof createAdminClient>,
   rows: Array<{
@@ -67,20 +89,63 @@ async function persistWorkflowRowsSupabase(
 ): Promise<{ saved: number; errors: string[] }> {
   const errors: string[] = [];
   let saved = 0;
+  let schemaRetried = false;
 
   for (const chunk of chunkArray(rows, BATCH_SIZE)) {
     try {
-      const { error } = await supabase.from(ATTENDANCE_TABLE).upsert(chunk, {
-        onConflict: "employee_id,attendance_date",
-      });
-      if (error) {
-        errors.push(error.message ?? "employee_attendance upsert failed");
+      let result = await upsertWorkflowChunk(supabase, chunk);
+
+      if (
+        result.error &&
+        isAttendanceSchemaError(result.error) &&
+        !schemaRetried
+      ) {
+        const ensure = await ensureAttendanceTablesSchema();
+        schemaRetried = true;
+        if (ensure.ok) {
+          result = await upsertWorkflowChunk(supabase, chunk);
+        } else {
+          errors.push(
+            `${result.error} — Run supabase/migrations/011_ensure_attendance_tables.sql in Supabase SQL Editor.`
+          );
+          continue;
+        }
+      }
+
+      if (result.error) {
+        errors.push(result.error);
         continue;
       }
-      saved += chunk.length;
+      saved += result.saved;
     } catch (error) {
       console.error("[bulk-import] employee_attendance batch upsert:", error);
-      errors.push(error instanceof Error ? error.message : "employee_attendance upsert failed");
+      const message =
+        error instanceof Error ? error.message : "employee_attendance upsert failed";
+      if (isAttendanceSchemaError(message) && !schemaRetried) {
+        const ensure = await ensureAttendanceTablesSchema();
+        schemaRetried = true;
+        if (!ensure.ok) {
+          errors.push(
+            `${message} — Run supabase/migrations/011_ensure_attendance_tables.sql in Supabase SQL Editor.`
+          );
+          continue;
+        }
+        try {
+          const retry = await upsertWorkflowChunk(supabase, chunk);
+          if (retry.error) {
+            errors.push(retry.error);
+          } else {
+            saved += retry.saved;
+          }
+          continue;
+        } catch (retryError) {
+          errors.push(
+            retryError instanceof Error ? retryError.message : "employee_attendance upsert failed"
+          );
+          continue;
+        }
+      }
+      errors.push(message);
     }
   }
 
@@ -173,6 +238,13 @@ export async function POST(request: Request) {
 
   try {
     return await withBulkSaveTimeout(async () => {
+  if (isSupabaseServerConfigured()) {
+    const schemaEnsure = await ensureAttendanceTablesSchema();
+    if (!schemaEnsure.ok) {
+      console.warn("[bulk-import] attendance schema pre-check:", schemaEnsure.message);
+    }
+  }
+
   const records: ReturnType<typeof normalizeAttendanceWorkflowRecord>[] = [];
   const prismaBiometricRows: Prisma.BiometricAttendanceCreateManyInput[] = [];
   const supabaseBiometricRows: Record<string, unknown>[] = [];

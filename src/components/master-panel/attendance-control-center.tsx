@@ -597,8 +597,9 @@ export default function AttendanceControlCenter() {
         ok?: boolean;
         saved?: number;
         error?: string;
+        setupRequired?: boolean;
       };
-      if (!stagingResponse.ok) {
+      if (!stagingResponse.ok && !stagingBody.setupRequired) {
         throw new Error(stagingBody.error ?? "Failed to save to attendance_staging.");
       }
 
@@ -1010,7 +1011,7 @@ export default function AttendanceControlCenter() {
         )}
       </div>
 
-      {dbConnected !== false && schemaStatus !== "ready" && (
+      {dbConnected !== false && schemaStatus !== "ready" && gridMeta.mergedCount === 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-card">
           <div className="flex items-start gap-3">
             {schemaStatus === "ensuring" || schemaStatus === "checking" ? (

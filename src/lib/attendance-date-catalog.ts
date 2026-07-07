@@ -6,6 +6,7 @@ import {
   formatSchemaEnsureFailureMessage,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
+import { fetchStorageDateCatalog } from "@/lib/attendance-storage-fallback";
 
 export type AttendanceDateCatalogEntry = {
   date: string;
@@ -108,6 +109,12 @@ export async function fetchAttendanceDateCatalog(): Promise<AttendanceDateCatalo
     try {
       return await fetchDateCatalogSupabase();
     } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (isAttendanceSchemaError(message)) {
+        const supabase = createAdminClient();
+        const storageCatalog = await fetchStorageDateCatalog(supabase);
+        if (storageCatalog.length > 0) return storageCatalog;
+      }
       console.error("[attendance-date-catalog] supabase failed:", error);
     }
   }

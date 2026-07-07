@@ -14,6 +14,8 @@ import {
   fetchStagingBootstrapFromBiometric,
   fetchStagingRowsViaPrisma,
 } from "@/lib/attendance-prisma-fetch";
+import { fetchStorageGridRows } from "@/lib/attendance-storage-fallback";
+import { mapGridRowToStagingRow } from "@/lib/attendance-staging-mapper";
 import type {
   AttendanceAuditLogEntry,
   AttendanceStagingRow,
@@ -144,7 +146,21 @@ async function loadStagingRowsResilient(filters?: {
   const prismaRows = await fetchStagingRowsViaPrisma(filters);
   if (prismaRows.length > 0) return prismaRows;
 
-  return fetchStagingBootstrapFromBiometric(filters);
+  const biometricBootstrap = await fetchStagingBootstrapFromBiometric(filters);
+  if (biometricBootstrap.length > 0) return biometricBootstrap;
+
+  const storageGrid = await fetchStorageGridRows(supabase, {
+    limit: 500,
+    date: filters?.shiftDate,
+  });
+  if (storageGrid.length > 0) {
+    return filterStagingRows(
+      storageGrid.map((row, index) => mapGridRowToStagingRow(row, index)),
+      filters
+    );
+  }
+
+  return [];
 }
 
 export async function fetchStagingRows(filters?: {
@@ -186,7 +202,11 @@ export async function insertStagingRows(
     return { saved: inserted.length, rows: inserted };
   }
 
-  await assertStagingSchemaReady();
+  try {
+    await assertStagingSchemaReady();
+  } catch {
+    return { saved: 0, rows: [] };
+  }
 
   const supabase = createAdminClient();
   const { data, error } = await supabase

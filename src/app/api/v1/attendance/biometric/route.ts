@@ -6,6 +6,7 @@ import { mergeAttendanceGridRows } from "@/lib/legacy-attendance-grid-fusion";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
 import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
 import { fetchBiometricGridViaPrisma } from "@/lib/attendance-prisma-fetch";
+import { fetchStorageGridRows } from "@/lib/attendance-storage-fallback";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -83,6 +84,7 @@ async function fetchBiometricGridRows(
 ): Promise<BiometricAttendanceGridRow[]> {
   if (isSupabaseServerConfigured()) {
     await ensureAttendanceTablesSchema();
+    const supabase = createAdminClient();
     try {
       return await fetchBiometricGridRowsSupabase(limit, date, search);
     } catch (error) {
@@ -90,6 +92,8 @@ async function fetchBiometricGridRows(
       if (isAttendanceSchemaError(message)) {
         const prismaRows = await fetchBiometricGridViaPrisma(limit, date, search);
         if (prismaRows.length > 0) return prismaRows;
+        const storageRows = await fetchStorageGridRows(supabase, { limit, date, search });
+        if (storageRows.length > 0) return storageRows;
       }
       console.error("[attendance/biometric] supabase biometric fetch failed:", error);
     }
@@ -97,6 +101,11 @@ async function fetchBiometricGridRows(
 
   const prismaRows = await fetchBiometricGridViaPrisma(limit, date, search);
   if (prismaRows.length > 0) return prismaRows;
+
+  if (isSupabaseServerConfigured()) {
+    const supabase = createAdminClient();
+    return fetchStorageGridRows(supabase, { limit, date, search });
+  }
 
   return [];
 }

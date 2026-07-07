@@ -2,6 +2,7 @@ import type {
   AttendanceAuditLogEntry,
   AttendanceStagingRow,
 } from "@/types/attendance-staging";
+import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
 import {
   normalizeAttendanceWorkflowRecord,
   type AttendanceWorkflowRecord,
@@ -57,6 +58,36 @@ export function effectiveInTime(row: AttendanceStagingRow): string | null {
 
 export function effectiveOutTime(row: AttendanceStagingRow): string | null {
   return row.correctedOutTime || row.machineOutTime;
+}
+
+export function mapGridRowToStagingRow(
+  row: BiometricAttendanceGridRow,
+  index: number
+): AttendanceStagingRow {
+  const date = row.date.slice(0, 10);
+  return {
+    id: row.id || `storage-staging-${index}`,
+    employeeId: null,
+    payCode: row.payCode,
+    employeeName: row.employeeName,
+    date,
+    shiftDate: date,
+    machineInTime: row.inTime || null,
+    machineOutTime: row.outTime || null,
+    correctedInTime: null,
+    correctedOutTime: null,
+    duration: row.duration,
+    otHours: row.otHours,
+    status: "Pending",
+    isAnomaly: false,
+    anomalyReason: "",
+    editRemark: row.remark,
+    isLocked: false,
+    approvedBy: null,
+    approvedAt: null,
+    createdAt: row.createdAt || new Date().toISOString(),
+    updatedAt: row.createdAt || new Date().toISOString(),
+  };
 }
 
 /** Map attendance_staging Pending row → Live Workflow Stage 1 record. */

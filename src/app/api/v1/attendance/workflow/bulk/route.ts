@@ -25,6 +25,7 @@ import {
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ATTENDANCE_SETUP_MESSAGE } from "@/lib/attendance-setup-messages";
+import { saveBulkImportToStorage } from "@/lib/attendance-storage-fallback";
 import {
   ensureAttendanceTablesSchema,
   checkAttendanceSchemaReady,
@@ -264,22 +265,8 @@ export async function POST(request: Request) {
     }
   }
 
-  /** SQL tables required — no cloud storage fallback. */
-  if (supabase && !sqlTablesReady) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: ATTENDANCE_SETUP_MESSAGE,
-        hint: ATTENDANCE_SETUP_MESSAGE,
-        setupRequired: true,
-        imported: 0,
-        skipped: normalizedRows.length,
-        biometricSaved: 0,
-        errors: [ATTENDANCE_SETUP_MESSAGE],
-      },
-      { status: 503 }
-    );
-  }
+  /** When SQL tables are missing, fall back to cloud storage for bulk saves. */
+  const useStorageFallback = Boolean(supabase && !sqlTablesReady);
 
   const records: ReturnType<typeof normalizeAttendanceWorkflowRecord>[] = [];
   const prismaBiometricRows: Prisma.BiometricAttendanceCreateManyInput[] = [];
@@ -449,12 +436,31 @@ export async function POST(request: Request) {
     );
     biometricSaved = supabaseResult.saved;
     rowErrors.push(...supabaseResult.errors);
+  } else if (useStorageFallback && supabase && normalizedRows.length > 0) {
+    const reportDate =
+      normalizeAttendanceDateIso(safeString(normalizedRows[0]?.date)) ||
+      normalizeAttendanceDateIso(safeString(normalizedRows[0]?.attendance_date)) ||
+      todayIsoDate();
+    try {
+      const storageResult = await saveBulkImportToStorage(supabase, {
+        reportDate,
+        rows: normalizedRows as unknown as Record<string, unknown>[],
+        workflowCount: imported,
+      });
+      biometricSaved = storageResult.saved;
+      savedReportDate = storageResult.reportDate;
+    } catch (storageError) {
+      rowErrors.push(
+        storageError instanceof Error ? storageError.message : "Cloud storage save failed."
+      );
+    }
   } else if (!supabaseConfigured) {
     biometricSaved = prismaBiometricRows.length;
   }
 
   if (
     supabase &&
+    !useStorageFallback &&
     imported === 0 &&
     biometricSaved === 0 &&
     supabaseBiometricRows.length > 0 &&
@@ -493,9 +499,11 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     message:
-      imported > 0 || biometricSaved > 0
-        ? "Bulk attendance import completed."
-        : "Bulk import finished with zero saved rows — see errors.",
+      useStorageFallback && biometricSaved > 0
+        ? `Saved ${biometricSaved} row(s) to cloud storage. Run SQL migration for production tables.`
+        : imported > 0 || biometricSaved > 0
+          ? "Bulk attendance import completed."
+          : "Bulk import finished with zero saved rows — see errors.",
     imported,
     skipped,
     provisionedEmployees,

@@ -176,6 +176,9 @@ export default function AttendanceControlCenter() {
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [stagingRefreshToken, setStagingRefreshToken] = useState(0);
   const [workflowRefreshToken, setWorkflowRefreshToken] = useState(0);
+  const [layer4SaveMessage, setLayer4SaveMessage] = useState<string | null>(null);
+  const [layer4SavingId, setLayer4SavingId] = useState<string | null>(null);
+  const [activeLayer4RowId, setActiveLayer4RowId] = useState<string | null>(null);
 
   const resetPanelState = useCallback(() => {
     setImportPreview(null);
@@ -753,6 +756,58 @@ export default function AttendanceControlCenter() {
 
   const clearRowSelection = () => setSelectedRowIds(new Set());
 
+  const persistLayer4Row = useCallback(async (row: BiometricAttendanceGridRow) => {
+    if (!row.id || row.source !== "biometric") return;
+    setLayer4SavingId(row.id);
+    setLayer4SaveMessage(null);
+    try {
+      const response = await fetch("/api/v1/attendance/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "persist-saved-row", ids: [row.id] }),
+      });
+      const body = (await response.json()) as { error?: string; ok?: boolean };
+      if (!response.ok) throw new Error(body.error ?? "Failed to save row to server.");
+      setLayer4SaveMessage(`Saved ${row.employeeName || row.payCode} (${row.date}) to Supabase.`);
+    } catch (saveError) {
+      setLayer4SaveMessage(
+        saveError instanceof Error ? saveError.message : "Layer 4 save failed."
+      );
+    } finally {
+      setLayer4SavingId(null);
+    }
+  }, []);
+
+  const handleLayer4RowActivate = useCallback(
+    (row: BiometricAttendanceGridRow) => {
+      setActiveLayer4RowId(row.id);
+      toggleRowSelection(row);
+      void persistLayer4Row(row);
+    },
+    [persistLayer4Row]
+  );
+
+  const handleSaveSelectedLayer4Rows = useCallback(async () => {
+    const ids = selectedRows.filter((row) => row.source === "biometric" && row.id).map((row) => row.id);
+    if (ids.length === 0) return;
+    setLayer4SaveMessage(null);
+    setLayer4SavingId("bulk");
+    try {
+      const response = await fetch("/api/v1/attendance/pipeline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "persist-saved-rows", ids }),
+      });
+      const body = (await response.json()) as { error?: string; saved?: number };
+      if (!response.ok) throw new Error(body.error ?? "Bulk save failed.");
+      setLayer4SaveMessage(`Saved ${body.saved ?? ids.length} row(s) to Supabase server tables.`);
+    } catch (saveError) {
+      setLayer4SaveMessage(saveError instanceof Error ? saveError.message : "Bulk save failed.");
+    } finally {
+      setLayer4SavingId(null);
+    }
+  }, [selectedRows]);
+
   const renderHistoryGrid = () => (
     <section
       ref={gridSectionRef}
@@ -785,16 +840,32 @@ export default function AttendanceControlCenter() {
             Select All Visible
           </button>
           {selectedRowIds.size > 0 && (
-            <button
-              type="button"
-              onClick={clearRowSelection}
-              className="rounded-lg border border-corporate-border bg-white px-3 py-2 text-xs font-medium text-corporate-text hover:bg-corporate-bg"
-            >
-              Clear Selection
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => void handleSaveSelectedLayer4Rows()}
+                disabled={layer4SavingId === "bulk"}
+                className="rounded-lg border border-corporate-brand bg-corporate-brand px-3 py-2 text-xs font-medium text-white hover:bg-corporate-brand/90 disabled:opacity-60"
+              >
+                {layer4SavingId === "bulk" ? "Saving…" : "Save Selected"}
+              </button>
+              <button
+                type="button"
+                onClick={clearRowSelection}
+                className="rounded-lg border border-corporate-border bg-white px-3 py-2 text-xs font-medium text-corporate-text hover:bg-corporate-bg"
+              >
+                Clear Selection
+              </button>
+            </>
           )}
         </div>
       </div>
+
+      {layer4SaveMessage && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          {layer4SaveMessage}
+        </div>
+      )}
 
       {selectedRows.length > 0 && (
         <div className="rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-3 text-sm text-corporate-text">
@@ -861,17 +932,24 @@ export default function AttendanceControlCenter() {
                 return (
                   <tr
                     key={key}
+                    onClick={() => handleLayer4RowActivate(row)}
                     className={cn(
+                      "cursor-pointer",
                       isSelected && "bg-corporate-brand-light/40",
+                      activeLayer4RowId === row.id && "ring-1 ring-inset ring-corporate-brand/40",
                       row.source === "legacy" && !isSelected && "bg-amber-50/40",
-                      row.source === "biometric" && !isSelected && "hover:bg-corporate-bg/40"
+                      row.source === "biometric" && !isSelected && "hover:bg-corporate-bg/40",
+                      layer4SavingId === row.id && "opacity-70"
                     )}
                   >
-                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-center")}>
+                    <td
+                      className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-center")}
+                      onClick={(event) => event.stopPropagation()}
+                    >
                       <input
                         type="checkbox"
                         checked={isSelected}
-                        onChange={() => toggleRowSelection(row)}
+                        onChange={() => handleLayer4RowActivate(row)}
                         aria-label={`Select ${row.employeeName || row.payCode}`}
                         className="h-4 w-4 rounded border-corporate-border"
                       />

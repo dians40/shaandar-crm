@@ -1,16 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Shield } from "lucide-react";
+import { Plus, Shield, UserRound } from "lucide-react";
 import AddUserModal from "./add-user-modal";
 import RoleModelWorkspace from "./role-model-workspace";
 import RoleSelectorWithActions from "./role-selector-with-actions";
-import UserPipelineLayerPanel from "./user-pipeline-layer-panel";
 import { useManagedUsers } from "@/hooks/use-managed-users";
 import { useRoleModels } from "@/hooks/use-role-models";
 import { useUserPermissions } from "@/contexts/user-permissions-context";
 import { cn } from "@/lib/utils";
-import { USER_PIPELINE_STAGES } from "@/types/user-pipeline";
+import type { ManagedUserRecord } from "@/types/managed-user";
 import {
   PERMISSION_LABELS,
   PERMISSION_MODULES,
@@ -30,12 +29,117 @@ const PERMISSIONS = (
   Object.entries(PERMISSION_LABELS) as [PermissionKey, string][]
 ).map(([key, label]) => ({ key, label }));
 
-const LAYER_NAV = [
-  { layer: 1, label: "User Intake" },
-  { layer: 2, label: "Staging Review" },
-  { layer: 3, label: "Active Workflow" },
-  { layer: 4, label: "Saved Records" },
-] as const;
+type UserLayerSectionProps = {
+  layer: 2 | 3 | 4;
+  title: string;
+  description: string;
+  users: ManagedUserRecord[];
+  isReady: boolean;
+  onAddUser: () => void;
+  showOtp?: boolean;
+  onOtpToggle?: (userId: string, enabled: boolean) => void;
+  readOnly?: boolean;
+};
+
+function UserLayerSection({
+  layer,
+  title,
+  description,
+  users,
+  isReady,
+  onAddUser,
+  showOtp = false,
+  onOtpToggle,
+  readOnly = false,
+}: UserLayerSectionProps) {
+  return (
+    <section
+      id={`user-layer-${layer}`}
+      className="scroll-mt-28 rounded-xl border border-corporate-border bg-corporate-surface shadow-card"
+      aria-label={`Layer ${layer} — ${title}`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-corporate-border px-5 py-4">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-corporate-brand">
+            Layer {layer}
+          </p>
+          <h3 className="text-sm font-bold text-corporate-text">{title}</h3>
+          <p className="text-xs text-corporate-muted">{description}</p>
+        </div>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={onAddUser}
+            className="btn-primary inline-flex min-h-10 items-center gap-2 px-4 text-sm"
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            Add New User
+          </button>
+        )}
+      </div>
+
+      <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "rounded-none border-0 shadow-none")}>
+        <table className={cn(MASTER_LIST_TABLE_CLASS, "w-full")}>
+          <thead className={MASTER_LIST_HEAD_CLASS}>
+            <tr>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Full Name</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Username</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Role</th>
+              {showOtp && (
+                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Secure OTP on Login</th>
+              )}
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Created</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-corporate-border">
+            {!isReady ? (
+              <tr>
+                <td colSpan={showOtp ? 5 : 4} className="px-4 py-8 text-center text-sm text-corporate-muted">
+                  Loading user accounts...
+                </td>
+              </tr>
+            ) : users.length === 0 ? (
+              <tr>
+                <td colSpan={showOtp ? 5 : 4} className="px-4 py-8 text-center text-sm text-corporate-muted">
+                  No users in this section yet. Use Add New User to register credentials.
+                </td>
+              </tr>
+            ) : (
+              users.map((user) => (
+                <tr key={`${layer}-${user.id}`} className="hover:bg-corporate-bg/40">
+                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-medium")}>
+                    {user.fullName}
+                  </td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{user.username}</td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{user.role}</td>
+                  {showOtp && onOtpToggle && (
+                    <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={user.otpEnabled}
+                          onChange={(event) => onOtpToggle(user.id, event.target.checked)}
+                          className="h-5 w-5 rounded border-corporate-border text-corporate-brand focus:ring-corporate-brand"
+                          aria-label={`Enable Secure OTP Verification on Login for ${user.fullName}`}
+                        />
+                        <span className="text-xs font-medium text-corporate-muted">
+                          Enable Secure OTP Verification on Login
+                        </span>
+                      </label>
+                    </td>
+                  )}
+                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-xs text-corporate-muted")}>
+                    {user.createdAt.slice(0, 10)}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 
 export default function UserManagementPanel() {
   const {
@@ -48,10 +152,9 @@ export default function UserManagementPanel() {
     editRole,
     removeRole,
   } = useUserPermissions();
-  const { isReady, addUser, setOtpEnabled, reload } = useManagedUsers();
+  const { users, isReady, addUser, setOtpEnabled, reload } = useManagedUsers();
   const { syncAfterRoleRename, syncAfterRoleRemove } = useRoleModels();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [pipelineRefreshToken, setPipelineRefreshToken] = useState(0);
   const isSuperAdmin = isProtectedRole(selectedRole);
 
   const handleEditRole = (currentName: string, nextName: string) => {
@@ -72,8 +175,6 @@ export default function UserManagementPanel() {
     return result;
   };
 
-  const bumpPipeline = () => setPipelineRefreshToken((token) => token + 1);
-
   return (
     <section className="flex min-w-0 flex-1 flex-col gap-5" aria-label="User management workspace">
       <div className="border-b border-corporate-border pb-3">
@@ -85,107 +186,60 @@ export default function UserManagementPanel() {
                 User Management &amp; Role Security
               </h2>
               <p className="text-sm text-corporate-muted">
-                Four-layer sequential user pipeline — intake, staging review, active workflow, then
-                saved records log.
+                User intake and registration controls are integrated across Layer 2, Layer 3, and
+                Layer 4 workspace sections below.
               </p>
             </div>
           </div>
         </div>
       </div>
 
-      <nav
-        className="sticky top-0 z-20 rounded-xl border border-corporate-border bg-corporate-surface/95 p-3 shadow-card backdrop-blur"
-        aria-label="User management four-layer pipeline navigation"
-      >
-        <div className="flex flex-wrap gap-2">
-          {LAYER_NAV.map(({ layer, label }) => (
-            <button
-              key={layer}
-              type="button"
-              onClick={() => {
-                document
-                  .getElementById(`user-layer-${layer}`)
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-              className="inline-flex items-center gap-2 rounded-full border border-corporate-border bg-white px-3 py-1.5 text-xs font-semibold text-corporate-text hover:border-corporate-brand/40"
-            >
-              <span className="rounded-full bg-corporate-brand px-1.5 py-0.5 text-[10px] font-bold text-white">
-                L{layer}
-              </span>
-              {label}
-            </button>
-          ))}
-        </div>
-      </nav>
+      <UserLayerSection
+        layer={2}
+        title="User Intake &amp; Staging Review"
+        description="Register new user credentials and review pending account intake before activation."
+        users={users}
+        isReady={isReady}
+        onAddUser={() => setIsAddModalOpen(true)}
+      />
 
-      {/* Layer 1 — User intake */}
-      <section
-        id="user-layer-1"
-        className="scroll-mt-28 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card"
-        aria-label="Layer 1 — User intake"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-corporate-brand">
-              Layer 1
-            </p>
-            <h3 className="text-sm font-bold text-corporate-text">User Intake &amp; Registration</h3>
-            <p className="text-xs text-corporate-muted">
-              New users enter the pipeline at LAYER_2_STAGING after registration.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsAddModalOpen(true)}
-            className="btn-primary inline-flex min-h-11 items-center gap-2 px-5 text-sm"
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-            Add New User
-          </button>
-        </div>
-      </section>
+      <UserLayerSection
+        layer={3}
+        title="Active Users Workflow"
+        description="Manage active user accounts, OTP login protection, and operational access controls."
+        users={users}
+        isReady={isReady}
+        onAddUser={() => setIsAddModalOpen(true)}
+        showOtp
+        onOtpToggle={setOtpEnabled}
+      />
 
-      {/* Layer 2 — Staging */}
-      <div id="user-layer-2" className="scroll-mt-28">
-        <UserPipelineLayerPanel
-          stage={USER_PIPELINE_STAGES.LAYER_2_STAGING}
-          refreshToken={pipelineRefreshToken}
-          onApproved={bumpPipeline}
-        />
-      </div>
-
-      {/* Layer 3 — Active workflow */}
-      <div id="user-layer-3" className="scroll-mt-28">
-        <UserPipelineLayerPanel
-          stage={USER_PIPELINE_STAGES.LAYER_3_WORKFLOW}
-          refreshToken={pipelineRefreshToken}
-          onApproved={bumpPipeline}
-          showOtpToggle
-          onOtpToggle={setOtpEnabled}
-        />
-      </div>
-
-      {/* Layer 4 — Saved records */}
-      <div id="user-layer-4" className="scroll-mt-28">
-        <UserPipelineLayerPanel
-          stage={USER_PIPELINE_STAGES.LAYER_4_SAVED}
-          refreshToken={pipelineRefreshToken}
-        />
-      </div>
+      <UserLayerSection
+        layer={4}
+        title="Saved User Records Log"
+        description="Historical saved user account records and registration audit trail."
+        users={[...users].sort((left, right) => right.createdAt.localeCompare(left.createdAt))}
+        isReady={isReady}
+        onAddUser={() => setIsAddModalOpen(true)}
+        readOnly
+      />
 
       <RoleModelWorkspace />
 
       <div className="w-full min-w-0 flex-1 rounded-xl border border-corporate-border bg-corporate-surface shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-corporate-border bg-corporate-bg px-5 py-4">
-          <div>
-            <p className="text-sm font-semibold text-corporate-text">
-              Permissions for: <span className="text-corporate-brand">{selectedRole}</span>
-            </p>
-            {isSuperAdmin && (
-              <p className="mt-1 text-xs text-corporate-muted">
-                Super Admin retains full access. All permissions are locked on.
+          <div className="flex items-center gap-2">
+            <UserRound className="h-4 w-4 text-corporate-brand" aria-hidden />
+            <div>
+              <p className="text-sm font-semibold text-corporate-text">
+                Permissions for: <span className="text-corporate-brand">{selectedRole}</span>
               </p>
-            )}
+              {isSuperAdmin && (
+                <p className="mt-1 text-xs text-corporate-muted">
+                  Super Admin retains full access. All permissions are locked on.
+                </p>
+              )}
+            </div>
           </div>
 
           <RoleSelectorWithActions
@@ -269,16 +323,9 @@ export default function UserManagementPanel() {
       <AddUserModal
         open={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onCreate={(user) => {
-          addUser(user);
-          bumpPipeline();
-        }}
+        onCreate={addUser}
         roles={roles}
       />
-
-      {!isReady && (
-        <p className="text-sm text-corporate-muted">Loading user pipeline workspace...</p>
-      )}
     </section>
   );
 }

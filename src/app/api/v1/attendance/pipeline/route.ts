@@ -6,7 +6,9 @@ import {
   gridRowsToStagingRows,
   gridRowsToWorkflowRecords,
   transitionPipelineStage,
-  updateStagingDepartment,
+  updatePipelineRowFields,
+  persistSavedRow,
+  persistSavedRows,
 } from "@/lib/attendance-pipeline-service";
 import { isPipelineStage, PIPELINE_STAGES } from "@/types/attendance-pipeline";
 
@@ -73,7 +75,45 @@ export async function POST(request: Request) {
       if (!department) {
         return NextResponse.json({ error: "department is required." }, { status: 400 });
       }
-      const result = await updateStagingDepartment(ids, department);
+      const stageParam = String(body.stage ?? PIPELINE_STAGES.LAYER_2_STAGING);
+      const stage = isPipelineStage(stageParam) ? stageParam : PIPELINE_STAGES.LAYER_2_STAGING;
+      const result = await updatePipelineRowFields({ ids, stage, department });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "update-designation") {
+      const designation = String(body.designation ?? "").trim();
+      if (!designation) {
+        return NextResponse.json({ error: "designation is required." }, { status: 400 });
+      }
+      const stageParam = String(body.stage ?? PIPELINE_STAGES.LAYER_2_STAGING);
+      const stage = isPipelineStage(stageParam) ? stageParam : PIPELINE_STAGES.LAYER_2_STAGING;
+      const result = await updatePipelineRowFields({ ids, stage, designation });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "update-row-fields") {
+      const stageParam = String(body.stage ?? "");
+      if (!isPipelineStage(stageParam)) {
+        return NextResponse.json({ error: "Valid stage is required." }, { status: 400 });
+      }
+      const result = await updatePipelineRowFields({
+        ids,
+        stage: stageParam,
+        department: body.department ? String(body.department) : undefined,
+        designation: body.designation ? String(body.designation) : undefined,
+      });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "persist-saved-row") {
+      const id = ids[0] ?? String(body.id ?? "");
+      const result = await persistSavedRow(id);
+      return NextResponse.json(result);
+    }
+
+    if (action === "persist-saved-rows") {
+      const result = await persistSavedRows(ids);
       return NextResponse.json({ ok: true, ...result });
     }
 

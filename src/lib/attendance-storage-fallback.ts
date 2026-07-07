@@ -337,11 +337,12 @@ export async function transitionStoragePipelineStage(
   return transitioned;
 }
 
-/** Update department on Layer 2 staging rows in cloud storage batches. */
-export async function updateStorageRowDepartment(
+/** Update row fields on cloud storage batches for a specific pipeline stage. */
+export async function updateStorageRowFields(
   supabase: SupabaseClient,
   ids: string[],
-  department: string
+  stage: PipelineStage,
+  fields: { department?: string; designation?: string }
 ): Promise<number> {
   if (ids.length === 0) return 0;
   await ensureAttendanceStorageBucket(supabase);
@@ -371,9 +372,14 @@ export async function updateStorageRowDepartment(
       for (let index = 0; index < batch.rows.length; index += 1) {
         const row = batch.rows[index];
         const rowId = stableStorageRowId(reportDate, row, index);
-        const stage = String(row.pipeline_stage ?? INITIAL_INGEST_PIPELINE_STAGE);
-        if (idSet.has(rowId) && stage === INITIAL_INGEST_PIPELINE_STAGE) {
-          batch.rows[index] = { ...row, id: rowId, department };
+        const rowStage = String(row.pipeline_stage ?? INITIAL_INGEST_PIPELINE_STAGE);
+        if (idSet.has(rowId) && rowStage === stage) {
+          batch.rows[index] = {
+            ...row,
+            id: rowId,
+            ...(fields.department !== undefined ? { department: fields.department } : {}),
+            ...(fields.designation !== undefined ? { designation: fields.designation } : {}),
+          };
           batchChanged = true;
           updated += 1;
         }
@@ -390,6 +396,15 @@ export async function updateStorageRowDepartment(
   }
 
   return updated;
+}
+
+/** @deprecated Use updateStorageRowFields */
+export async function updateStorageRowDepartment(
+  supabase: SupabaseClient,
+  ids: string[],
+  department: string
+): Promise<number> {
+  return updateStorageRowFields(supabase, ids, INITIAL_INGEST_PIPELINE_STAGE, { department });
 }
 
 export function isStorageFallbackError(message: string): boolean {

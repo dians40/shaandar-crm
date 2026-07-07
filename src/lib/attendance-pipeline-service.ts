@@ -16,7 +16,7 @@ import {
   ensureAttendanceTablesSchema,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
-import { fetchStorageGridRows, transitionStoragePipelineStage, updateStorageRowDepartment } from "@/lib/attendance-storage-fallback";
+import { fetchStorageGridRows, transitionStoragePipelineStage, updateStorageRowFields } from "@/lib/attendance-storage-fallback";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 
 const BIOMETRIC_TABLE = "biometric_attendance";
@@ -231,12 +231,19 @@ export async function commitWorkflowToSaved(ids: string[]): Promise<{ transition
   });
 }
 
-export async function updateStagingDepartment(
-  ids: string[],
-  department: string
-): Promise<{ updated: number }> {
-  const token = department.trim();
-  if (!token || ids.length === 0) return { updated: 0 };
+export async function updatePipelineRowFields(input: {
+  ids: string[];
+  stage: PipelineStage;
+  department?: string;
+  designation?: string;
+}): Promise<{ updated: number }> {
+  const { ids, stage } = input;
+  if (ids.length === 0) return { updated: 0 };
+
+  const updatePayload: Record<string, unknown> = {};
+  if (input.department !== undefined) updatePayload.department = input.department.trim();
+  if (input.designation !== undefined) updatePayload.designation = input.designation.trim();
+  if (Object.keys(updatePayload).length === 0) return { updated: 0 };
 
   let updated = 0;
   if (isSupabaseServerConfigured()) {
@@ -245,26 +252,79 @@ export async function updateStagingDepartment(
       const supabase = createAdminClient();
       const { data, error } = await supabase
         .from(BIOMETRIC_TABLE)
-        .update({ department: token })
+        .update(updatePayload)
         .in("id", ids)
-        .eq("pipeline_stage", PIPELINE_STAGES.LAYER_2_STAGING)
+        .eq("pipeline_stage", stage)
         .select("id");
       if (!error) updated = data?.length ?? 0;
     } catch (error) {
-      console.warn("[pipeline] SQL department update failed:", error);
+      console.warn("[pipeline] SQL field update failed:", error);
     }
   }
 
   if (updated === 0 && isSupabaseServerConfigured()) {
     const supabase = createAdminClient();
-    updated = await updateStorageRowDepartment(supabase, ids, token);
+    updated = await updateStorageRowFields(supabase, ids, stage, {
+      department: input.department,
+      designation: input.designation,
+    });
   }
 
   if (updated === 0 && ids.length > 0) {
-    throw new Error("Department update failed — verify staging records exist at Layer 2.");
+    throw new Error(`Field update failed — verify records exist at ${stage}.`);
   }
 
   return { updated };
+}
+
+export async function updateStagingDepartment(
+  ids: string[],
+  department: string
+): Promise<{ updated: number }> {
+  return updatePipelineRowFields({
+    ids,
+    stage: PIPELINE_STAGES.LAYER_2_STAGING,
+    department,
+  });
+}
+
+export async function updateStagingDesignation(
+  ids: string[],
+  designation: string
+): Promise<{ updated: number }> {
+  return updatePipelineRowFields({
+    ids,
+    stage: PIPELINE_STAGES.LAYER_2_STAGING,
+    designation,
+  });
+}
+
+export async function persistSavedRow(id: string): Promise<{ ok: boolean }> {
+  if (!id.trim()) throw new Error("Row id is required.");
+  const rows = await fetchRowsByPipelineStage(PIPELINE_STAGES.LAYER_4_SAVED, { limit: 500 });
+  const row = rows.find((entry) => entry.id === id);
+  if (!row) throw new Error("Saved row not found at Layer 4.");
+
+  const result = await updatePipelineRowFields({
+    ids: [id],
+    stage: PIPELINE_STAGES.LAYER_4_SAVED,
+    department: row.department,
+    designation: row.designation,
+  });
+  return { ok: result.updated > 0 };
+}
+
+export async function persistSavedRows(ids: string[]): Promise<{ saved: number }> {
+  let saved = 0;
+  for (const id of ids) {
+    try {
+      const result = await persistSavedRow(id);
+      if (result.ok) saved += 1;
+    } catch {
+      // continue with remaining rows
+    }
+  }
+  return { saved };
 }
 
 export { INITIAL_INGEST_PIPELINE_STAGE, PIPELINE_STAGES, resolveRowPipelineStage };

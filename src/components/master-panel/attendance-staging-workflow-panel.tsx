@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
+import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
 import { cn } from "@/lib/utils";
 import type { AttendanceStagingRow } from "@/types/attendance-staging";
 import LayerFilterControls from "./layer-filter-controls";
@@ -93,6 +94,11 @@ export default function AttendanceStagingWorkflowPanel({
     [rows]
   );
 
+  const designationOptions = useMemo(
+    () => mergeDesignationOptions(rows.map((row) => row.designation)),
+    [rows]
+  );
+
   const postPipelineAction = async (payload: Record<string, unknown>) => {
     const response = await fetch("/api/v1/attendance/pipeline", {
       method: "POST",
@@ -136,6 +142,30 @@ export default function AttendanceStagingWorkflowPanel({
     const body = (await response.json()) as Record<string, unknown>;
     if (!response.ok) throw new Error(String(body.error ?? "Action failed."));
     return body;
+  };
+
+  const handleDesignationChange = async (row: AttendanceStagingRow, designation: string) => {
+    if (!designation || designation === row.designation) return;
+    setBusyId(row.id);
+    setError(null);
+    try {
+      await postPipelineAction({
+        action: "update-designation",
+        ids: [row.id],
+        designation,
+        stage: "LAYER_2_STAGING",
+      });
+      setRows((current) =>
+        current.map((entry) => (entry.id === row.id ? { ...entry, designation } : entry))
+      );
+      setMessage(`Designation updated for ${row.employeeName || row.payCode}.`);
+    } catch (designationError) {
+      setError(
+        designationError instanceof Error ? designationError.message : "Designation update failed."
+      );
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const handleApprove = async (row: AttendanceStagingRow) => {
@@ -289,6 +319,7 @@ export default function AttendanceStagingWorkflowPanel({
                 "Pay Code",
                 "Employee",
                 "Department",
+                "Designation",
                 "Shift Date",
                 "Machine In",
                 "Machine Out",
@@ -308,13 +339,13 @@ export default function AttendanceStagingWorkflowPanel({
           <tbody className="divide-y divide-corporate-border bg-white">
             {loading ? (
               <tr>
-                <td colSpan={13} className="px-3 py-8 text-center text-sm text-corporate-muted">
+                <td colSpan={14} className="px-3 py-8 text-center text-sm text-corporate-muted">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" aria-hidden />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-3 py-8 text-center text-sm text-corporate-muted">
+                <td colSpan={14} className="px-3 py-8 text-center text-sm text-corporate-muted">
                   No staging records — upload Excel and click Save to Server (Step 1).
                 </td>
               </tr>
@@ -375,6 +406,28 @@ export default function AttendanceStagingWorkflowPanel({
                       </select>
                     ) : (
                       row.department || "—"
+                    )}
+                  </td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                    {!row.isLocked ? (
+                      <select
+                        value={row.designation || ""}
+                        disabled={busyId === row.id}
+                        onChange={(event) =>
+                          void handleDesignationChange(row, event.target.value)
+                        }
+                        className="min-w-[140px] rounded border border-corporate-border bg-white px-2 py-1 text-xs"
+                        aria-label={`Designation for ${row.employeeName || row.payCode}`}
+                      >
+                        <option value="">Select designation</option>
+                        {designationOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      row.designation || "—"
                     )}
                   </td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.shiftDate}</td>

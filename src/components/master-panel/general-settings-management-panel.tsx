@@ -56,14 +56,14 @@ export default function GeneralSettingsManagementPanel() {
           updateRecord: (id, name) => settings.updateRecord("employeeTypes", id, name),
           removeRecord: (id) => settings.removeRecord("employeeTypes", id),
         };
-      case "machines":
+      case "departments":
         return {
-          key: "machines",
-          singularLabel: "Machine",
-          records: settings.machines,
-          addRecord: (name) => settings.addRecord("machines", name),
-          updateRecord: (id, name) => settings.updateRecord("machines", id, name),
-          removeRecord: (id) => settings.removeRecord("machines", id),
+          key: "departments",
+          singularLabel: "Department",
+          records: settings.departments,
+          addRecord: (name) => settings.addRecord("departments", name),
+          updateRecord: (id, name) => settings.updateRecord("departments", id, name),
+          removeRecord: (id) => settings.removeRecord("departments", id),
         };
       case "overtime-reasons":
         return {
@@ -304,7 +304,12 @@ export default function GeneralSettingsManagementPanel() {
                               }
                               subMasterConfig.removeRecord(row.id);
                             }}
-                            className="rounded-full border border-red-200 px-3 py-1 text-xs font-medium text-red-600"
+                            className={cn(
+                              "rounded-full border px-3 py-1 text-xs font-medium",
+                              activeSubMaster === "departments"
+                                ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                                : "border-red-200 text-red-600"
+                            )}
                           >
                             Remove
                           </button>

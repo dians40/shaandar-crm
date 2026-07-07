@@ -10,8 +10,11 @@ export const DEFAULT_DEPARTMENT_OPTIONS = [
   "Other",
 ] as const;
 
-export function mergeDepartmentOptions(existing: string[]): string[] {
-  const set = new Set<string>(DEFAULT_DEPARTMENT_OPTIONS);
+export function mergeDepartmentOptions(
+  existing: string[],
+  masterDepartments: readonly string[] = DEFAULT_DEPARTMENT_OPTIONS
+): string[] {
+  const set = new Set<string>(masterDepartments);
   for (const value of existing) {
     const token = value.trim();
     if (token) set.add(token);

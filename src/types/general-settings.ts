@@ -41,10 +41,12 @@ export function validateGeneralSettingsName(
   return null;
 }
 
+import { DEFAULT_DEPARTMENT_OPTIONS } from "@/lib/attendance-department-options";
+
 export type GeneralSettingsSubMaster =
   | "contractors"
   | "employee-types"
-  | "machines"
+  | "departments"
   | "overtime-reasons";
 
 export const GENERAL_SETTINGS_SUB_TABS: Array<{
@@ -63,9 +65,9 @@ export const GENERAL_SETTINGS_SUB_TABS: Array<{
     description: "Manage employee classification labels used in Employee Master.",
   },
   {
-    id: "machines",
-    label: "Machine Master",
-    description: "Register factory machines for overtime and production tracking.",
+    id: "departments",
+    label: "Department",
+    description: "Manage department labels synced with labour import and attendance workflow dropdowns.",
   },
   {
     id: "overtime-reasons",
@@ -89,13 +91,8 @@ export const DEFAULT_EMPLOYEE_TYPE_SEEDS = [
   "Temporary",
 ];
 
-export const DEFAULT_MACHINE_SEEDS = [
-  "Machine 1",
-  "Machine A",
-  "Machine B",
-  "Machine C",
-  "Mixer B",
-];
+/** Same defaults as labour import / attendance bulk import department dropdown. */
+export const DEFAULT_DEPARTMENT_SEEDS = [...DEFAULT_DEPARTMENT_OPTIONS];
 
 export const DEFAULT_OVERTIME_REASON_SEEDS = [
   "Extra Power",

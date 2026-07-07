@@ -599,10 +599,10 @@ export default function OvertimeTrackerPanel() {
           <SelectInput
             label="Assigned Machine"
             value={machineSelect}
-            placeholder="Select from Machine Master"
+            placeholder="Select from Department"
             onChange={(e) => handleMachineSelectChange(e.target.value)}
             options={machineOptions}
-            hint="Live options from General Settings → Machine Master"
+            hint="Live options from General Settings → Department"
           />
           {machineSelect === MACHINE_CUSTOM_VALUE && (
             <TextInput

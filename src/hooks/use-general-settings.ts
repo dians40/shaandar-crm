@@ -3,20 +3,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DEFAULT_CONTRACTOR_SEEDS,
+  DEFAULT_DEPARTMENT_SEEDS,
   DEFAULT_EMPLOYEE_TYPE_SEEDS,
-  DEFAULT_MACHINE_SEEDS,
   DEFAULT_OVERTIME_REASON_SEEDS,
   normalizeGeneralSettingsRecord,
   type GeneralSettingsRecord,
 } from "@/types/general-settings";
 
-const STORAGE_KEY = "shaandar-crm-general-settings";
+export const GENERAL_SETTINGS_STORAGE_KEY = "shaandar-crm-general-settings";
 
 type GeneralSettingsStore = {
   contractors: GeneralSettingsRecord[];
   employeeTypes: GeneralSettingsRecord[];
-  machines: GeneralSettingsRecord[];
+  departments: GeneralSettingsRecord[];
   overtimeReasons: GeneralSettingsRecord[];
+};
+
+type LegacyGeneralSettingsStore = Partial<GeneralSettingsStore> & {
+  machines?: GeneralSettingsRecord[];
 };
 
 function createSeedRecords(names: string[], prefix: string): GeneralSettingsRecord[] {
@@ -35,7 +39,7 @@ function defaultStore(): GeneralSettingsStore {
   return {
     contractors: createSeedRecords(DEFAULT_CONTRACTOR_SEEDS, "contractor"),
     employeeTypes: createSeedRecords(DEFAULT_EMPLOYEE_TYPE_SEEDS, "employee-type"),
-    machines: createSeedRecords(DEFAULT_MACHINE_SEEDS, "machine"),
+    departments: createSeedRecords(DEFAULT_DEPARTMENT_SEEDS, "department"),
     overtimeReasons: createSeedRecords(DEFAULT_OVERTIME_REASON_SEEDS, "overtime-reason"),
   };
 }
@@ -52,10 +56,11 @@ function normalizeRecordList(value: unknown): GeneralSettingsRecord[] {
 function readStore(): GeneralSettingsStore {
   if (typeof window === "undefined") return defaultStore();
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(GENERAL_SETTINGS_STORAGE_KEY);
     if (!raw) return defaultStore();
-    const parsed = JSON.parse(raw) as Partial<GeneralSettingsStore>;
+    const parsed = JSON.parse(raw) as LegacyGeneralSettingsStore;
     const defaults = defaultStore();
+    const departments = normalizeRecordList(parsed.departments);
     return {
       contractors: normalizeRecordList(parsed.contractors).length
         ? normalizeRecordList(parsed.contractors)
@@ -63,9 +68,7 @@ function readStore(): GeneralSettingsStore {
       employeeTypes: normalizeRecordList(parsed.employeeTypes).length
         ? normalizeRecordList(parsed.employeeTypes)
         : defaults.employeeTypes,
-      machines: normalizeRecordList(parsed.machines).length
-        ? normalizeRecordList(parsed.machines)
-        : defaults.machines,
+      departments: departments.length ? departments : defaults.departments,
       overtimeReasons: normalizeRecordList(parsed.overtimeReasons).length
         ? normalizeRecordList(parsed.overtimeReasons)
         : defaults.overtimeReasons,
@@ -77,7 +80,7 @@ function readStore(): GeneralSettingsStore {
 
 function writeStore(store: GeneralSettingsStore) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  window.localStorage.setItem(GENERAL_SETTINGS_STORAGE_KEY, JSON.stringify(store));
 }
 
 type SubMasterKey = keyof GeneralSettingsStore;
@@ -91,12 +94,24 @@ export function useGeneralSettings() {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    const loaded = readStore();
-    setStore(loaded);
-    if (typeof window !== "undefined" && !window.localStorage.getItem(STORAGE_KEY)) {
-      writeStore(loaded);
-    }
-    setIsReady(true);
+    const load = () => {
+      const loaded = readStore();
+      setStore(loaded);
+      if (typeof window !== "undefined" && !window.localStorage.getItem(GENERAL_SETTINGS_STORAGE_KEY)) {
+        writeStore(loaded);
+      }
+      setIsReady(true);
+    };
+
+    load();
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === GENERAL_SETTINGS_STORAGE_KEY) {
+        load();
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   const persist = useCallback((next: GeneralSettingsStore) => {
@@ -114,9 +129,9 @@ export function useGeneralSettings() {
     [store.employeeTypes]
   );
 
-  const machineOptions = useMemo(
-    () => toSelectOptions(store.machines),
-    [store.machines]
+  const departmentOptions = useMemo(
+    () => toSelectOptions(store.departments),
+    [store.departments]
   );
 
   const contractorNames = useMemo(
@@ -129,9 +144,9 @@ export function useGeneralSettings() {
     [store.employeeTypes]
   );
 
-  const machineNames = useMemo(
-    () => store.machines.map((row) => row.name),
-    [store.machines]
+  const departmentNames = useMemo(
+    () => store.departments.map((row) => row.name),
+    [store.departments]
   );
 
   const overtimeReasonOptions = useMemo(
@@ -198,16 +213,22 @@ export function useGeneralSettings() {
   return {
     contractors: store.contractors,
     employeeTypes: store.employeeTypes,
-    machines: store.machines,
+    departments: store.departments,
     overtimeReasons: store.overtimeReasons,
     contractorOptions,
     employeeTypeOptions,
-    machineOptions,
+    departmentOptions,
     overtimeReasonOptions,
     contractorNames,
     employeeTypeNames,
-    machineNames,
+    departmentNames,
     overtimeReasonNames,
+    /** @deprecated Use departmentOptions — Machine Master renamed to Department. */
+    machines: store.departments,
+    /** @deprecated Use departmentOptions — Machine Master renamed to Department. */
+    machineOptions: departmentOptions,
+    /** @deprecated Use departmentNames — Machine Master renamed to Department. */
+    machineNames: departmentNames,
     isReady,
     addRecord,
     updateRecord,

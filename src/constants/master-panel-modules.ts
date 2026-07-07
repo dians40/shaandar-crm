@@ -210,7 +210,7 @@ const ADMINISTRATION_MODULES: MasterPanelModule[] = [
     serial: 14,
     navLabel: "General Settings",
     title: "General Settings",
-    subtitle: "Contractors, employee types, machines, and overtime reasons for global dropdowns",
+    subtitle: "Contractors, employee types, departments, and overtime reasons for global dropdowns",
     icon: Settings,
     placeholderMessage: "",
   },

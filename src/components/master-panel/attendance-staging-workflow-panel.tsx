@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
 import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
+import { useGeneralSettings } from "@/hooks/use-general-settings";
 import {
   MANUAL_ATTENDANCE_LOG_UPDATED_EVENT,
   mergeManualEntryNamesIntoOptions,
@@ -62,6 +63,7 @@ export default function AttendanceStagingWorkflowPanel({
   const [editRemark, setEditRemark] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [manualLogRefresh, setManualLogRefresh] = useState(0);
+  const { departmentNames } = useGeneralSettings();
 
   useEffect(() => {
     const handler = () => setManualLogRefresh((current) => current + 1);
@@ -107,9 +109,9 @@ export default function AttendanceStagingWorkflowPanel({
   const departmentOptions = useMemo(() => {
     void manualLogRefresh;
     return mergeManualEntryNamesIntoOptions(
-      mergeDepartmentOptions(rows.map((row) => row.department))
+      mergeDepartmentOptions(rows.map((row) => row.department), departmentNames)
     );
-  }, [rows, manualLogRefresh]);
+  }, [rows, manualLogRefresh, departmentNames]);
 
   const designationOptions = useMemo(() => {
     void manualLogRefresh;

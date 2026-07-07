@@ -1,0 +1,812 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  CalendarCheck,
+  CheckCircle2,
+  FileSpreadsheet,
+  Loader2,
+  RefreshCw,
+  Save,
+  Search,
+  Upload,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  createAutoProvisionedEmployee,
+  detectPendingAutoEmployees,
+  readAutoProvisionedEmployees,
+  resolveImportEmployee,
+  upsertAutoProvisionedEmployee,
+  type PendingAutoEmployee,
+} from "@/lib/attendance-auto-provision";
+import {
+  atomicFinalizeBulkDbPayload,
+  buildBulkDbPayload,
+  safeBulkNumeric,
+} from "@/lib/attendance-bulk-payload-bridge";
+import {
+  bulkRecordToWorkflowFields,
+  normalizeAttendanceDateIso,
+  normalizeBiometric23ColumnRecord,
+  type Biometric23ColumnRecord,
+} from "@/types/attendance-bulk-import-row";
+import {
+  finalizeImportRow,
+  parseAttendanceImportFileSafe,
+  PDF_UPLOAD_SUCCESS_TOKEN,
+  type AttendanceImportRow,
+} from "@/lib/attendance-import-parser";
+import { bulkRecordHasContent } from "@/types/attendance-bulk-import-row";
+import AttendanceBulkImportPreviewGrid from "./attendance-bulk-import-preview-grid";
+import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
+import { useEmployees } from "@/hooks/use-employees";
+import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
+import {
+  BIOMETRIC_ATTENDANCE_GRID_COLUMNS,
+  type BiometricAttendanceGridRow,
+} from "@/types/biometric-attendance-grid";
+import {
+  MASTER_LIST_BODY_CELL_CLASS,
+  MASTER_LIST_HEAD_CLASS,
+  MASTER_LIST_HEADER_CELL_CLASS,
+  MASTER_LIST_TABLE_CLASS,
+  MASTER_LIST_TABLE_WRAPPER_CLASS,
+} from "./universal-master-list";
+
+type ImportPreviewState = {
+  fileName: string;
+  rows: AttendanceImportRow[];
+  bulkRows: Biometric23ColumnRecord[];
+  pendingNewEmployees: PendingAutoEmployee[];
+  skippedRows: number;
+  warnings: string[];
+  alignmentInfo?: string;
+  reportDate?: string;
+};
+
+type ImportResult = {
+  imported: number;
+  skipped: number;
+  createdEmployees: number;
+  errors: string[];
+};
+
+function mappedStatusFromRecord(record: {
+  assignedMachine?: string;
+}): import("@/types/manual-attendance-entry").ManualAttendanceStatus {
+  try {
+    const token = record.assignedMachine ?? "";
+    if (token.includes("G11")) return "G11";
+    return "DY1";
+  } catch {
+    return "DY1";
+  }
+}
+
+function safeBulkNumericFromRecord(record: {
+  assignedMachine?: string;
+}): number {
+  try {
+    const token = record.assignedMachine ?? "";
+    const match = token.match(/Overtime Amount:\s*([$0-9.]+)/i);
+    if (match?.[1]) return safeBulkNumeric(match[1]);
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+const BULK_SAVE_TIMEOUT_MS = 15_000;
+const SEARCH_DEBOUNCE_MS = 300;
+
+function mapApiGridRow(raw: Record<string, unknown>): BiometricAttendanceGridRow {
+  return {
+    id: String(raw.id ?? ""),
+    srlNo: String(raw.srlNo ?? raw.srl_no ?? ""),
+    payCode: String(raw.payCode ?? raw.pay_code ?? ""),
+    cardNo: String(raw.cardNo ?? raw.card_no ?? ""),
+    employeeName: String(raw.employeeName ?? raw.employee_name ?? ""),
+    department: String(raw.department ?? ""),
+    designation: String(raw.designation ?? ""),
+    shift: String(raw.shift ?? ""),
+    date: String(raw.date ?? ""),
+    status: String(raw.status ?? ""),
+    inTime: String(raw.inTime ?? raw.in_time ?? ""),
+    outTime: String(raw.outTime ?? raw.out_time ?? ""),
+    duration: String(raw.duration ?? ""),
+    earlyIn: String(raw.earlyIn ?? raw.early_in ?? ""),
+    lateIn: String(raw.lateIn ?? raw.late_in ?? ""),
+    earlyOut: String(raw.earlyOut ?? raw.early_out ?? ""),
+    lateOut: String(raw.lateOut ?? raw.late_out ?? ""),
+    otHours: String(raw.otHours ?? raw.ot_hours ?? ""),
+    shortHours: String(raw.shortHours ?? raw.short_hours ?? ""),
+    grossHours: String(raw.grossHours ?? raw.gross_hours ?? ""),
+    netHours: String(raw.netHours ?? raw.net_hours ?? ""),
+    workCode: String(raw.workCode ?? raw.work_code ?? ""),
+    remark: String(raw.remark ?? ""),
+    createdAt: String(raw.createdAt ?? raw.created_at ?? ""),
+  };
+}
+
+export default function AttendanceControlCenter() {
+  const { employees, prependEmployee } = useEmployees();
+  const { ingestManualEntry } = useAttendanceWorkflow();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [importPreview, setImportPreview] = useState<ImportPreviewState | null>(null);
+  const [selectedBulkRowIndex, setSelectedBulkRowIndex] = useState(0);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const [gridRows, setGridRows] = useState<BiometricAttendanceGridRow[]>([]);
+  const [isGridLoading, setIsGridLoading] = useState(false);
+  const [gridError, setGridError] = useState<string | null>(null);
+  const [filterDate, setFilterDate] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  const resetPanelState = useCallback(() => {
+    setImportPreview(null);
+    setSelectedBulkRowIndex(0);
+    setImportMessage(null);
+    setImportError(null);
+    setIsParsing(false);
+    setIsProcessing(false);
+    setIsDragging(false);
+    setGridRows([]);
+    setGridError(null);
+    setFilterDate("");
+    setSearchQuery("");
+    setDebouncedSearch("");
+  }, []);
+
+  useMasterPanelBlockReset("transaction", resetPanelState);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
+  const loadGridRows = useCallback(async () => {
+    setIsGridLoading(true);
+    setGridError(null);
+    try {
+      const params = new URLSearchParams({ limit: "300" });
+      if (filterDate.trim()) {
+        params.set("date", normalizeAttendanceDateIso(filterDate.trim()));
+      }
+      if (debouncedSearch) {
+        params.set("search", debouncedSearch);
+      }
+      const response = await fetch(`/api/v1/attendance/biometric?${params.toString()}`);
+      const body = (await response.json()) as {
+        rows?: Record<string, unknown>[];
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.error ?? "Failed to load attendance records.");
+      }
+      setGridRows(
+        Array.isArray(body.rows) ? body.rows.map(mapApiGridRow) : []
+      );
+    } catch (loadError) {
+      console.error(loadError);
+      setGridError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Failed to load attendance records."
+      );
+      setGridRows([]);
+    } finally {
+      setIsGridLoading(false);
+    }
+  }, [filterDate, debouncedSearch]);
+
+  useEffect(() => {
+    void loadGridRows();
+  }, [loadGridRows]);
+
+  const autoProvisionMissingEmployees = (
+    rows: AttendanceImportRow[],
+    registry: ReturnType<typeof readAutoProvisionedEmployees>
+  ) => {
+    const pending = detectPendingAutoEmployees(rows, employees, registry);
+    let nextRegistry = registry;
+    let createdCount = 0;
+
+    for (const pendingEmployee of pending) {
+      const created = createAutoProvisionedEmployee(
+        pendingEmployee.employeeCode,
+        pendingEmployee.employeeName
+      );
+      nextRegistry = upsertAutoProvisionedEmployee(created);
+      prependEmployee(created);
+      createdCount += 1;
+    }
+
+    return { pending, nextRegistry, createdCount };
+  };
+
+  const handleFileSelect = async (file: File) => {
+    setImportMessage(null);
+    setImportError(null);
+    setIsParsing(true);
+
+    try {
+      const outcome = await parseAttendanceImportFileSafe(file);
+
+      if (outcome.pdfDocumentUploaded) {
+        setImportPreview(null);
+        setImportMessage(PDF_UPLOAD_SUCCESS_TOKEN);
+        return;
+      }
+
+      const {
+        rows: parsedRows,
+        bulkRows: parsedBulkRows,
+        skippedRows,
+        warnings,
+        alignmentInfo,
+        reportDate,
+      } = outcome;
+
+      const sanitizedRows = Array.isArray(parsedRows)
+        ? parsedRows.map((row) => finalizeImportRow(row))
+        : [];
+      const sanitizedBulkRows = Array.isArray(parsedBulkRows)
+        ? parsedBulkRows.map((row) =>
+            normalizeBiometric23ColumnRecord(row, { defaultDate: reportDate })
+          )
+        : [];
+
+      if (sanitizedBulkRows.length === 0) {
+        setImportPreview(null);
+        setSelectedBulkRowIndex(0);
+        setImportError(
+          "No valid attendance rows found in the uploaded file. Check that the sheet contains employee data rows."
+        );
+        return;
+      }
+
+      const registry = readAutoProvisionedEmployees();
+      const { pending: pendingNewEmployees, createdCount } =
+        autoProvisionMissingEmployees(sanitizedRows, registry);
+
+      setSelectedBulkRowIndex(0);
+      setImportPreview({
+        fileName: file.name,
+        rows: sanitizedRows,
+        bulkRows: sanitizedBulkRows,
+        pendingNewEmployees,
+        skippedRows,
+        reportDate,
+        alignmentInfo,
+        warnings:
+          createdCount > 0
+            ? [
+                ...warnings,
+                `${createdCount} missing employee profile(s) were auto-created in this session.`,
+              ]
+            : warnings,
+      });
+
+      if (createdCount > 0) {
+        setImportMessage(
+          `${createdCount} new employee profile(s) were auto-provisioned from the uploaded sheet.`
+        );
+      }
+    } catch (error) {
+      console.error(error);
+      setImportPreview(null);
+      setImportError(
+        "Upload processing completed safely, but no rows could be recovered from this file."
+      );
+    } finally {
+      setIsParsing(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const processBulkImport = useCallback(async () => {
+    if (!importPreview) return;
+
+    setImportMessage(null);
+    setImportError(null);
+    setIsProcessing(true);
+
+    try {
+      let registry = readAutoProvisionedEmployees();
+      const result: ImportResult = {
+        imported: 0,
+        skipped: 0,
+        createdEmployees: 0,
+        errors: [],
+      };
+
+      for (const pending of importPreview.pendingNewEmployees) {
+        const created = createAutoProvisionedEmployee(
+          pending.employeeCode,
+          pending.employeeName
+        );
+        registry = upsertAutoProvisionedEmployee(created);
+        prependEmployee(created);
+        result.createdEmployees += 1;
+      }
+
+      const bulkPayloadRows: Record<string, unknown>[] = [];
+
+      for (const bulkRow of importPreview.bulkRows) {
+        try {
+          const safeBulk = normalizeBiometric23ColumnRecord(bulkRow, {
+            defaultDate: importPreview.reportDate,
+          });
+          if (!bulkRecordHasContent(safeBulk)) {
+            result.skipped += 1;
+            continue;
+          }
+          const mapped = bulkRecordToWorkflowFields(safeBulk);
+          const employeeCode = mapped.employeeCode.trim() || "TEMP_CODE";
+          const employeeName = mapped.employeeName.trim() || "Unknown Worker";
+
+          let employee = resolveImportEmployee(
+            employeeCode,
+            employeeName,
+            employees,
+            registry
+          );
+
+          if (!employee) {
+            const created = createAutoProvisionedEmployee(employeeCode, employeeName);
+            registry = upsertAutoProvisionedEmployee(created);
+            prependEmployee(created);
+            employee = created;
+            result.createdEmployees += 1;
+          }
+
+          const dbPayload = atomicFinalizeBulkDbPayload(
+            buildBulkDbPayload({
+              row: safeBulk,
+              employeeId: employee.id,
+              attendanceDate: safeBulk.date || importPreview.reportDate || "",
+            })
+          );
+
+          bulkPayloadRows.push({
+            ...dbPayload,
+            date: safeBulk.date || importPreview.reportDate || "",
+            employee_id: employee.id,
+            employee_name: employee.name,
+            attendance_date:
+              safeBulk.date || importPreview.reportDate || dbPayload.attendance_date,
+          });
+        } catch (rowError) {
+          console.error(rowError);
+          result.skipped += 1;
+          result.errors.push(
+            rowError instanceof Error ? rowError.message : "Row sanitization failed."
+          );
+        }
+      }
+
+      if (bulkPayloadRows.length === 0) {
+        setImportError("No valid rows available for bulk submission.");
+        return;
+      }
+
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), BULK_SAVE_TIMEOUT_MS);
+
+      let response: Response;
+      try {
+        response = await fetch("/api/v1/attendance/workflow/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: bulkPayloadRows }),
+          signal: controller.signal,
+        });
+      } catch (fetchError) {
+        if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
+          throw new Error(
+            "Bulk save timed out after 15 seconds. Please verify database connectivity and try again."
+          );
+        }
+        throw fetchError;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+
+      const body = (await response.json()) as {
+        error?: string;
+        ok?: boolean;
+        imported?: number;
+        skipped?: number;
+        provisionedEmployees?: number;
+        errors?: string[];
+        debug?: { cause?: string; receivedRows?: number };
+        records?: Array<{
+          id: string;
+          employeeId: string;
+          employeeName: string;
+          attendanceDate: string;
+          punchIn: string;
+          punchOut: string;
+          assignedMachine: string;
+        }>;
+      };
+
+      if (!response.ok) {
+        const detail = body.debug?.cause ? ` ${body.debug.cause}` : "";
+        throw new Error((body.error ?? "Bulk attendance submission failed.") + detail);
+      }
+
+      result.imported = body.imported ?? 0;
+      result.skipped += body.skipped ?? 0;
+      if (body.provisionedEmployees && body.provisionedEmployees > 0) {
+        result.createdEmployees += body.provisionedEmployees;
+      }
+      if (Array.isArray(body.errors)) {
+        result.errors.push(...body.errors);
+      }
+
+      for (const record of body.records ?? []) {
+        try {
+          if (!record?.id || !record.employeeId) continue;
+          ingestManualEntry({
+            id: record.id,
+            employeeId: record.employeeId,
+            employeeName: record.employeeName,
+            attendanceDate: record.attendanceDate,
+            punchIn: record.punchIn,
+            punchOut: record.punchOut ?? "",
+            remarks: record.assignedMachine ?? "",
+            status: mappedStatusFromRecord(record),
+            overtimeHours: safeBulkNumericFromRecord(record),
+          });
+        } catch (entryError) {
+          console.error(entryError);
+        }
+      }
+
+      setImportMessage(
+        `Successfully imported ${result.imported} attendance row(s)` +
+          (result.createdEmployees > 0
+            ? ` · New employees auto-created: ${result.createdEmployees}`
+            : "") +
+          (result.skipped > 0 ? ` · Skipped ${result.skipped}` : "") +
+          "."
+      );
+
+      if (result.errors.length > 0) {
+        setImportError(result.errors.slice(0, 3).join(" · "));
+      }
+
+      setImportPreview(null);
+      setSelectedBulkRowIndex(0);
+
+      await loadGridRows();
+    } catch (error) {
+      console.error(error);
+      const message =
+        error instanceof Error ? error.message : "Bulk attendance processing failed.";
+      setImportError(message);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [employees, importPreview, ingestManualEntry, loadGridRows, prependEmployee]);
+
+  const handleBulkRowIndexChange = useCallback(
+    (index: number) => {
+      try {
+        if (index == null || !Number.isFinite(index) || index < 0) return;
+        if (!importPreview?.bulkRows?.length) return;
+        if (index >= importPreview.bulkRows.length) return;
+        setSelectedBulkRowIndex(index);
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    [importPreview?.bulkRows]
+  );
+
+  const handleBulkRowsChange = useCallback(
+    (nextRows: Biometric23ColumnRecord[]) => {
+      try {
+        if (!importPreview) return;
+        if (!Array.isArray(nextRows)) return;
+
+        const bulkRows = nextRows.map((row) =>
+          normalizeBiometric23ColumnRecord(row, { defaultDate: importPreview.reportDate })
+        );
+        setImportPreview((current) => {
+          if (!current) return current;
+          return { ...current, bulkRows };
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    [importPreview]
+  );
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) void handleFileSelect(file);
+  };
+
+  const uploadBusy = isParsing || isProcessing;
+
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-6">
+      <div className="flex flex-col gap-2 border-b border-corporate-border pb-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2">
+          <CalendarCheck className="h-5 w-5 text-corporate-brand" aria-hidden />
+          <div>
+            <h2 className="text-lg font-semibold text-corporate-text">
+              Attendance Control Center
+            </h2>
+            <p className="text-sm text-corporate-muted">
+              Excel ingestion, live biometric records, and filtered 23-column data grid
+            </p>
+          </div>
+        </div>
+        {(isParsing || isProcessing) && (
+          <div className="inline-flex items-center gap-2 rounded-full border border-corporate-brand/30 bg-corporate-brand-light px-3 py-1.5 text-xs font-medium text-corporate-brand">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            {isParsing ? "Parsing file..." : "Saving records..."}
+          </div>
+        )}
+      </div>
+
+      <div className="grid w-full min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
+        <section className="rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
+          <div className="flex flex-wrap items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-corporate-brand-light text-corporate-brand">
+              <FileSpreadsheet className="h-5 w-5" aria-hidden />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold text-corporate-text">Bulk Import</h3>
+              <p className="mt-1 text-xs text-corporate-muted">
+                Upload biometric Daily Performance exports (.xls, .xlsx, .csv). Drag and drop
+                or browse to ingest attendance records into the database.
+              </p>
+            </div>
+          </div>
+
+          <div
+            className={cn(
+              "mt-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors",
+              isDragging
+                ? "border-corporate-brand bg-corporate-brand-light/50"
+                : "border-corporate-border bg-corporate-bg",
+              uploadBusy && "pointer-events-none opacity-70"
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            {isParsing ? (
+              <Loader2 className="mb-2 h-8 w-8 animate-spin text-corporate-brand" aria-hidden />
+            ) : (
+              <Upload className="mb-2 h-8 w-8 text-corporate-muted" aria-hidden />
+            )}
+            <p className="text-sm font-medium text-corporate-text">
+              {isDragging ? "Drop file to upload" : "Drag and drop or select a file"}
+            </p>
+            <p className="mt-1 text-xs text-corporate-muted">Supported: .xlsx, .xls, .pdf, .csv</p>
+            <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-corporate-brand px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
+              <Upload className="h-4 w-4" aria-hidden />
+              Choose File
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.pdf,.csv"
+                className="sr-only"
+                disabled={uploadBusy}
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void handleFileSelect(file);
+                }}
+              />
+            </label>
+          </div>
+
+          {importPreview && (
+            <div className="mt-5 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-3">
+                <div>
+                  <p className="text-sm font-bold text-corporate-brand">
+                    Ready to import: {importPreview.bulkRows.length} row(s)
+                  </p>
+                  <p className="text-xs text-corporate-muted">
+                    {importPreview.fileName} —{" "}
+                    {importPreview.pendingNewEmployees.length} new employee(s) detected
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void processBulkImport()}
+                  disabled={isProcessing}
+                  className="btn-primary inline-flex h-11 min-h-[44px] items-center gap-2 px-5 text-sm"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <Save className="h-4 w-4" aria-hidden />
+                  )}
+                  {isProcessing ? "Processing..." : "Process & Save"}
+                </button>
+              </div>
+
+              {importPreview.alignmentInfo && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
+                  <p className="font-semibold">Column alignment</p>
+                  <p className="mt-1">{importPreview.alignmentInfo}</p>
+                </div>
+              )}
+
+              <AttendanceBulkImportPreviewGrid
+                rows={importPreview.bulkRows}
+                selectedRowIndex={selectedBulkRowIndex}
+                onSelectedRowIndexChange={handleBulkRowIndexChange}
+                onRowsChange={handleBulkRowsChange}
+              />
+            </div>
+          )}
+
+          {importMessage && (
+            <p className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              {importMessage}
+            </p>
+          )}
+          {importError && (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {importError}
+            </p>
+          )}
+        </section>
+
+        <section className="flex min-w-0 flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5 text-corporate-brand" aria-hidden />
+              <div>
+                <h3 className="text-sm font-bold text-corporate-text">Live Attendance Grid</h3>
+                <p className="text-xs text-corporate-muted">
+                  {gridRows.length} record(s) — 23 canonical database columns
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => void loadGridRows()}
+              disabled={isGridLoading}
+              className="btn-secondary inline-flex h-10 items-center gap-2 px-4 text-sm"
+            >
+              <RefreshCw
+                className={cn("h-4 w-4", isGridLoading && "animate-spin")}
+                aria-hidden
+              />
+              Refresh
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-corporate-border bg-corporate-surface px-4 py-3">
+            <label className="flex items-center gap-2 text-sm text-corporate-muted">
+              Date
+              <input
+                type="date"
+                value={filterDate}
+                onChange={(event) => setFilterDate(event.target.value)}
+                className="h-10 rounded-lg border border-corporate-border bg-white px-3 text-sm text-corporate-text"
+              />
+            </label>
+            <div className="relative min-w-[200px] flex-1">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-corporate-muted"
+                aria-hidden
+              />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search by Employee Name or Pay Code"
+                className="h-10 w-full rounded-lg border border-corporate-border bg-white pl-9 pr-3 text-sm text-corporate-text"
+              />
+            </div>
+          </div>
+
+          {gridError && (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              {gridError}
+            </p>
+          )}
+
+          <div
+            className={cn(
+              MASTER_LIST_TABLE_WRAPPER_CLASS,
+              "max-h-[calc(100vh-18rem)] min-h-[320px] overflow-auto"
+            )}
+          >
+            <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[2800px]")}>
+              <thead className={MASTER_LIST_HEAD_CLASS}>
+                <tr>
+                  {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => (
+                    <th key={column.key} className={MASTER_LIST_HEADER_CELL_CLASS}>
+                      {column.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-corporate-border">
+                {isGridLoading ? (
+                  <tr>
+                    <td
+                      colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length}
+                      className="px-3 py-8 text-center text-corporate-muted"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                        Loading attendance records...
+                      </span>
+                    </td>
+                  </tr>
+                ) : gridRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length}
+                      className="px-3 py-8 text-center text-corporate-muted"
+                    >
+                      No attendance records found. Upload an Excel file or adjust your filters.
+                    </td>
+                  </tr>
+                ) : (
+                  gridRows.map((row) => (
+                    <tr key={row.id || `${row.payCode}-${row.date}`}>
+                      {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => {
+                        const value = row[column.key] ?? "";
+                        return (
+                          <td
+                            key={`${row.id}-${column.key}`}
+                            className={cn(
+                              MASTER_LIST_BODY_CELL_CLASS,
+                              "whitespace-nowrap text-xs",
+                              (column.key === "shift" ||
+                                column.key === "status" ||
+                                column.key === "otHours") &&
+                                "font-semibold text-corporate-brand"
+                            )}
+                          >
+                            {value || "—"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}

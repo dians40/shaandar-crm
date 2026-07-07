@@ -189,6 +189,60 @@ export function mapToBiometricAttendanceRow(
   };
 }
 
+function formatCreatedAt(value: unknown): string {
+  try {
+    if (value == null) return "";
+    const date = value instanceof Date ? value : new Date(String(value));
+    if (Number.isNaN(date.getTime())) return safeString(value) ?? "";
+    return date.toLocaleString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
+/** Map DB row → canonical 23-column attendance grid (public.biometric_attendance). */
+export function mapBiometricAttendanceGridRow(
+  row: Record<string, unknown>
+): import("@/types/biometric-attendance-grid").BiometricAttendanceGridRow {
+  const date =
+    safeString(row.date) ||
+    safeString(row.attendance_date ?? row.attendanceDate) ||
+    "";
+
+  return {
+    id: safeString(row.id) ?? "",
+    srlNo: String(row.srl_no ?? row.srl_number ?? row.srlNumber ?? ""),
+    payCode: safeString(row.pay_code ?? row.payCode) ?? "",
+    cardNo: safeString(row.card_no ?? row.card_number ?? row.cardNumber) ?? "",
+    employeeName: safeString(row.employee_name ?? row.employeeName) ?? "",
+    department: safeString(row.department) ?? "",
+    designation: safeString(row.designation) ?? "",
+    shift: safeString(row.shift) ?? "",
+    date,
+    status: safeString(row.status) ?? "",
+    inTime: safeString(row.in_time ?? row.inTime ?? row.in) ?? "",
+    outTime: safeString(row.out_time ?? row.outTime ?? row.out) ?? "",
+    duration: safeString(row.duration ?? row.hours_worked ?? row.hoursWorked) ?? "",
+    earlyIn: safeString(row.early_in ?? row.early_arrival ?? row.earlyIn) ?? "",
+    lateIn: safeString(row.late_in ?? row.shift_late ?? row.lateIn) ?? "",
+    earlyOut: safeString(row.early_out ?? row.shift_early ?? row.earlyOut) ?? "",
+    lateOut: safeString(row.late_out ?? row.excess_lunch ?? row.lateOut) ?? "",
+    otHours: safeString(row.ot_hours ?? row.ot) ?? "",
+    shortHours: safeString(row.short_hours ?? row.manual) ?? "",
+    grossHours: safeString(row.gross_hours ?? row.grossHours) ?? "",
+    netHours: safeString(row.net_hours ?? row.netHours) ?? "",
+    workCode: safeString(row.work_code ?? row.workCode) ?? "",
+    remark: safeString(row.remark ?? row.remarks) ?? "",
+    createdAt: formatCreatedAt(row.created_at ?? row.createdAt),
+  };
+}
+
 /** Map DB row → 23-column grid shape (canonical + legacy column fallbacks). */
 export function mapAttendanceRecordFromDb(row: Record<string, unknown>) {
   const date =

@@ -36,7 +36,7 @@ import ItemGroupsManagementPanel from "./item-groups-management-panel";
 import ItemsManagementPanel from "./items-management-panel";
 import ModulePlaceholder from "./module-placeholder";
 import OvertimeTrackerPanel from "./overtime-tracker-panel";
-import AttendanceLoggingWorkspacePanel from "./attendance-logging-workspace-panel";
+import AttendanceControlCenter from "./attendance-control-center";
 import VehicleManagementTransactionPanel from "./vehicle-management-transaction-panel";
 import RepairMaintenancePanel from "./repair-maintenance-panel";
 import TransactionPlaceholderPanel from "./transaction-placeholder-panel";
@@ -243,7 +243,7 @@ function MasterPanelContent({ scope }: MasterPanelContentProps) {
         case "api-integration-gateway":
           return <ApiIntegrationGatewayPanel />;
         case "attendance-system":
-          return <AttendanceLoggingWorkspacePanel />;
+          return <AttendanceControlCenter />;
         case "overtime-tracker":
           return <OvertimeTrackerPanel />;
         case "vehicle-management-transaction":

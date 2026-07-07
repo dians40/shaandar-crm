@@ -43,3 +43,18 @@ model BiometricAttendance {
   @@unique([payCode, date], map: "biometric_attendance_pay_code_date_key")
   @@map("biometric_attendance")
 }
+
+/// Maps to public.employee_attendance — legacy manual / workflow attendance log.
+model EmployeeAttendance {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  attendanceDate DateTime @map("attendance_date") @db.Date
+  status         String   @default("present")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([employeeId, attendanceDate], map: "employee_attendance_employee_id_attendance_date_key")
+  @@index([employeeId], map: "idx_employee_attendance_employee_id")
+  @@index([attendanceDate], map: "idx_employee_attendance_date")
+  @@map("employee_attendance")
+}

@@ -1,6 +1,10 @@
-/** Canonical 23-column biometric_attendance grid (database schema). */
+/** Row provenance for hybrid legacy + biometric attendance grid. */
+export type AttendanceGridSource = "legacy" | "biometric";
+
+/** Canonical 23-column biometric_attendance grid (database schema) + fusion metadata. */
 export type BiometricAttendanceGridRow = {
   id: string;
+  source: AttendanceGridSource;
   srlNo: string;
   payCode: string;
   cardNo: string;
@@ -30,6 +34,7 @@ export const BIOMETRIC_ATTENDANCE_GRID_COLUMNS: {
   key: keyof BiometricAttendanceGridRow;
   label: string;
 }[] = [
+  { key: "source", label: "Source" },
   { key: "srlNo", label: "Srl No" },
   { key: "payCode", label: "Pay Code" },
   { key: "cardNo", label: "Card No" },
@@ -55,4 +60,4 @@ export const BIOMETRIC_ATTENDANCE_GRID_COLUMNS: {
   { key: "createdAt", label: "Created At" },
 ];
 
-export const BIOMETRIC_ATTENDANCE_GRID_COLUMN_COUNT = 23;
+export const BIOMETRIC_ATTENDANCE_GRID_COLUMN_COUNT = 24;

@@ -217,6 +217,7 @@ export function mapBiometricAttendanceGridRow(
 
   return {
     id: safeString(row.id) ?? "",
+    source: "biometric" as const,
     srlNo: String(row.srl_no ?? row.srl_number ?? row.srlNumber ?? ""),
     payCode: safeString(row.pay_code ?? row.payCode) ?? "",
     cardNo: safeString(row.card_no ?? row.card_number ?? row.cardNumber) ?? "",

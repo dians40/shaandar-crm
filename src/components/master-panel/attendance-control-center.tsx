@@ -101,8 +101,11 @@ const BULK_SAVE_TIMEOUT_MS = 15_000;
 const SEARCH_DEBOUNCE_MS = 300;
 
 function mapApiGridRow(raw: Record<string, unknown>): BiometricAttendanceGridRow {
+  const sourceRaw = String(raw.source ?? "biometric");
+  const source = sourceRaw === "legacy" ? "legacy" : "biometric";
   return {
     id: String(raw.id ?? ""),
+    source,
     srlNo: String(raw.srlNo ?? raw.srl_no ?? ""),
     payCode: String(raw.payCode ?? raw.pay_code ?? ""),
     cardNo: String(raw.cardNo ?? raw.card_no ?? ""),
@@ -563,7 +566,7 @@ export default function AttendanceControlCenter() {
               Attendance Control Center
             </h2>
             <p className="text-sm text-corporate-muted">
-              Excel ingestion, live biometric records, and filtered 23-column data grid
+              Excel ingestion, legacy manual records, live biometric data, and unified 24-column grid
             </p>
           </div>
         </div>
@@ -691,7 +694,7 @@ export default function AttendanceControlCenter() {
               <div>
                 <h3 className="text-sm font-bold text-corporate-text">Live Attendance Grid</h3>
                 <p className="text-xs text-corporate-muted">
-                  {gridRows.length} record(s) — 23 canonical database columns
+                  {gridRows.length} record(s) — legacy and biometric attendance merged
                 </p>
               </div>
             </div>
@@ -780,22 +783,36 @@ export default function AttendanceControlCenter() {
                   </tr>
                 ) : (
                   gridRows.map((row) => (
-                    <tr key={row.id || `${row.payCode}-${row.date}`}>
+                    <tr key={row.id || `${row.source}-${row.payCode}-${row.date}`}>
                       {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => {
                         const value = row[column.key] ?? "";
+                        const isSourceColumn = column.key === "source";
                         return (
                           <td
                             key={`${row.id}-${column.key}`}
                             className={cn(
                               MASTER_LIST_BODY_CELL_CLASS,
                               "whitespace-nowrap text-xs",
+                              isSourceColumn &&
+                                "font-semibold uppercase tracking-wide",
+                              isSourceColumn &&
+                                row.source === "legacy" &&
+                                "text-amber-700",
+                              isSourceColumn &&
+                                row.source === "biometric" &&
+                                "text-corporate-brand",
                               (column.key === "shift" ||
                                 column.key === "status" ||
                                 column.key === "otHours") &&
+                                !isSourceColumn &&
                                 "font-semibold text-corporate-brand"
                             )}
                           >
-                            {value || "—"}
+                            {isSourceColumn
+                              ? row.source === "legacy"
+                                ? "Legacy"
+                                : "Biometric"
+                              : value || "—"}
                           </td>
                         );
                       })}

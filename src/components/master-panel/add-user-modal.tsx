@@ -21,8 +21,11 @@ import { USER_PIPELINE_STAGES, type UserPipelineStage } from "@/types/user-pipel
 type AddUserModalProps = {
   open: boolean;
   onClose: () => void;
-  onCreate: (user: ManagedUserRecord, pipelineStage: UserPipelineStage) => void;
-  onUpdate?: (userId: string, patch: Partial<ManagedUserRecord>) => void;
+  onCreate: (user: ManagedUserRecord, pipelineStage: UserPipelineStage) => void | Promise<void>;
+  onUpdate?: (
+    userId: string,
+    patch: Partial<ManagedUserRecord>
+  ) => void | Promise<void>;
   roles: string[];
   targetStage: UserPipelineStage;
   editingUser?: ManagedUserRecord | null;
@@ -58,6 +61,7 @@ export default function AddUserModal({
         : null;
   const [form, setForm] = useState<ManagedUserFormState>(EMPTY_MANAGED_USER_FORM);
   const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -80,7 +84,7 @@ export default function AddUserModal({
 
   if (!open) return null;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setError(null);
     const validationError = validateManagedUserForm(form);
     if (validationError) {
@@ -93,33 +97,40 @@ export default function AddUserModal({
       return;
     }
 
-    if (isEditMode && editingUser && onUpdate) {
-      onUpdate(editingUser.id, {
+    setIsSaving(true);
+    try {
+      if (isEditMode && editingUser && onUpdate) {
+        await onUpdate(editingUser.id, {
+          fullName: form.fullName.trim(),
+          username: form.username.trim(),
+          password: form.password,
+          role: form.role as UserRoleName,
+          otpEnabled: form.otpEnabled,
+        });
+        setForm(EMPTY_MANAGED_USER_FORM);
+        onClose();
+        return;
+      }
+
+      const user: ManagedUserRecord = {
+        id: crypto.randomUUID(),
         fullName: form.fullName.trim(),
         username: form.username.trim(),
         password: form.password,
-        role: form.role as UserRoleName,
+        role: (lockedLayerRole ?? form.role) as UserRoleName,
         otpEnabled: form.otpEnabled,
-      });
+        createdAt: new Date().toISOString(),
+        pipelineStage: targetStage,
+      };
+
+      await onCreate(user, targetStage);
       setForm(EMPTY_MANAGED_USER_FORM);
       onClose();
-      return;
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Failed to save user to database.");
+    } finally {
+      setIsSaving(false);
     }
-
-    const user: ManagedUserRecord = {
-      id: `user-${Date.now()}`,
-      fullName: form.fullName.trim(),
-      username: form.username.trim(),
-      password: form.password,
-      role: (lockedLayerRole ?? form.role) as UserRoleName,
-      otpEnabled: form.otpEnabled,
-      createdAt: new Date().toISOString(),
-      pipelineStage: targetStage,
-    };
-
-    onCreate(user, targetStage);
-    setForm(EMPTY_MANAGED_USER_FORM);
-    onClose();
   };
 
   return (
@@ -259,18 +270,22 @@ export default function AddUserModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full border border-corporate-border px-5 py-2.5 text-sm font-semibold text-corporate-text hover:bg-corporate-bg"
+            disabled={isSaving}
+            className="rounded-full border border-corporate-border px-5 py-2.5 text-sm font-semibold text-corporate-text hover:bg-corporate-bg disabled:opacity-60"
           >
             Cancel
           </button>
           <button
             type="button"
-            onClick={handleSubmit}
+            onClick={() => void handleSubmit()}
+            disabled={isSaving}
             className={cn(
-              "btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm"
+              "btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-60"
             )}
           >
-            {isEditMode ? (
+            {isSaving ? (
+              "Saving..."
+            ) : isEditMode ? (
               <>
                 <Pencil className="h-4 w-4" aria-hidden />
                 Save Changes

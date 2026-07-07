@@ -45,9 +45,61 @@ export async function syncManagedUsersToServer(users: ManagedUserRecord[]): Prom
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ users }),
     });
-    return response.ok;
+    if (!response.ok) return false;
+    const payload = (await response.json()) as { users?: ManagedUserRecord[] };
+    if (Array.isArray(payload.users)) {
+      writeManagedUsers(payload.users);
+    }
+    return true;
   } catch {
     return false;
+  }
+}
+
+export async function upsertManagedUserOnServer(
+  user: ManagedUserRecord
+): Promise<{ ok: boolean; users: ManagedUserRecord[] }> {
+  if (typeof window === "undefined") {
+    return { ok: false, users: [] };
+  }
+  try {
+    const response = await fetch("/api/v1/managed-users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user }),
+    });
+    if (!response.ok) {
+      return { ok: false, users: readManagedUsers() };
+    }
+    const payload = (await response.json()) as { users?: ManagedUserRecord[] };
+    const users = Array.isArray(payload.users) ? payload.users : readManagedUsers();
+    writeManagedUsers(users);
+    return { ok: true, users };
+  } catch {
+    return { ok: false, users: readManagedUsers() };
+  }
+}
+
+export async function deleteManagedUserOnServer(
+  userId: string
+): Promise<{ ok: boolean; users: ManagedUserRecord[] }> {
+  if (typeof window === "undefined") {
+    return { ok: false, users: [] };
+  }
+  try {
+    const response = await fetch(
+      `/api/v1/managed-users?id=${encodeURIComponent(userId)}`,
+      { method: "DELETE" }
+    );
+    if (!response.ok) {
+      return { ok: false, users: readManagedUsers() };
+    }
+    const payload = (await response.json()) as { users?: ManagedUserRecord[] };
+    const users = Array.isArray(payload.users) ? payload.users : readManagedUsers();
+    writeManagedUsers(users);
+    return { ok: true, users };
+  } catch {
+    return { ok: false, users: readManagedUsers() };
   }
 }
 

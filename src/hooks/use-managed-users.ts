@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  deleteManagedUser,
+  deleteManagedUserOnServer,
   fetchManagedUsersFromServer,
   readManagedUsers,
   syncManagedUsersToServer,
-  upsertManagedUser,
+  upsertManagedUserOnServer,
   updateManagedUser,
   writeManagedUsers,
 } from "@/lib/managed-users-store";
@@ -15,12 +15,38 @@ import {
   migrateLegacyUsersToSavedStage,
   readUsersByPipelineStage,
 } from "@/lib/user-pipeline-store";
-import type { ManagedUserRecord } from "@/types/managed-user";
-import type { UserPipelineStage } from "@/types/user-pipeline";
+import {
+  LAYER_2_USER_ROLE,
+  LAYER_3_USER_ROLE,
+  LAYER_4_USER_ROLE,
+  type ManagedUserRecord,
+} from "@/types/managed-user";
+import { USER_PIPELINE_STAGES, type UserPipelineStage } from "@/types/user-pipeline";
+import type { UserRoleName } from "@/types/user-permissions";
 
-async function persistUsers(users: ManagedUserRecord[]) {
-  writeManagedUsers(users);
-  await syncManagedUsersToServer(users);
+function applyLayerRoleTokens(
+  user: ManagedUserRecord,
+  pipelineStage: UserPipelineStage
+): ManagedUserRecord {
+  const staged = assignInitialUserPipelineStage({
+    ...user,
+    pipelineStage,
+  });
+
+  let role: UserRoleName = staged.role;
+  if (pipelineStage === USER_PIPELINE_STAGES.LAYER_2_STAGING) {
+    role = LAYER_2_USER_ROLE;
+  } else if (pipelineStage === USER_PIPELINE_STAGES.LAYER_3_WORKFLOW) {
+    role = LAYER_3_USER_ROLE;
+  } else if (pipelineStage === USER_PIPELINE_STAGES.LAYER_4_SAVED) {
+    role = LAYER_4_USER_ROLE;
+  }
+
+  return {
+    ...staged,
+    role,
+    pipelineStage,
+  };
 }
 
 export function useManagedUsers() {
@@ -41,6 +67,11 @@ export function useManagedUsers() {
     setUsers(localUsers);
     if (localUsers.length > 0) {
       await syncManagedUsersToServer(localUsers);
+      const refreshed = await fetchManagedUsersFromServer();
+      if (refreshed !== null) {
+        writeManagedUsers(refreshed);
+        setUsers(refreshed);
+      }
     }
   }, []);
 
@@ -55,56 +86,88 @@ export function useManagedUsers() {
     };
   }, [reload]);
 
-  const addUser = useCallback((user: ManagedUserRecord, pipelineStage: UserPipelineStage) => {
-    const nextUser = assignInitialUserPipelineStage({
-      ...user,
-      pipelineStage,
-    });
-    const next = upsertManagedUser(nextUser);
-    setUsers(next);
-    void persistUsers(next);
-    return next;
-  }, []);
+  const addUser = useCallback(
+    async (user: ManagedUserRecord, pipelineStage: UserPipelineStage) => {
+      const nextUser = applyLayerRoleTokens(user, pipelineStage);
+      const result = await upsertManagedUserOnServer(nextUser);
+      if (result.ok) {
+        setUsers(result.users);
+        return;
+      }
+
+      const fallback = [nextUser, ...readManagedUsers().filter((row) => row.id !== nextUser.id)];
+      writeManagedUsers(fallback);
+      setUsers(fallback);
+      await syncManagedUsersToServer(fallback);
+      await reload();
+    },
+    [reload]
+  );
 
   const editUser = useCallback(
-    (
+    async (
       userId: string,
       patch: Partial<
         Pick<ManagedUserRecord, "fullName" | "username" | "password" | "role" | "otpEnabled">
       >
     ) => {
+      const existing = readManagedUsers().find((row) => row.id === userId);
+      if (!existing) return;
+
+      const updated = { ...existing, ...patch };
+      const result = await upsertManagedUserOnServer(updated);
+      if (result.ok) {
+        setUsers(result.users);
+        return;
+      }
+
       const next = updateManagedUser(userId, patch);
       setUsers(next);
-      void persistUsers(next);
-      return next;
+      await syncManagedUsersToServer(next);
+      await reload();
     },
-    []
+    [reload]
   );
 
-  const removeUser = useCallback((userId: string) => {
-    const next = deleteManagedUser(userId);
-    setUsers(next);
-    void persistUsers(next);
-    return next;
-  }, []);
+  const removeUser = useCallback(
+    async (userId: string) => {
+      const result = await deleteManagedUserOnServer(userId);
+      if (result.ok) {
+        setUsers(result.users);
+        return result.users;
+      }
 
-  const setOtpEnabled = useCallback((userId: string, otpEnabled: boolean) => {
-    const next = updateManagedUser(userId, { otpEnabled });
-    setUsers(next);
-    void persistUsers(next);
-    return next;
-  }, []);
+      const next = readManagedUsers().filter((row) => row.id !== userId);
+      writeManagedUsers(next);
+      setUsers(next);
+      await syncManagedUsersToServer(next);
+      await reload();
+      return next;
+    },
+    [reload]
+  );
+
+  const setOtpEnabled = useCallback(
+    async (userId: string, otpEnabled: boolean) => {
+      return editUser(userId, { otpEnabled });
+    },
+    [editUser]
+  );
 
   const getUsersByStage = useCallback(
     (stage: UserPipelineStage) => readUsersByPipelineStage(stage),
     []
   );
 
-  const replaceAll = useCallback((records: ManagedUserRecord[]) => {
-    writeManagedUsers(records);
-    setUsers(records);
-    void persistUsers(records);
-  }, []);
+  const replaceAll = useCallback(
+    async (records: ManagedUserRecord[]) => {
+      writeManagedUsers(records);
+      setUsers(records);
+      await syncManagedUsersToServer(records);
+      await reload();
+    },
+    [reload]
+  );
 
   return {
     users,

@@ -105,3 +105,18 @@ model AttendanceAuditLog {
   @@index([stagingId], map: "idx_attendance_audit_log_staging_id")
   @@map("attendance_audit_log")
 }
+
+/// CRM User Management credentials — Layers 2, 3, and 4 intake accounts.
+model CrmManagedUser {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fullName      String   @map("full_name")
+  username      String   @unique
+  password      String
+  role          String
+  otpEnabled    Boolean  @default(false) @map("otp_enabled")
+  pipelineStage String   @default("LAYER_2_STAGING") @map("pipeline_stage")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([pipelineStage], map: "idx_crm_managed_users_pipeline_stage")
+  @@map("crm_managed_users")
+}

@@ -16,7 +16,7 @@ import {
   ensureAttendanceTablesSchema,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
-import { fetchStorageGridRows } from "@/lib/attendance-storage-fallback";
+import { fetchStorageGridRows, transitionStoragePipelineStage } from "@/lib/attendance-storage-fallback";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 
 const BIOMETRIC_TABLE = "biometric_attendance";
@@ -63,11 +63,8 @@ async function fetchRowsByPipelineStageStorage(
 ): Promise<BiometricAttendanceGridRow[]> {
   if (!isSupabaseServerConfigured()) return [];
   const supabase = createAdminClient();
-  const all = await fetchStorageGridRows(supabase, options);
-  return all.filter((row) => {
-    const raw = row as BiometricAttendanceGridRow & { pipelineStage?: string };
-    return (raw.pipelineStage ?? INITIAL_INGEST_PIPELINE_STAGE) === stage;
-  });
+  const all = await fetchStorageGridRows(supabase, { ...options, pipelineStage: stage });
+  return all;
 }
 
 /** Query biometric rows for exactly one pipeline layer — no cross-layer leakage. */
@@ -87,10 +84,8 @@ export async function fetchRowsByPipelineStage(
     }
   }
 
-  if (stage === PIPELINE_STAGES.LAYER_2_STAGING) {
-    const storageRows = await fetchRowsByPipelineStageStorage(stage, options);
-    if (storageRows.length > 0) return storageRows;
-  }
+  const storageRows = await fetchRowsByPipelineStageStorage(stage, options);
+  if (storageRows.length > 0) return storageRows;
 
   const prismaRows = await fetchBiometricGridViaPrisma(options.limit ?? 500, options.date, options.search);
   return prismaRows.filter((row) => {
@@ -150,7 +145,30 @@ export async function transitionPipelineStage(input: {
     throw new Error("Database not configured for pipeline transitions.");
   }
   await ensureAttendanceTablesSchema();
-  const transitioned = await transitionRowsSupabase(input.ids, input.from, input.to);
+
+  let transitioned = 0;
+  try {
+    transitioned = await transitionRowsSupabase(input.ids, input.from, input.to);
+  } catch (error) {
+    console.warn("[pipeline] SQL transition failed, trying storage:", error);
+  }
+
+  if (transitioned === 0) {
+    const supabase = createAdminClient();
+    transitioned = await transitionStoragePipelineStage(
+      supabase,
+      input.ids,
+      input.from,
+      input.to
+    );
+  }
+
+  if (transitioned === 0 && input.ids.length > 0) {
+    throw new Error(
+      `No rows transitioned from ${input.from} to ${input.to}. Verify records exist at the current layer.`
+    );
+  }
+
   return { transitioned };
 }
 

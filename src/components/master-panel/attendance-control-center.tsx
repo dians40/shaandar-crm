@@ -587,26 +587,6 @@ export default function AttendanceControlCenter() {
         return;
       }
 
-      const stagingResponse = await fetch("/api/v1/attendance/staging", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "bulk-upload",
-          rows: bulkPayloadRows,
-          changedBy: "Supervisor",
-          remark: `Step 1 upload — ${importPreview.fileName}`,
-        }),
-      });
-      const stagingBody = (await stagingResponse.json()) as {
-        ok?: boolean;
-        saved?: number;
-        error?: string;
-        setupRequired?: boolean;
-      };
-      if (!stagingResponse.ok && !stagingBody.setupRequired) {
-        throw new Error(stagingBody.error ?? "Failed to save to attendance_staging.");
-      }
-
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), BULK_SAVE_TIMEOUT_MS);
 

@@ -105,7 +105,7 @@ async function applyMigrationViaPostgres(
     return {
       ok: true,
       message:
-        "Attendance tables ensured (employee_attendance, biometric_attendance) and PostgREST cache reloaded.",
+        "Attendance tables ensured (employee_attendance, biometric_attendance, attendance_staging, attendance_audit_log) and PostgREST cache reloaded.",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Schema ensure failed.";

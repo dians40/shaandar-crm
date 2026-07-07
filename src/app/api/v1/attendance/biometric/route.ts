@@ -3,16 +3,16 @@ import { mapBiometricAttendanceGridRow } from "@/lib/biometric-attendance-db-map
 import { fetchAttendanceDateCatalog } from "@/lib/attendance-date-catalog";
 import { fetchLegacyAttendanceGridRows } from "@/lib/legacy-attendance-fetch";
 import { mergeAttendanceGridRows } from "@/lib/legacy-attendance-grid-fusion";
-import {
-  fetchStorageDateCatalog,
-  fetchStorageGridRows,
-  isStorageFallbackError,
-} from "@/lib/attendance-storage-fallback";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
 import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
 import { isPrismaConfigured, prisma } from "@/lib/prisma";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import {
+  ensureAttendanceTablesSchema,
+  formatSchemaEnsureFailureMessage,
+  isAttendanceSchemaError,
+} from "@/lib/attendance-schema-ensure";
 
 const BIOMETRIC_TABLE = "biometric_attendance";
 const MAX_MERGED_ROWS = 500;
@@ -50,8 +50,8 @@ async function fetchBiometricGridRowsSupabase(
 
   const { data, error } = await query;
   if (error) {
-    if (isStorageFallbackError(error.message ?? "")) {
-      return fetchStorageGridRows(supabase, { limit, date, search });
+    if (isAttendanceSchemaError(error.message ?? "")) {
+      throw new Error(formatSchemaEnsureFailureMessage(error.message));
     }
     throw new Error(error.message);
   }
@@ -111,22 +111,12 @@ async function fetchBiometricGridRows(
   search?: string
 ): Promise<BiometricAttendanceGridRow[]> {
   if (isSupabaseServerConfigured()) {
+    await ensureAttendanceTablesSchema();
     try {
-      const dbRows = await fetchBiometricGridRowsSupabase(limit, date, search);
-      if (dbRows.length > 0) return dbRows;
-
-      const supabase = createAdminClient();
-      const storageRows = await fetchStorageGridRows(supabase, { limit, date, search });
-      if (storageRows.length > 0) return storageRows;
+      return await fetchBiometricGridRowsSupabase(limit, date, search);
     } catch (error) {
       console.error("[attendance/biometric] supabase biometric fetch failed:", error);
-      try {
-        const supabase = createAdminClient();
-        const storageRows = await fetchStorageGridRows(supabase, { limit, date, search });
-        if (storageRows.length > 0) return storageRows;
-      } catch (storageError) {
-        console.error("[attendance/biometric] storage fallback fetch failed:", storageError);
-      }
+      return [];
     }
   }
 

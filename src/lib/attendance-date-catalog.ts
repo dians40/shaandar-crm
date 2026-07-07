@@ -2,9 +2,10 @@ import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
 import { isPrismaConfigured, prisma } from "@/lib/prisma";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import {
-  fetchStorageDateCatalog,
-  isStorageFallbackError,
-} from "@/lib/attendance-storage-fallback";
+  ensureAttendanceTablesSchema,
+  formatSchemaEnsureFailureMessage,
+  isAttendanceSchemaError,
+} from "@/lib/attendance-schema-ensure";
 
 export type AttendanceDateCatalogEntry = {
   date: string;
@@ -33,6 +34,8 @@ function bumpDate(
 }
 
 async function fetchDateCatalogSupabase(): Promise<AttendanceDateCatalogEntry[]> {
+  await ensureAttendanceTablesSchema();
+
   const supabase = createAdminClient();
   const catalog = new Map<string, AttendanceDateCatalogEntry>();
 
@@ -42,8 +45,8 @@ async function fetchDateCatalogSupabase(): Promise<AttendanceDateCatalogEntry[]>
     .limit(2000);
 
   if (biometricError) {
-    if (isStorageFallbackError(biometricError.message ?? "")) {
-      return fetchStorageDateCatalog(supabase);
+    if (isAttendanceSchemaError(biometricError.message ?? "")) {
+      throw new Error(formatSchemaEnsureFailureMessage(biometricError.message));
     }
     throw new Error(biometricError.message);
   }
@@ -103,19 +106,9 @@ async function fetchDateCatalogPrisma(): Promise<AttendanceDateCatalogEntry[]> {
 export async function fetchAttendanceDateCatalog(): Promise<AttendanceDateCatalogEntry[]> {
   if (isSupabaseServerConfigured()) {
     try {
-      const dbCatalog = await fetchDateCatalogSupabase();
-      if (dbCatalog.length > 0) return dbCatalog;
-
-      const supabase = createAdminClient();
-      return await fetchStorageDateCatalog(supabase);
+      return await fetchDateCatalogSupabase();
     } catch (error) {
       console.error("[attendance-date-catalog] supabase failed:", error);
-      try {
-        const supabase = createAdminClient();
-        return await fetchStorageDateCatalog(supabase);
-      } catch (storageError) {
-        console.error("[attendance-date-catalog] storage fallback failed:", storageError);
-      }
     }
   }
 

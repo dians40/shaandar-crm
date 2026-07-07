@@ -10,8 +10,16 @@ import {
 } from "@/types/attendance-workflow";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchStagingRows } from "@/lib/attendance-staging-service";
+import { mapStagingRowToWorkflowRecord } from "@/lib/attendance-staging-mapper";
+import {
+  ensureAttendanceTablesSchema,
+  formatSchemaEnsureFailureMessage,
+  isAttendanceSchemaError,
+} from "@/lib/attendance-schema-ensure";
 
 const ATTENDANCE_TABLE = "employee_attendance";
+const STAGING_TABLE = "attendance_staging";
 
 type DbRow = {
   id: string;
@@ -50,12 +58,36 @@ function mapDbRowToWorkflow(row: DbRow): AttendanceWorkflowRecord | null {
   });
 }
 
+function recordKey(record: AttendanceWorkflowRecord): string {
+  return `${record.employeeId}|${record.attendanceDate}`;
+}
+
 export async function GET() {
   if (!isSupabaseServerConfigured()) {
     return NextResponse.json({ records: [] });
   }
 
   try {
+    await ensureAttendanceTablesSchema();
+
+    const merged = new Map<string, AttendanceWorkflowRecord>();
+
+    // Stage 1 — pending machine allocation reads from attendance_staging (Pending).
+    try {
+      const stagingRows = await fetchStagingRows({ status: "Pending" });
+      for (const row of stagingRows) {
+        const record = mapStagingRowToWorkflowRecord(row);
+        merged.set(recordKey(record), record);
+      }
+    } catch (stagingError) {
+      const message =
+        stagingError instanceof Error ? stagingError.message : "Staging fetch failed.";
+      if (!isAttendanceSchemaError(message)) {
+        console.warn("[attendance/workflow] staging fetch:", message);
+      }
+    }
+
+    // Stages 2–4 — records advanced in Live Workflow live in employee_attendance.notes.
     const supabase = createAdminClient();
     const { data, error } = await supabase
       .from(ATTENDANCE_TABLE)
@@ -63,11 +95,27 @@ export async function GET() {
       .order("attendance_date", { ascending: false })
       .limit(200);
 
+    if (error && isAttendanceSchemaError(error.message ?? "")) {
+      return NextResponse.json({
+        records: Array.from(merged.values()),
+        warning: formatSchemaEnsureFailureMessage(error.message),
+      });
+    }
     if (error) throw error;
 
-    const records = (data ?? [])
-      .map((row) => mapDbRowToWorkflow(row as DbRow))
-      .filter((row): row is AttendanceWorkflowRecord => Boolean(row));
+    for (const row of data ?? []) {
+      const record = mapDbRowToWorkflow(row as DbRow);
+      if (!record) continue;
+      if (record.workflowStage === "pending_allocation") {
+        // Staging is authoritative for Stage 1 — skip duplicate employee_attendance rows.
+        continue;
+      }
+      merged.set(recordKey(record), record);
+    }
+
+    const records = Array.from(merged.values()).sort((a, b) =>
+      b.createdAt.localeCompare(a.createdAt)
+    );
 
     return NextResponse.json({ records });
   } catch (error) {
@@ -95,6 +143,103 @@ export async function PATCH(request: Request) {
 
   try {
     const supabase = createAdminClient();
+
+    // Staging-sourced Stage 1 records — upsert workflow progress to employee_attendance.
+    const { data: stagingRow, error: stagingError } = await supabase
+      .from(STAGING_TABLE)
+      .select("*")
+      .eq("id", payload.id)
+      .maybeSingle();
+
+    if (stagingError && !isAttendanceSchemaError(stagingError.message ?? "")) {
+      throw stagingError;
+    }
+
+    if (stagingRow) {
+      const employeeId = stagingRow.employee_id
+        ? String(stagingRow.employee_id)
+        : String(stagingRow.pay_code ?? "");
+      const attendanceDate = String(stagingRow.date ?? "").slice(0, 10);
+      const punchIn =
+        payload.punchIn ??
+        (stagingRow.corrected_in_time
+          ? String(stagingRow.corrected_in_time)
+          : stagingRow.machine_in_time
+            ? String(stagingRow.machine_in_time)
+            : "");
+      const punchOut =
+        payload.punchOut ??
+        (stagingRow.corrected_out_time
+          ? String(stagingRow.corrected_out_time)
+          : stagingRow.machine_out_time
+            ? String(stagingRow.machine_out_time)
+            : "");
+
+      const merged = normalizeAttendanceWorkflowRecord({
+        id: payload.id,
+        employeeId,
+        employeeName:
+          payload.employeeName ?? String(stagingRow.employee_name ?? stagingRow.pay_code ?? ""),
+        attendanceDate,
+        punchIn,
+        punchOut,
+        assignedMachine: payload.assignedMachine ?? "",
+        workflowStage: payload.workflowStage ?? "pending_allocation",
+        operatorVerifiedAt: payload.operatorVerifiedAt ?? null,
+        operatorVerifiedBy: payload.operatorVerifiedBy ?? null,
+        supervisorApprovedAt: payload.supervisorApprovedAt ?? null,
+        supervisorApprovedBy: payload.supervisorApprovedBy ?? null,
+        attachmentPhotos: payload.attachmentPhotos ?? [],
+        source: payload.source ?? "manual",
+      });
+
+      if (!stagingRow.employee_id) {
+        return NextResponse.json({
+          ok: true,
+          record: merged,
+          message: "Workflow updated locally — employee_id missing on staging row.",
+        });
+      }
+
+      const notesPayload = {
+        source: merged.source,
+        workflowStage: merged.workflowStage,
+        punchIn: merged.punchIn,
+        punchOut: merged.punchOut,
+        assignedMachine: merged.assignedMachine,
+        attachmentPhotos: merged.attachmentPhotos,
+        operatorVerifiedAt: merged.operatorVerifiedAt,
+        operatorVerifiedBy: merged.operatorVerifiedBy,
+        supervisorApprovedAt: merged.supervisorApprovedAt,
+        supervisorApprovedBy: merged.supervisorApprovedBy,
+        employeeName: merged.employeeName,
+        stagingId: payload.id,
+      };
+
+      const { data: upserted, error: upsertError } = await supabase
+        .from(ATTENDANCE_TABLE)
+        .upsert(
+          {
+            employee_id: stagingRow.employee_id,
+            attendance_date: attendanceDate,
+            status: merged.workflowStage === "finalized" ? "present" : "present",
+            notes: serializeAttendanceWorkflowNotes(notesPayload),
+          },
+          { onConflict: "employee_id,attendance_date" }
+        )
+        .select("id")
+        .single();
+
+      if (upsertError) throw upsertError;
+
+      const record = normalizeAttendanceWorkflowRecord({
+        ...merged,
+        id: upserted?.id ? String(upserted.id) : merged.id,
+      });
+
+      return NextResponse.json({ ok: true, record });
+    }
+
     const { data: existing, error: fetchError } = await supabase
       .from(ATTENDANCE_TABLE)
       .select("id, employee_id, attendance_date, status, notes, employees(name)")

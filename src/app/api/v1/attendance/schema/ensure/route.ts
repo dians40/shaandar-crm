@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
-import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import {
   checkAttendanceSchemaReady,
   ensureAttendanceTablesSchema,
 } from "@/lib/attendance-schema-ensure";
-import { checkAttendanceStorageReady } from "@/lib/attendance-storage-fallback";
 import { getDatabaseUrlResolutionHint } from "@/lib/database-url";
+import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 
 /**
  * GET /api/v1/attendance/schema/ensure — lightweight probe (no DDL).
- * POST — apply migration 011 when postgres or Management API credentials exist.
+ * POST — apply migrations 011 + 012 when postgres or Management API credentials exist.
  */
 export async function GET() {
   if (!isSupabaseServerConfigured()) {
@@ -31,24 +30,13 @@ export async function GET() {
     });
   }
 
-  const supabase = createAdminClient();
-  const storageReady = await checkAttendanceStorageReady(supabase);
-  if (storageReady) {
-    return NextResponse.json({
-      ok: true,
-      ready: true,
-      mode: "storage",
-      message:
-        "Cloud storage is ready. Process & Save works without SQL tables — records are stored in Supabase Storage.",
-    });
-  }
-
   return NextResponse.json({
     ok: false,
     ready: false,
     mode: "none",
-    message: check.message ?? "Attendance storage is not ready.",
+    message: check.message ?? "Attendance SQL tables are not ready.",
     hint: getDatabaseUrlResolutionHint(),
+    setupRequired: true,
   });
 }
 
@@ -84,18 +72,6 @@ export async function POST() {
       ready: true,
       mode: "sql",
       message: result.message,
-    });
-  }
-
-  const supabase = createAdminClient();
-  const storageReady = await checkAttendanceStorageReady(supabase);
-  if (storageReady) {
-    return NextResponse.json({
-      ok: true,
-      ready: true,
-      mode: "storage",
-      message:
-        "SQL tables are not created yet, but cloud storage is ready — Process & Save will work.",
     });
   }
 

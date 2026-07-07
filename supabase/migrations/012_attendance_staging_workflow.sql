@@ -93,5 +93,23 @@ END $$;
 
 GRANT ALL ON public.attendance_staging TO service_role;
 GRANT ALL ON public.attendance_audit_log TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance_staging TO authenticated, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.attendance_audit_log TO authenticated, anon;
+
+DROP POLICY IF EXISTS "Authenticated users can read attendance_staging" ON public.attendance_staging;
+CREATE POLICY "Authenticated users can read attendance_staging"
+  ON public.attendance_staging FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can write attendance_staging" ON public.attendance_staging;
+CREATE POLICY "Authenticated users can write attendance_staging"
+  ON public.attendance_staging FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can read attendance_audit_log" ON public.attendance_audit_log;
+CREATE POLICY "Authenticated users can read attendance_audit_log"
+  ON public.attendance_audit_log FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can write attendance_audit_log" ON public.attendance_audit_log;
+CREATE POLICY "Authenticated users can write attendance_audit_log"
+  ON public.attendance_audit_log FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
 NOTIFY pgrst, 'reload schema';

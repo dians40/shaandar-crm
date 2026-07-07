@@ -30,7 +30,6 @@ import {
   formatSchemaEnsureFailureMessage,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
-import { saveBulkImportToStorage } from "@/lib/attendance-storage-fallback";
 import { isPrismaConfigured } from "@/lib/prisma";
 import type { AttendanceBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
 import type { Prisma } from "@prisma/client";
@@ -265,49 +264,21 @@ export async function POST(request: Request) {
     }
   }
 
-  /** Fast path — skip slow employee DB lookups when SQL tables are missing. */
+  /** SQL tables required — no cloud storage fallback. */
   if (supabase && !sqlTablesReady) {
-    const storageRows = normalizedRows.map((row) => {
-      const rowDate = normalizeAttendanceDateIso(
-        safeString(row.date) || safeString(row.attendance_date) || todayIsoDate()
-      );
-      const employeeId =
-        safeString(row.employee_id) || safeString(row.pay_code) || null;
-      return mapToBiometricAttendanceRow(row, employeeId, rowDate);
-    });
-
-    const reportDate = normalizeAttendanceDateIso(
-      safeString(normalizedRows[0]?.date) ||
-        safeString(normalizedRows[0]?.attendance_date) ||
-        todayIsoDate()
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Attendance SQL tables are not configured.",
+        hint: formatSchemaEnsureFailureMessage(),
+        setupRequired: true,
+        imported: 0,
+        skipped: normalizedRows.length,
+        biometricSaved: 0,
+        errors: [formatSchemaEnsureFailureMessage()],
+      },
+      { status: 503 }
     );
-
-    const storageResult = await saveBulkImportToStorage(supabase, {
-      reportDate,
-      rows: storageRows,
-      workflowCount: 0,
-    });
-
-    console.log(
-      "[bulk-import] fast storage save:",
-      storageResult.storagePath,
-      storageResult.saved,
-      "rows"
-    );
-
-    return NextResponse.json({
-      ok: true,
-      message: `Bulk attendance saved to cloud storage (${storageResult.saved} rows). SQL tables will be used automatically once configured.`,
-      imported: storageResult.saved,
-      skipped: 0,
-      provisionedEmployees: 0,
-      biometricSaved: storageResult.saved,
-      storageFallback: true,
-      storagePath: storageResult.storagePath,
-      savedReportDate: storageResult.reportDate,
-      errors: [],
-      records: [],
-    });
   }
 
   const records: ReturnType<typeof normalizeAttendanceWorkflowRecord>[] = [];
@@ -324,8 +295,6 @@ export async function POST(request: Request) {
   let skipped = 0;
   let provisionedEmployees = 0;
   let biometricSaved = 0;
-  let storageFallback = false;
-  let storagePath: string | undefined;
   let savedReportDate: string | undefined;
 
   const employeeCache = new Map<string, string>();
@@ -484,48 +453,28 @@ export async function POST(request: Request) {
     biometricSaved = prismaBiometricRows.length;
   }
 
-  const schemaStillMissing =
-    supabase &&
-    rowErrors.some((entry) => isAttendanceSchemaError(entry)) &&
-    biometricSaved === 0 &&
-    imported === 0;
-
   if (
     supabase &&
-    (schemaStillMissing || (biometricSaved === 0 && imported === 0)) &&
-    supabaseBiometricRows.length > 0
+    imported === 0 &&
+    biometricSaved === 0 &&
+    supabaseBiometricRows.length > 0 &&
+    rowErrors.some((entry) => isAttendanceSchemaError(entry))
   ) {
-    try {
-      const reportDate = normalizeAttendanceDateIso(
-        safeString(normalizedRows[0]?.date) ||
-          safeString(normalizedRows[0]?.attendance_date) ||
-          todayIsoDate()
-      );
-      const storageResult = await saveBulkImportToStorage(supabase, {
-        reportDate,
-        rows: supabaseBiometricRows,
-        workflowCount: workflowUpsertRows.length,
-      });
-      biometricSaved = storageResult.saved;
-      imported = workflowUpsertRows.length;
-      storageFallback = true;
-      storagePath = storageResult.storagePath;
-      savedReportDate = storageResult.reportDate;
-      rowErrors.length = 0;
-      console.log(
-        "[bulk-import] saved via cloud storage fallback:",
-        storageResult.storagePath,
-        storageResult.saved,
-        "rows"
-      );
-    } catch (storageError) {
-      const message =
-        storageError instanceof Error
-          ? storageError.message
-          : "Cloud storage fallback failed.";
-      rowErrors.push(formatSchemaEnsureFailureMessage(message));
-      console.error("[bulk-import] storage fallback failed:", storageError);
-    }
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Bulk import failed — attendance SQL tables are missing.",
+        hint: formatSchemaEnsureFailureMessage(rowErrors[0]),
+        setupRequired: true,
+        imported: 0,
+        skipped,
+        provisionedEmployees,
+        biometricSaved: 0,
+        errors: rowErrors.slice(0, 20),
+        records: [],
+      },
+      { status: 503 }
+    );
   }
 
   if (!supabaseConfigured) {
@@ -544,17 +493,13 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     message:
-      storageFallback
-        ? `Bulk attendance saved to cloud storage (${biometricSaved} rows). SQL tables will be used automatically once configured.`
-        : imported > 0 || biometricSaved > 0
-          ? "Bulk attendance import completed."
-          : "Bulk import finished with zero saved rows — see errors.",
+      imported > 0 || biometricSaved > 0
+        ? "Bulk attendance import completed."
+        : "Bulk import finished with zero saved rows — see errors.",
     imported,
     skipped,
     provisionedEmployees,
     biometricSaved,
-    storageFallback,
-    storagePath,
     savedReportDate,
     errors: rowErrors.slice(0, 20),
     records,

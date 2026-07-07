@@ -2,6 +2,10 @@ import type {
   AttendanceAuditLogEntry,
   AttendanceStagingRow,
 } from "@/types/attendance-staging";
+import {
+  normalizeAttendanceWorkflowRecord,
+  type AttendanceWorkflowRecord,
+} from "@/types/attendance-workflow";
 
 function safeString(value: unknown): string {
   if (value == null) return "";
@@ -53,4 +57,23 @@ export function effectiveInTime(row: AttendanceStagingRow): string | null {
 
 export function effectiveOutTime(row: AttendanceStagingRow): string | null {
   return row.correctedOutTime || row.machineOutTime;
+}
+
+/** Map attendance_staging Pending row → Live Workflow Stage 1 record. */
+export function mapStagingRowToWorkflowRecord(row: AttendanceStagingRow): AttendanceWorkflowRecord {
+  const punchIn = effectiveInTime(row) ?? "";
+  const punchOut = effectiveOutTime(row) ?? "";
+  return normalizeAttendanceWorkflowRecord({
+    id: row.id,
+    employeeId: row.employeeId ?? row.payCode,
+    employeeName: row.employeeName,
+    attendanceDate: row.date,
+    punchIn,
+    punchOut,
+    assignedMachine: row.editRemark || "",
+    workflowStage: "pending_allocation",
+    source: "manual",
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  });
 }

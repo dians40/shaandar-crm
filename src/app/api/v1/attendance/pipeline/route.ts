@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import {
+  getApiAuthSession,
   requireLayer2PipelineGet,
   requireLayer2PipelinePost,
+  requireLayer3PipelineGet,
+  requireLayer3PipelinePost,
+  requireLayer4PipelinePost,
 } from "@/lib/api/auth-guard";
+import { isLayer4SavedUser } from "@/types/auth-session";
 import {
   approveStagingToWorkflow,
   commitWorkflowToSaved,
@@ -22,6 +27,16 @@ export async function GET(request: Request) {
     const stageParam = searchParams.get("stage")?.trim() ?? PIPELINE_STAGES.LAYER_2_STAGING;
     const layer2Error = await requireLayer2PipelineGet(stageParam);
     if (layer2Error) return layer2Error;
+    const layer3Error = await requireLayer3PipelineGet(stageParam);
+    if (layer3Error) return layer3Error;
+
+    const session = await getApiAuthSession();
+    if (isLayer4SavedUser(session)) {
+      return NextResponse.json(
+        { error: "Layer 4 users may only read saved records via biometric API." },
+        { status: 403 }
+      );
+    }
     if (!isPipelineStage(stageParam)) {
       return NextResponse.json({ error: `Invalid stage: ${stageParam}` }, { status: 400 });
     }
@@ -65,6 +80,10 @@ export async function POST(request: Request) {
     const body = (await request.json()) as Record<string, unknown>;
     const layer2Error = await requireLayer2PipelinePost(body);
     if (layer2Error) return layer2Error;
+    const layer3Error = await requireLayer3PipelinePost(body);
+    if (layer3Error) return layer3Error;
+    const layer4Error = await requireLayer4PipelinePost(body);
+    if (layer4Error) return layer4Error;
     const action = String(body.action ?? "approve-staging");
     const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
 

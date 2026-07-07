@@ -1,14 +1,20 @@
 import { NextResponse } from "next/server";
-import { requireFullAccessUser } from "@/lib/api/auth-guard";
+import {
+  getApiAuthSession,
+  requireAuth,
+  requireFullAccessUser,
+  requireLayer4BiometricGet,
+} from "@/lib/api/auth-guard";
 import { fetchAttendanceDateCatalog } from "@/lib/attendance-date-catalog";
 import { fetchRowsByPipelineStage } from "@/lib/attendance-pipeline-service";
+import { isLayer4SavedUser } from "@/types/auth-session";
 import { isPipelineStage, PIPELINE_STAGES } from "@/types/attendance-pipeline";
 
 const MAX_MERGED_ROWS = 500;
 
 /** Layer 4 — saved history grid. Only LAYER_4_SAVED biometric rows (no legacy/workflow leakage). */
 export async function GET(request: Request) {
-  const authError = await requireFullAccessUser();
+  const authError = await requireAuth();
   if (authError) return authError;
 
   try {
@@ -21,6 +27,15 @@ export async function GET(request: Request) {
     const includeDates = searchParams.get("includeDates") === "1";
     const stageParam = searchParams.get("pipelineStage")?.trim() ?? PIPELINE_STAGES.LAYER_4_SAVED;
     const stage = isPipelineStage(stageParam) ? stageParam : PIPELINE_STAGES.LAYER_4_SAVED;
+
+    const session = await getApiAuthSession();
+    if (isLayer4SavedUser(session)) {
+      const layer4Error = await requireLayer4BiometricGet(stage);
+      if (layer4Error) return layer4Error;
+    } else {
+      const fullAccessError = await requireFullAccessUser();
+      if (fullAccessError) return fullAccessError;
+    }
 
     const [biometricRows, availableDates] = await Promise.all([
       fetchRowsByPipelineStage(stage, { limit, date, fromDate, toDate, search }),

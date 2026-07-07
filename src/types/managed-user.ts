@@ -6,8 +6,22 @@ import { DEFAULT_SAVED_USER_STAGE, USER_PIPELINE_STAGES } from "@/types/user-pip
 /** Role assigned to User Management Layer 2 intake accounts. */
 export const LAYER_2_USER_ROLE = "LAYER_2" as const;
 
+/** Role assigned to User Management Layer 3 intake accounts. */
+export const LAYER_3_USER_ROLE = "LAYER_3" as const;
+
+/** Role assigned to User Management Layer 4 intake accounts. */
+export const LAYER_4_USER_ROLE = "LAYER_4" as const;
+
 export function isLayer2UserRole(role: string): boolean {
   return role.trim().toUpperCase() === LAYER_2_USER_ROLE;
+}
+
+export function isLayer3UserRole(role: string): boolean {
+  return role.trim().toUpperCase() === LAYER_3_USER_ROLE;
+}
+
+export function isLayer4UserRole(role: string): boolean {
+  return role.trim().toUpperCase() === LAYER_4_USER_ROLE;
 }
 
 export type ManagedUserRecord = {
@@ -24,6 +38,12 @@ export type ManagedUserRecord = {
 export function resolveUserPipelineStage(user: ManagedUserRecord): UserPipelineStage {
   if (isLayer2UserRole(user.role)) {
     return USER_PIPELINE_STAGES.LAYER_2_STAGING;
+  }
+  if (isLayer3UserRole(user.role)) {
+    return USER_PIPELINE_STAGES.LAYER_3_WORKFLOW;
+  }
+  if (isLayer4UserRole(user.role)) {
+    return USER_PIPELINE_STAGES.LAYER_4_SAVED;
   }
   return user.pipelineStage ?? DEFAULT_SAVED_USER_STAGE;
 }

@@ -9,6 +9,8 @@ import {
   EMPTY_MANAGED_USER_FORM,
   generateRandomPassword,
   LAYER_2_USER_ROLE,
+  LAYER_3_USER_ROLE,
+  LAYER_4_USER_ROLE,
   validateManagedUserForm,
   type ManagedUserFormState,
   type ManagedUserRecord,
@@ -37,6 +39,23 @@ export default function AddUserModal({
 }: AddUserModalProps) {
   const isEditMode = Boolean(editingUser);
   const isLayer2Intake = targetStage === USER_PIPELINE_STAGES.LAYER_2_STAGING;
+  const isLayer3Intake = targetStage === USER_PIPELINE_STAGES.LAYER_3_WORKFLOW;
+  const isLayer4Intake = targetStage === USER_PIPELINE_STAGES.LAYER_4_SAVED;
+  const isLockedLayerRole = isLayer2Intake || isLayer3Intake || isLayer4Intake;
+  const lockedLayerRole = isLayer2Intake
+    ? LAYER_2_USER_ROLE
+    : isLayer3Intake
+      ? LAYER_3_USER_ROLE
+      : isLayer4Intake
+        ? LAYER_4_USER_ROLE
+        : null;
+  const lockedLayerRoleLabel = isLayer2Intake
+    ? `${LAYER_2_USER_ROLE} — Attendance Layer 2 Staging Review`
+    : isLayer3Intake
+      ? `${LAYER_3_USER_ROLE} — Attendance Layer 3 Live Workflow`
+      : isLayer4Intake
+        ? `${LAYER_4_USER_ROLE} — Attendance Layer 4 Saved Records`
+        : null;
   const [form, setForm] = useState<ManagedUserFormState>(EMPTY_MANAGED_USER_FORM);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,11 +72,11 @@ export default function AddUserModal({
     } else {
       setForm({
         ...EMPTY_MANAGED_USER_FORM,
-        role: isLayer2Intake ? LAYER_2_USER_ROLE : "",
+        role: lockedLayerRole ?? "",
       });
     }
     setError(null);
-  }, [open, editingUser, isLayer2Intake]);
+  }, [open, editingUser, lockedLayerRole]);
 
   if (!open) return null;
 
@@ -92,7 +111,7 @@ export default function AddUserModal({
       fullName: form.fullName.trim(),
       username: form.username.trim(),
       password: form.password,
-      role: (isLayer2Intake ? LAYER_2_USER_ROLE : form.role) as UserRoleName,
+      role: (lockedLayerRole ?? form.role) as UserRoleName,
       otpEnabled: form.otpEnabled,
       createdAt: new Date().toISOString(),
       pipelineStage: targetStage,
@@ -149,13 +168,13 @@ export default function AddUserModal({
             }
           />
 
-          {isLayer2Intake ? (
+          {isLockedLayerRole && lockedLayerRoleLabel ? (
             <div>
               <p className="mb-1.5 text-sm font-medium text-corporate-text">
                 Role / Permission
               </p>
               <p className="rounded-lg border border-corporate-border bg-corporate-bg px-3 py-2 text-sm font-semibold text-corporate-brand">
-                {LAYER_2_USER_ROLE} — Attendance Layer 2 Staging Review
+                {lockedLayerRoleLabel}
               </p>
             </div>
           ) : (

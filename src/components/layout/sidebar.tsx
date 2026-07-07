@@ -18,7 +18,7 @@ import { useAuthSession } from "@/contexts/auth-session-context";
 import {
   filterSidebarNavForSession,
   filterTransactionModulesForSession,
-  LAYER2_STAGING_HOME_HREF,
+  RESTRICTED_ATTENDANCE_HOME_HREF,
 } from "@/lib/auth-navigation";
 import { LAYER2_STAGING_WORKSPACE_MODULE } from "@/types/auth-session";
 
@@ -48,7 +48,7 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { session, isLayer2StagingOnly } = useAuthSession();
+  const { session, isRestrictedAttendanceUser: isRestrictedUser } = useAuthSession();
   const activeModuleParam = searchParams.get("module");
 
   const activeModuleId = isMasterPanelModuleId(activeModuleParam)
@@ -104,12 +104,12 @@ export default function Sidebar({
   );
 
   useEffect(() => {
-    if (!isLayer2StagingOnly) return;
+    if (!isRestrictedUser) return;
     const moduleParam = searchParams.get("module");
     if (!pathname.startsWith("/transactions") || moduleParam !== LAYER2_STAGING_WORKSPACE_MODULE) {
-      router.replace(LAYER2_STAGING_HOME_HREF);
+      router.replace(RESTRICTED_ATTENDANCE_HOME_HREF);
     }
-  }, [isLayer2StagingOnly, pathname, router, searchParams]);
+  }, [isRestrictedUser, pathname, router, searchParams]);
 
   return (
     <aside className="flex h-full w-full shrink-0 flex-col border-r border-corporate-border bg-corporate-surface md:w-64">

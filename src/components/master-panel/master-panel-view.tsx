@@ -60,7 +60,7 @@ import PartsOrderPanel from "./parts-order-panel";
 import { INVENTORY_VOUCHER_CONFIGS } from "@/constants/inventory-voucher-configs";
 import { EXPENSE_RECEIPT_CONFIGS } from "@/constants/accounting-voucher-configs";
 import { useAuthSession } from "@/contexts/auth-session-context";
-import { LAYER2_STAGING_HOME_HREF } from "@/lib/auth-navigation";
+import { RESTRICTED_ATTENDANCE_HOME_HREF } from "@/lib/auth-navigation";
 import { LAYER2_STAGING_WORKSPACE_MODULE } from "@/types/auth-session";
 
 type ErrorBoundaryState = {
@@ -113,9 +113,9 @@ class MasterPanelErrorBoundary extends Component<
 function resolveDefaultModuleId(
   scope: MasterPanelModuleGroupId,
   moduleParam: string | null,
-  isLayer2StagingOnly: boolean
+  isRestrictedAttendance: boolean
 ): MasterPanelModuleId {
-  if (isLayer2StagingOnly && scope === "transaction") {
+  if (isRestrictedAttendance && scope === "transaction") {
     return LAYER2_STAGING_WORKSPACE_MODULE;
   }
 
@@ -138,17 +138,17 @@ type MasterPanelContentProps = {
 function MasterPanelContent({ scope }: MasterPanelContentProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isLayer2StagingOnly } = useAuthSession();
+  const { isRestrictedAttendanceUser, restrictedAttendanceMode } = useAuthSession();
   const moduleParam = searchParams.get("module");
 
   useEffect(() => {
-    if (isLayer2StagingOnly && scope !== "transaction") {
-      router.replace(LAYER2_STAGING_HOME_HREF);
+    if (isRestrictedAttendanceUser && scope !== "transaction") {
+      router.replace(RESTRICTED_ATTENDANCE_HOME_HREF);
     }
-  }, [isLayer2StagingOnly, scope, router]);
+  }, [isRestrictedAttendanceUser, scope, router]);
 
   const [activeModuleId, setActiveModuleId] = useState<MasterPanelModuleId>(() =>
-    resolveDefaultModuleId(scope, moduleParam, isLayer2StagingOnly)
+    resolveDefaultModuleId(scope, moduleParam, isRestrictedAttendanceUser)
   );
   const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
   const activeModuleIdRef = useRef(activeModuleId);
@@ -191,18 +191,18 @@ function MasterPanelContent({ scope }: MasterPanelContentProps) {
   );
 
   useEffect(() => {
-    if (isLayer2StagingOnly && scope === "transaction") {
+    if (isRestrictedAttendanceUser && scope === "transaction") {
       if (activeModuleId !== LAYER2_STAGING_WORKSPACE_MODULE) {
-        router.replace(LAYER2_STAGING_HOME_HREF);
+        router.replace(RESTRICTED_ATTENDANCE_HOME_HREF);
       }
       return;
     }
 
-    const nextModuleId = resolveDefaultModuleId(scope, moduleParam, isLayer2StagingOnly);
+    const nextModuleId = resolveDefaultModuleId(scope, moduleParam, isRestrictedAttendanceUser);
     if (nextModuleId !== activeModuleIdRef.current) {
       navigateToModule(nextModuleId, false);
     }
-  }, [moduleParam, navigateToModule, scope, isLayer2StagingOnly, activeModuleId, router]);
+  }, [moduleParam, navigateToModule, scope, isRestrictedAttendanceUser, activeModuleId, router]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -260,7 +260,7 @@ function MasterPanelContent({ scope }: MasterPanelContentProps) {
         case "api-integration-gateway":
           return <ApiIntegrationGatewayPanel />;
         case "attendance-system":
-          return <AttendanceControlCenter stagingOnly={isLayer2StagingOnly} />;
+          return <AttendanceControlCenter restrictedMode={restrictedAttendanceMode} />;
         case "attendance-manual-entry":
           return <ManualAttendanceEntryPanel />;
         case "attendance-biometric-log":

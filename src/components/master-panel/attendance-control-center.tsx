@@ -59,6 +59,7 @@ import {
   MASTER_LIST_TABLE_WRAPPER_CLASS,
 } from "./universal-master-list";
 import { gridRowToUploadRecord } from "@/lib/attendance-upload-record-mapper";
+import type { RestrictedAttendanceMode } from "@/types/auth-session";
 
 type ImportPreviewState = {
   fileName: string;
@@ -145,9 +146,9 @@ function mapApiGridRow(raw: Record<string, unknown>): BiometricAttendanceGridRow
 }
 
 export default function AttendanceControlCenter({
-  stagingOnly = false,
+  restrictedMode = null,
 }: {
-  stagingOnly?: boolean;
+  restrictedMode?: RestrictedAttendanceMode | null;
 } = {}) {
   const { employees, prependEmployee } = useEmployees();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -327,9 +328,9 @@ export default function AttendanceControlCenter({
   }, [layer4FromDate, layer4ToDate, debouncedSearch]);
 
   useEffect(() => {
-    if (stagingOnly) return;
+    if (restrictedMode === "stagingOnly" || restrictedMode === "workflowOnly") return;
     void loadGridRows();
-  }, [loadGridRows, stagingOnly]);
+  }, [loadGridRows, restrictedMode]);
 
   const viewSavedDate = useCallback(
     (date: string) => {
@@ -1003,7 +1004,7 @@ export default function AttendanceControlCenter({
     </section>
   );
 
-  if (stagingOnly) {
+  if (restrictedMode === "stagingOnly") {
     return (
       <div className="flex w-full min-w-0 flex-col gap-5">
         <div className="flex flex-col gap-2 border-b border-corporate-border pb-3">
@@ -1031,6 +1032,116 @@ export default function AttendanceControlCenter({
             onApproved={() => setWorkflowRefreshToken((token) => token + 1)}
           />
         </div>
+      </div>
+    );
+  }
+
+  if (restrictedMode === "workflowOnly") {
+    return (
+      <div className="flex w-full min-w-0 flex-col gap-5">
+        <div className="flex flex-col gap-2 border-b border-corporate-border pb-3">
+          <div className="flex items-center gap-2">
+            <CalendarCheck className="h-5 w-5 text-corporate-brand" aria-hidden />
+            <div>
+              <h2 className="text-lg font-semibold text-corporate-text">
+                Attendance — Layer 3 Live Workflow
+              </h2>
+              <p className="text-sm text-corporate-muted">
+                Verify, filter, and edit department or designation for records at pipeline stage
+                LAYER_3_WORKFLOW, then approve to Layer 4.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <section
+          id="attendance-layer-3"
+          className="scroll-mt-28 min-h-[360px] space-y-4 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card"
+          aria-label="Layer 3 — Live attendance workflow"
+        >
+          <AttendanceSystemPanel
+            refreshToken={workflowRefreshToken}
+            onCommitted={() => void loadGridRows()}
+          />
+        </section>
+      </div>
+    );
+  }
+
+  if (restrictedMode === "savedOnly") {
+    return (
+      <div className="flex w-full min-w-0 flex-col gap-5">
+        <div className="flex flex-col gap-2 border-b border-corporate-border pb-3">
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet className="h-5 w-5 text-corporate-brand" aria-hidden />
+            <div>
+              <h2 className="text-lg font-semibold text-corporate-text">
+                Attendance — Layer 4 Saved Records
+              </h2>
+              <p className="text-sm text-corporate-muted">
+                Search, select, and archive committed attendance records at pipeline stage
+                LAYER_4_SAVED.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <LayerFilterControls
+          idPrefix="layer-4-history"
+          fromDate={layer4FromDate}
+          toDate={layer4ToDate}
+          searchQuery={searchQuery}
+          onFromDateChange={setLayer4FromDate}
+          onToDateChange={setLayer4ToDate}
+          onSearchChange={setSearchQuery}
+          onRefresh={() => void loadGridRows()}
+          isRefreshing={isGridLoading}
+          summary={
+            isGridLoading
+              ? "Loading attendance history..."
+              : `${gridMeta.mergedCount} saved record(s) in Layer 4`
+          }
+          searchPlaceholder="Search by Name or Pay Code..."
+        />
+
+        {gridError && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {gridError}
+          </p>
+        )}
+
+        {layer4SaveMessage && (
+          <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+            {layer4SaveMessage}
+          </p>
+        )}
+
+        {availableDates.length > 0 && (
+          <div className="rounded-xl border border-corporate-border bg-corporate-surface p-4 shadow-card">
+            <p className="text-xs font-semibold uppercase tracking-wide text-corporate-muted">
+              Uploaded Dates (click to view saved records)
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {availableDates.slice(0, 24).map((entry) => (
+                <button
+                  key={entry.date}
+                  type="button"
+                  onClick={() => viewSavedDate(entry.date)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                    layer4FromDate === entry.date && layer4ToDate === entry.date
+                      ? "border-corporate-brand bg-corporate-brand text-white"
+                      : "border-corporate-border bg-white text-corporate-text hover:border-corporate-brand/40"
+                  )}
+                >
+                  {entry.date} · {entry.totalCount} rows
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {renderHistoryGrid()}
       </div>
     );
   }

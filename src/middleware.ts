@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { decodeAuthSession, AUTH_COOKIE } from "@/lib/auth";
 import {
-  LAYER2_STAGING_HOME_HREF,
-  isLayer2StagingApiPathAllowed,
-  isLayer2StagingPathAllowed,
+  isRestrictedAttendanceApiPathAllowed,
+  isRestrictedAttendancePathAllowed,
+  RESTRICTED_ATTENDANCE_HOME_HREF,
+  getPostLoginRedirect,
 } from "@/lib/auth-navigation";
-import { isLayer2StagingUser } from "@/types/auth-session";
+import { isRestrictedAttendanceUser } from "@/types/auth-session";
 
 const protectedPrefixes = [
   "/dashboard",
@@ -42,22 +43,19 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (pathname === "/login" && isAuthenticated) {
-    const redirectTarget = isLayer2StagingUser(session)
-      ? LAYER2_STAGING_HOME_HREF
-      : "/dashboard";
-    return NextResponse.redirect(new URL(redirectTarget, request.url));
+  if (pathname === "/login" && isAuthenticated && session) {
+    return NextResponse.redirect(new URL(getPostLoginRedirect(session), request.url));
   }
 
-  if (isAuthenticated && isLayer2StagingUser(session)) {
+  if (isAuthenticated && session && isRestrictedAttendanceUser(session)) {
     if (pathname === "/") {
-      return NextResponse.redirect(new URL(LAYER2_STAGING_HOME_HREF, request.url));
+      return NextResponse.redirect(new URL(RESTRICTED_ATTENDANCE_HOME_HREF, request.url));
     }
 
     if (isApiRoute) {
-      if (!isLayer2StagingApiPathAllowed(pathname)) {
+      if (!isRestrictedAttendanceApiPathAllowed(pathname, session)) {
         return NextResponse.json(
-          { error: "Access denied. Layer 2 users are restricted to attendance staging APIs." },
+          { error: "Access denied. Your role is restricted to your assigned attendance layer." },
           { status: 403 }
         );
       }
@@ -65,8 +63,8 @@ export function middleware(request: NextRequest) {
     }
 
     const moduleParam = request.nextUrl.searchParams.get("module");
-    if (isProtected && !isLayer2StagingPathAllowed(pathname, moduleParam)) {
-      return NextResponse.redirect(new URL(LAYER2_STAGING_HOME_HREF, request.url));
+    if (isProtected && !isRestrictedAttendancePathAllowed(pathname, moduleParam)) {
+      return NextResponse.redirect(new URL(RESTRICTED_ATTENDANCE_HOME_HREF, request.url));
     }
   }
 

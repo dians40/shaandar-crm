@@ -4,7 +4,7 @@ import { ensureAttendanceTablesSchema } from "@/lib/attendance-schema-ensure";
 
 /**
  * One-time schema sync for migration 011 (attendance tables).
- * Requires DATABASE_URL or SUPABASE_DB_URL in server environment.
+ * Uses DATABASE_URL, SUPABASE_DB_PASSWORD, or SUPABASE_ACCESS_TOKEN when available.
  * POST /api/admin/sync-attendance-schema
  */
 export async function POST() {

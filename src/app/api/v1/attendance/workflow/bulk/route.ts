@@ -26,6 +26,7 @@ import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   ensureAttendanceTablesSchema,
+  formatSchemaEnsureFailureMessage,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
 import { isPrismaConfigured } from "@/lib/prisma";
@@ -105,9 +106,7 @@ async function persistWorkflowRowsSupabase(
         if (ensure.ok) {
           result = await upsertWorkflowChunk(supabase, chunk);
         } else {
-          errors.push(
-            `${result.error} — Run supabase/migrations/011_ensure_attendance_tables.sql in Supabase SQL Editor.`
-          );
+          errors.push(formatSchemaEnsureFailureMessage(result.error));
           continue;
         }
       }
@@ -125,9 +124,7 @@ async function persistWorkflowRowsSupabase(
         const ensure = await ensureAttendanceTablesSchema();
         schemaRetried = true;
         if (!ensure.ok) {
-          errors.push(
-            `${message} — Run supabase/migrations/011_ensure_attendance_tables.sql in Supabase SQL Editor.`
-          );
+          errors.push(formatSchemaEnsureFailureMessage(message));
           continue;
         }
         try {

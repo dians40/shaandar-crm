@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import {
   ensureAttendanceTablesSchema,
+  formatSchemaEnsureFailureMessage,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
 import { normalizeAttendanceDateIso, todayIsoDateString } from "@/types/attendance-bulk-import-row";
@@ -146,9 +147,7 @@ export async function persistBiometricRowsSupabaseResilient(
         if (ensure.ok) {
           batch = await upsertBiometricChunk(supabase, chunk);
         } else {
-          errors.push(
-            `${batch.error} — Run supabase/migrations/011_ensure_attendance_tables.sql in Supabase SQL Editor.`
-          );
+          errors.push(formatSchemaEnsureFailureMessage(batch.error));
           continue;
         }
       }
@@ -177,9 +176,7 @@ export async function persistBiometricRowsSupabaseResilient(
         const ensure = await ensureAttendanceTablesSchema();
         schemaRetried = true;
         if (!ensure.ok) {
-          errors.push(
-            `${message} — Run supabase/migrations/011_ensure_attendance_tables.sql in Supabase SQL Editor.`
-          );
+          errors.push(formatSchemaEnsureFailureMessage(message));
           continue;
         }
         try {

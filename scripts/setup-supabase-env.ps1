@@ -18,6 +18,7 @@ Write-Host ""
 $url = Read-Host "Paste Project URL (https://xxxxx.supabase.co)"
 $anon = Read-Host "Paste anon public key"
 $service = Read-Host "Paste service_role key (secret)"
+$dbPassword = Read-Host "Paste database password (Supabase -> Settings -> Database -> Database password) [optional, press Enter to skip]"
 
 if ($url -match "YOUR_PROJECT_REF|your-") {
   Write-Host "ERROR: URL still looks like a placeholder." -ForegroundColor Red
@@ -38,6 +39,10 @@ NEXT_PUBLIC_SUPABASE_URL=$($url.TrimEnd('/'))
 NEXT_PUBLIC_SUPABASE_ANON_KEY=$anon
 SUPABASE_SERVICE_ROLE_KEY=$service
 "@
+
+if ($dbPassword.Trim()) {
+  $content += "`nSUPABASE_DB_PASSWORD=$dbPassword"
+}
 
 Set-Content -Path $envFile -Value $content -Encoding UTF8
 Write-Host ""

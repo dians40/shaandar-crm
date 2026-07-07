@@ -172,6 +172,7 @@ export default function AttendanceControlCenter() {
   const { ingestManualEntry, records: workflowRecords, syncFromApi } = useAttendanceWorkflow();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gridSectionRef = useRef<HTMLElement>(null);
+  const stagingSectionRef = useRef<HTMLDivElement>(null);
   const pendingSaveAfterSchemaRef = useRef(false);
 
   const [importPreview, setImportPreview] = useState<ImportPreviewState | null>(null);
@@ -376,6 +377,18 @@ export default function AttendanceControlCenter() {
     },
     [loadGridRows]
   );
+
+  const scrollToLayer = useCallback((layer: 1 | 2 | 3 | 4) => {
+    const targetId =
+      layer === 1
+        ? "attendance-layer-1"
+        : layer === 2
+          ? "attendance-layer-2"
+          : layer === 3
+            ? "attendance-layer-3"
+            : "attendance-layer-4";
+    document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   const autoProvisionMissingEmployees = (
     rows: AttendanceImportRow[],
@@ -743,7 +756,7 @@ export default function AttendanceControlCenter() {
       await syncFromApi();
       await loadGridRows(savedDate);
       setStagingRefreshToken((token) => token + 1);
-      gridSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      stagingSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
       console.error(error);
       const message =
@@ -839,7 +852,8 @@ export default function AttendanceControlCenter() {
   const renderHistoryGrid = () => (
     <section
       ref={gridSectionRef}
-      className="flex min-h-[420px] w-full min-w-0 flex-col gap-3"
+      id="attendance-layer-4"
+      className="flex min-h-[420px] w-full min-w-0 scroll-mt-28 flex-col gap-3"
       aria-label="Layer 4 — Attendance history grid"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1069,6 +1083,37 @@ export default function AttendanceControlCenter() {
         </div>
       )}
 
+      <nav
+        className="sticky top-[4.25rem] z-20 -mx-1 rounded-xl border border-corporate-brand/25 bg-white/95 px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/90"
+        aria-label="Attendance four-layer pipeline navigation"
+      >
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-corporate-muted">
+          Four-layer pipeline — always visible
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { layer: 1 as const, label: "Upload Editor" },
+              { layer: 2 as const, label: "Staging Approval" },
+              { layer: 3 as const, label: "Live Workflow" },
+              { layer: 4 as const, label: "Saved Records" },
+            ] as const
+          ).map(({ layer, label }) => (
+            <button
+              key={layer}
+              type="button"
+              onClick={() => scrollToLayer(layer)}
+              className="inline-flex min-h-9 items-center gap-2 rounded-full border border-corporate-border bg-corporate-surface px-3 py-1.5 text-xs font-semibold text-corporate-text transition-colors hover:border-corporate-brand/40 hover:bg-corporate-brand-light"
+            >
+              <span className="rounded-full bg-corporate-brand px-1.5 py-0.5 text-[10px] font-bold text-white">
+                L{layer}
+              </span>
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
       {/* Mandatory filter bar — always rendered at top of workspace */}
       <section
         className="rounded-xl border-2 border-corporate-brand/25 bg-corporate-surface p-4 shadow-card"
@@ -1194,7 +1239,8 @@ export default function AttendanceControlCenter() {
       </section>
 
       {/* Layer 1 — Upload record editor (22-column Excel staging) */}
-      <AttendanceUploadRecordModule
+      <div id="attendance-layer-1" className="scroll-mt-28 min-h-[280px]">
+        <AttendanceUploadRecordModule
         importPreview={
           importPreview
             ? {
@@ -1221,7 +1267,8 @@ export default function AttendanceControlCenter() {
         importMessage={importMessage}
         importError={importError}
         dbConnected={dbConnected}
-      />
+        />
+      </div>
 
       {lastSaveSummary && (
         <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4">
@@ -1235,8 +1282,15 @@ export default function AttendanceControlCenter() {
           </p>
           <button
             type="button"
-            onClick={() => viewSavedDate(lastSaveSummary.savedDate)}
+            onClick={() => scrollToLayer(2)}
             className="btn-primary mt-3 inline-flex h-9 items-center gap-2 px-4 text-xs"
+          >
+            Continue to Layer 2 — Staging Approval
+          </button>
+          <button
+            type="button"
+            onClick={() => viewSavedDate(lastSaveSummary.savedDate)}
+            className="btn-secondary mt-3 ml-2 inline-flex h-9 items-center gap-2 px-4 text-xs"
           >
             View in Layer 4 — Saved Upload Records
           </button>
@@ -1244,14 +1298,21 @@ export default function AttendanceControlCenter() {
       )}
 
       {/* Layer 2 — Biometric staging review & approval */}
-      <AttendanceStagingWorkflowPanel
-        filterDate={filterDate}
-        refreshToken={stagingRefreshToken}
-      />
+      <div
+        id="attendance-layer-2"
+        ref={stagingSectionRef}
+        className="scroll-mt-28 min-h-[320px]"
+      >
+        <AttendanceStagingWorkflowPanel
+          filterDate={filterDate}
+          refreshToken={stagingRefreshToken}
+        />
+      </div>
 
       {/* Layer 3 — Live four-stage verification workflow */}
       <section
-        className="space-y-4 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card"
+        id="attendance-layer-3"
+        className="scroll-mt-28 min-h-[360px] space-y-4 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card"
         aria-label="Layer 3 — Live attendance workflow"
       >
         <div>

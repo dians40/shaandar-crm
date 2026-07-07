@@ -50,7 +50,7 @@ function MobileNavShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-full min-h-screen w-full bg-corporate-bg">
+    <div className="flex min-h-screen w-full bg-corporate-bg">
       <div
         className={cn(
           "fixed inset-0 z-40 bg-black/30 md:hidden",
@@ -78,7 +78,7 @@ function MobileNavShell({
         </Suspense>
       </div>
 
-      <div className="flex w-full min-w-0 flex-1 flex-col">{children}</div>
+      <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">{children}</div>
     </div>
   );
 }
@@ -115,7 +115,9 @@ export function DashboardShell({
         description={description}
         onMenuOpen={() => setMobileOpen(true)}
       />
-      <main className="flex w-full min-w-0 flex-1 flex-col p-3 md:p-5">{children}</main>
+      <main className="flex w-full min-w-0 flex-1 flex-col overflow-visible p-3 md:p-5">
+        {children}
+      </main>
     </MobileNavShell>
   );
 }

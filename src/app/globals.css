@@ -4,11 +4,11 @@
 
 @layer base {
   html {
-    @apply h-full overflow-x-hidden antialiased;
+    @apply min-h-full overflow-x-hidden antialiased;
   }
 
   body {
-    @apply h-full overflow-x-hidden bg-corporate-bg text-corporate-text;
+    @apply min-h-full overflow-x-hidden bg-corporate-bg text-corporate-text;
   }
 }
 

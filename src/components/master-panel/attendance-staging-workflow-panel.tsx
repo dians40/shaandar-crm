@@ -175,7 +175,7 @@ export default function AttendanceStagingWorkflowPanel({
 
   return (
     <section
-      className="rounded-xl border-2 border-indigo-200 bg-corporate-surface p-5 shadow-card"
+      className="min-h-[320px] rounded-xl border-2 border-indigo-200 bg-corporate-surface p-5 shadow-card"
       aria-label="Layer 2 — Biometric attendance staging workflow"
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">

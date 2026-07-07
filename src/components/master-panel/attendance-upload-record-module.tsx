@@ -69,7 +69,7 @@ export default function AttendanceUploadRecordModule({
 
   return (
     <section
-      className="rounded-xl border-2 border-corporate-brand/30 bg-corporate-surface p-5 shadow-card"
+      className="min-h-[260px] rounded-xl border-2 border-corporate-brand/30 bg-corporate-surface p-5 shadow-card"
       aria-label="Layer 1 — Upload record editor — 22 column Excel staging"
     >
       <div className="flex flex-wrap items-start gap-3 border-b border-corporate-border pb-4">

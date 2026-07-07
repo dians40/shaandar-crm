@@ -1,13 +1,11 @@
 import { PrismaClient } from "@prisma/client";
+import { resolveDatabaseUrl } from "@/lib/database-url";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 function createPrismaClient(): PrismaClient | null {
   try {
-    const url =
-      process.env.DATABASE_URL?.trim() ||
-      process.env.SUPABASE_DB_URL?.trim() ||
-      process.env.POSTGRES_URL?.trim();
+    const url = resolveDatabaseUrl();
     if (!url) return null;
     return new PrismaClient({
       datasources: { db: { url } },

@@ -10,6 +10,10 @@ import {
   mapAuditLogFromDb,
   mapStagingRowFromDb,
 } from "@/lib/attendance-staging-mapper";
+import {
+  fetchStagingBootstrapFromBiometric,
+  fetchStagingRowsViaPrisma,
+} from "@/lib/attendance-prisma-fetch";
 import type {
   AttendanceAuditLogEntry,
   AttendanceStagingRow,
@@ -103,26 +107,6 @@ function pushAuditEntry(
   return [entry, ...audit];
 }
 
-async function assertStagingSchemaReady(): Promise<void> {
-  if (!isSupabaseServerConfigured()) return;
-
-  const ensure = await ensureAttendanceTablesSchema();
-  if (!ensure.ok) {
-    throw new Error(formatSchemaEnsureFailureMessage(ensure.message));
-  }
-
-  const supabase = createAdminClient();
-  const { error } = await supabase.from(STAGING_TABLE).select("id").limit(1);
-  if (error && isAttendanceSchemaError(error.message ?? "")) {
-    throw new Error(
-      formatSchemaEnsureFailureMessage(
-        `Table public.${STAGING_TABLE} is missing. Run migrations 011 + 012 in Supabase SQL Editor or npm run migrate:attendance.`
-      )
-    );
-  }
-  if (error) throw new Error(error.message);
-}
-
 function filterStagingRows(
   rows: AttendanceStagingRow[],
   filters?: { shiftDate?: string; status?: string }
@@ -137,6 +121,32 @@ function filterStagingRows(
   return result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+async function loadStagingRowsResilient(filters?: {
+  shiftDate?: string;
+  status?: string;
+}): Promise<AttendanceStagingRow[]> {
+  await ensureAttendanceTablesSchema();
+
+  const supabase = createAdminClient();
+  let query = supabase.from(STAGING_TABLE).select("*").order("created_at", { ascending: false });
+  if (filters?.shiftDate) query = query.eq("shift_date", filters.shiftDate);
+  if (filters?.status) query = query.eq("status", filters.status);
+
+  const { data, error } = await query.limit(500);
+  if (!error) {
+    return (data ?? []).map((row) => mapStagingRowFromDb(row as Record<string, unknown>));
+  }
+
+  if (!isAttendanceSchemaError(error.message ?? "")) {
+    throw new Error(error.message);
+  }
+
+  const prismaRows = await fetchStagingRowsViaPrisma(filters);
+  if (prismaRows.length > 0) return prismaRows;
+
+  return fetchStagingBootstrapFromBiometric(filters);
+}
+
 export async function fetchStagingRows(filters?: {
   shiftDate?: string;
   status?: string;
@@ -145,16 +155,23 @@ export async function fetchStagingRows(filters?: {
     return filterStagingRows(readLocalStaging(), filters);
   }
 
-  await assertStagingSchemaReady();
+  return loadStagingRowsResilient(filters);
+}
+
+async function assertStagingSchemaReady(): Promise<void> {
+  if (!isSupabaseServerConfigured()) return;
+
+  const ensure = await ensureAttendanceTablesSchema();
+  if (!ensure.ok) {
+    throw new Error(formatSchemaEnsureFailureMessage());
+  }
 
   const supabase = createAdminClient();
-  let query = supabase.from(STAGING_TABLE).select("*").order("created_at", { ascending: false });
-  if (filters?.shiftDate) query = query.eq("shift_date", filters.shiftDate);
-  if (filters?.status) query = query.eq("status", filters.status);
-
-  const { data, error } = await query.limit(500);
+  const { error } = await supabase.from(STAGING_TABLE).select("id").limit(1);
+  if (error && isAttendanceSchemaError(error.message ?? "")) {
+    throw new Error(formatSchemaEnsureFailureMessage());
+  }
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => mapStagingRowFromDb(row as Record<string, unknown>));
 }
 
 export async function insertStagingRows(

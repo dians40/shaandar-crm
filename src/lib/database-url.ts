@@ -44,5 +44,5 @@ export function resolveDatabaseUrl(): string | null {
 
 /** Actionable hint when auto DDL cannot run (no postgres credentials). */
 export function getDatabaseUrlResolutionHint(): string {
-  return "Supabase SQL Editor में migrations 011 + 012 run करें, या SUPABASE_DB_PASSWORD Vercel env में set करें।";
+  return "Run migrations 011 and 012 in Supabase SQL Editor, or set SUPABASE_DB_PASSWORD in Vercel env.";
 }

@@ -5,7 +5,7 @@ import { fetchLegacyAttendanceGridRows } from "@/lib/legacy-attendance-fetch";
 import { mergeAttendanceGridRows } from "@/lib/legacy-attendance-grid-fusion";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
 import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
-import { isPrismaConfigured, prisma } from "@/lib/prisma";
+import { fetchBiometricGridViaPrisma } from "@/lib/attendance-prisma-fetch";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -76,35 +76,6 @@ async function fetchBiometricGridRowsSupabase(
   );
 }
 
-/** Prisma fallback — raw SQL to include legacy column names not in the Prisma model. */
-async function fetchBiometricGridRowsPrismaRaw(
-  limit: number,
-  date?: string,
-  search?: string
-): Promise<BiometricAttendanceGridRow[]> {
-  if (!prisma) return [];
-
-  const normalizedDate = normalizeDateFilter(date);
-  const searchToken = search?.trim();
-  const searchPattern = searchToken ? `%${searchToken}%` : null;
-
-  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
-    SELECT *
-    FROM public.biometric_attendance
-    WHERE
-      (${normalizedDate ?? null}::text IS NULL OR date = ${normalizedDate ?? ""} OR attendance_date::text = ${normalizedDate ?? ""})
-      AND (
-        ${searchPattern}::text IS NULL
-        OR employee_name ILIKE ${searchPattern}
-        OR pay_code ILIKE ${searchPattern}
-      )
-    ORDER BY COALESCE(NULLIF(date, ''), attendance_date::text, '') DESC
-    LIMIT ${limit}
-  `;
-
-  return rows.map((row) => mapBiometricAttendanceGridRow(row));
-}
-
 async function fetchBiometricGridRows(
   limit: number,
   date?: string,
@@ -115,18 +86,17 @@ async function fetchBiometricGridRows(
     try {
       return await fetchBiometricGridRowsSupabase(limit, date, search);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (isAttendanceSchemaError(message)) {
+        const prismaRows = await fetchBiometricGridViaPrisma(limit, date, search);
+        if (prismaRows.length > 0) return prismaRows;
+      }
       console.error("[attendance/biometric] supabase biometric fetch failed:", error);
-      return [];
     }
   }
 
-  if (isPrismaConfigured()) {
-    try {
-      return await fetchBiometricGridRowsPrismaRaw(limit, date, search);
-    } catch (error) {
-      console.error("[attendance/biometric] prisma raw biometric fetch failed:", error);
-    }
-  }
+  const prismaRows = await fetchBiometricGridViaPrisma(limit, date, search);
+  if (prismaRows.length > 0) return prismaRows;
 
   return [];
 }

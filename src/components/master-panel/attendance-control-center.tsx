@@ -349,6 +349,10 @@ export default function AttendanceControlCenter() {
           localLegacyRows.length,
         mergedCount: mergedRows.length,
       });
+      if (mergedRows.length > 0) {
+        setSchemaStatus("ready");
+        setSchemaMessage(null);
+      }
     } catch (loadError) {
       console.error(loadError);
       setGridError(
@@ -1284,7 +1288,7 @@ export default function AttendanceControlCenter() {
         <AttendanceStagingWorkflowPanel
           filterDate={filterDate}
           refreshToken={stagingRefreshToken}
-          schemaReady={schemaStatus === "ready"}
+          schemaReady={schemaStatus === "ready" || gridMeta.mergedCount > 0}
         />
       </div>
 

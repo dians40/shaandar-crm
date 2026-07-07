@@ -4,13 +4,13 @@ import { extractSupabaseProjectRef } from "@/lib/database-url";
 export const ATTENDANCE_SETUP_TITLE =
   "Attendance database setup required (one-time)";
 
-/** Short user-facing body — no npm/env jargon in layer panels. */
+/** Short user-facing body — shown only in the top setup banner. */
 export const ATTENDANCE_SETUP_MESSAGE =
-  "Supabase में attendance tables अभी नहीं बनी हैं। SQL Editor में migration run करें, फिर Retry दबाएँ।";
+  "Attendance SQL tables are not created yet. Run the migration in Supabase SQL Editor, then click Retry setup.";
 
 /** Developer hint — shown only in the top setup banner, not in every layer. */
 export const ATTENDANCE_SETUP_DEV_HINT =
-  "Vercel / .env.local में SUPABASE_DB_PASSWORD set करें तो tables automatically बन सकती हैं।";
+  "Set SUPABASE_DB_PASSWORD in Vercel environment variables to auto-create tables on save.";
 
 export function getSupabaseSqlEditorUrl(): string {
   const projectRef = extractSupabaseProjectRef();
@@ -36,6 +36,7 @@ export function isAttendanceSetupError(message: string): boolean {
     lower.includes("database_url") ||
     lower.includes("npm run setup") ||
     lower.includes("npm run migrate") ||
-    lower.includes("attendance database setup")
+    lower.includes("attendance database setup") ||
+    lower.includes("sql tables are not created")
   );
 }

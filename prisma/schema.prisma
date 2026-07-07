@@ -11,7 +11,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Maps to public.biometric_attendance — all fields optional for safe bulk ingestion.
+/// Maps to public.biometric_attendance — canonical 23-column Excel import (22 data fields + date).
+/// All ingest columns are optional strings except srl_no (stored as integer when numeric).
 model BiometricAttendance {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   srlNo        Int?      @map("srl_no")

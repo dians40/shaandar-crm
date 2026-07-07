@@ -25,7 +25,14 @@ import { normalizeBiometric23ColumnRecord } from "@/types/attendance-bulk-import
 
 export async function GET(request: Request) {
   try {
-    if (isSupabaseServerConfigured()) {
+    const { searchParams } = new URL(request.url);
+    const shiftDate = searchParams.get("shiftDate")?.trim() || undefined;
+    const status = searchParams.get("status")?.trim() || undefined;
+    const rows = await fetchStagingRows({ shiftDate, status });
+    const anomalyCount = rows.filter((r) => r.isAnomaly && r.status === "Pending").length;
+    const editedCount = rows.filter((r) => r.editRemark && r.status === "Pending").length;
+
+    if (rows.length === 0 && isSupabaseServerConfigured()) {
       const check = await checkAttendanceSchemaReady();
       if (!check.ready) {
         return NextResponse.json({
@@ -37,12 +44,6 @@ export async function GET(request: Request) {
       }
     }
 
-    const { searchParams } = new URL(request.url);
-    const shiftDate = searchParams.get("shiftDate")?.trim() || undefined;
-    const status = searchParams.get("status")?.trim() || undefined;
-    const rows = await fetchStagingRows({ shiftDate, status });
-    const anomalyCount = rows.filter((r) => r.isAnomaly && r.status === "Pending").length;
-    const editedCount = rows.filter((r) => r.editRemark && r.status === "Pending").length;
     return NextResponse.json({ rows, meta: { count: rows.length, anomalyCount, editedCount } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load staging rows.";

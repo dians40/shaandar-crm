@@ -113,26 +113,37 @@ export default function Sidebar({
 
   return (
     <aside className="flex h-full w-full shrink-0 flex-col border-r border-corporate-border bg-corporate-surface md:w-64">
-      <div className="flex items-center gap-3 border-b border-corporate-border px-5 py-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-corporate-brand-light text-corporate-brand">
-          <Building2 className="h-5 w-5" aria-hidden />
+      <div className="border-b border-corporate-border px-5 py-4">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-corporate-brand-light text-corporate-brand">
+            <Building2 className="h-5 w-5" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold leading-tight text-corporate-text">
+              Shaandar CRM
+            </p>
+            <p className="text-xs text-corporate-muted">Corporate Suite</p>
+            <form action={logoutAction} className="mt-2">
+              <button
+                type="submit"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-corporate-border bg-corporate-bg px-2.5 py-1.5 text-xs font-semibold text-corporate-muted shadow-sm transition-all hover:border-red-200 hover:bg-red-50 hover:text-red-600"
+              >
+                <LogOut className="h-3.5 w-3.5" aria-hidden />
+                Sign Out
+              </button>
+            </form>
+          </div>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-corporate-border text-corporate-muted transition-colors hover:bg-corporate-bg md:hidden"
+              aria-label="Close navigation menu"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold leading-tight text-corporate-text">
-            Shaandar CRM
-          </p>
-          <p className="text-xs text-corporate-muted">Corporate Suite</p>
-        </div>
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-corporate-border text-corporate-muted transition-colors hover:bg-corporate-bg md:hidden"
-            aria-label="Close navigation menu"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        )}
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
@@ -254,18 +265,6 @@ export default function Sidebar({
           })}
         </ul>
       </nav>
-
-      <div className="border-t border-corporate-border p-3">
-        <form action={logoutAction}>
-          <button
-            type="submit"
-            className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-3 text-base font-medium text-corporate-muted transition-colors hover:bg-red-50 hover:text-red-600 sm:text-sm"
-          >
-            <LogOut className="h-4 w-4" aria-hidden />
-            Sign Out
-          </button>
-        </form>
-      </div>
     </aside>
   );
 }

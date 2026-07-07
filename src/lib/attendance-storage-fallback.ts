@@ -1,5 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  bulkMergeKey,
+  createInitialMergeStats,
+  mergeIncomingIntoStorageRow,
+  type BulkMergeStats,
+} from "@/lib/attendance-bulk-smart-merge";
+import {
   assertPipelineTransition,
   INITIAL_INGEST_PIPELINE_STAGE,
   isPipelineStage,
@@ -49,6 +55,29 @@ export async function ensureAttendanceStorageBucket(
   }
 }
 
+async function loadLatestStorageBatch(
+  supabase: SupabaseClient,
+  reportDate: string
+): Promise<{ batch: AttendanceStorageBatch; path: string } | null> {
+  const { data: batchFiles, error: batchError } = await supabase.storage
+    .from(ATTENDANCE_STORAGE_BUCKET)
+    .list(storageImportPrefix(reportDate), {
+      limit: 100,
+      sortBy: { column: "created_at", order: "desc" },
+    });
+
+  if (batchError || !batchFiles?.length) return null;
+
+  for (const file of batchFiles) {
+    if (!file.name.endsWith(".json")) continue;
+    const path = `${storageImportPrefix(reportDate)}/${file.name}`;
+    const batch = await downloadStorageBatch(supabase, path);
+    if (batch) return { batch, path };
+  }
+
+  return null;
+}
+
 /** Persist bulk import JSON when public.employee_attendance / biometric_attendance are missing. */
 export async function saveBulkImportToStorage(
   supabase: SupabaseClient,
@@ -57,7 +86,7 @@ export async function saveBulkImportToStorage(
     rows: Record<string, unknown>[];
     workflowCount?: number;
   }
-): Promise<{ saved: number; storagePath: string; reportDate: string }> {
+): Promise<{ saved: number; storagePath: string; reportDate: string; mergeStats: BulkMergeStats }> {
   await ensureAttendanceStorageBucket(supabase);
 
   const reportDate =
@@ -65,34 +94,71 @@ export async function saveBulkImportToStorage(
     normalizeAttendanceDateIso(String(input.rows[0]?.date ?? "")) ||
     new Date().toISOString().slice(0, 10);
 
+  const mergeStats = createInitialMergeStats();
+  const latest = await loadLatestStorageBatch(supabase, reportDate);
+  const existingRows = latest?.batch.rows ?? [];
+  const rowMap = new Map<string, Record<string, unknown>>();
+
+  for (let index = 0; index < existingRows.length; index += 1) {
+    const row = existingRows[index]!;
+    const key = bulkMergeKey(row.pay_code ?? row.payCode, row.date ?? row.attendance_date);
+    rowMap.set(key, {
+      ...row,
+      id: stableStorageRowId(reportDate, row, index),
+    });
+  }
+
+  for (const incoming of input.rows) {
+    const key = bulkMergeKey(incoming.pay_code ?? incoming.payCode, incoming.date);
+    const existing = rowMap.get(key);
+
+    if (!existing) {
+      const nextIndex = rowMap.size;
+      rowMap.set(key, {
+        ...incoming,
+        id: stableStorageRowId(reportDate, incoming, nextIndex),
+        pipeline_stage: INITIAL_INGEST_PIPELINE_STAGE,
+      });
+      mergeStats.inserted += 1;
+      continue;
+    }
+
+    const { row: mergedRow, merged } = mergeIncomingIntoStorageRow(existing, incoming);
+    rowMap.set(key, mergedRow);
+    if (merged) {
+      mergeStats.merged += 1;
+    } else {
+      mergeStats.skipped += 1;
+    }
+  }
+
+  const mergedRows = [...rowMap.values()];
   const payload: AttendanceStorageBatch = {
     version: 1,
     savedAt: new Date().toISOString(),
     reportDate,
-    rows: input.rows.map((row, index) => ({
-      ...row,
-      id: stableStorageRowId(reportDate, row, index),
-      pipeline_stage: INITIAL_INGEST_PIPELINE_STAGE,
-    })),
-    biometricCount: input.rows.length,
+    rows: mergedRows,
+    biometricCount: mergedRows.length,
     workflowCount: input.workflowCount ?? 0,
   };
 
-  const storagePath = `${storageImportPrefix(reportDate)}/batch-${Date.now()}.json`;
+  const storagePath =
+    latest?.path ?? `${storageImportPrefix(reportDate)}/batch-${Date.now()}.json`;
   const body = Buffer.from(JSON.stringify(payload), "utf8");
 
   const { error } = await supabase.storage
     .from(ATTENDANCE_STORAGE_BUCKET)
     .upload(storagePath, body, {
       contentType: "application/json",
-      upsert: false,
+      upsert: Boolean(latest?.path),
     });
 
   if (error) {
     throw new Error(`Cloud storage save failed: ${error.message}`);
   }
 
-  return { saved: input.rows.length, storagePath, reportDate };
+  const saved = mergeStats.inserted + mergeStats.merged;
+  return { saved, storagePath, reportDate, mergeStats };
 }
 
 async function downloadStorageBatch(

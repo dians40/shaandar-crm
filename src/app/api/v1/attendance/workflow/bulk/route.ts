@@ -172,6 +172,9 @@ export async function POST(request: Request) {
   let skipped = 0;
   let provisionedEmployees = 0;
   let biometricSaved = 0;
+  let mergeInserted = 0;
+  let mergePatched = 0;
+  let mergeSkipped = 0;
   let savedReportDate: string | undefined;
 
   const employeeCache = new Map<string, string>();
@@ -252,6 +255,9 @@ export async function POST(request: Request) {
   if (sqlTablesReady && prismaConfigured && prismaBiometricRows.length > 0) {
     const prismaResult = await persistBiometricRowsResilient(prismaBiometricRows, BATCH_SIZE);
     biometricSaved = prismaResult.saved;
+    mergeInserted = prismaResult.mergeStats.inserted;
+    mergePatched = prismaResult.mergeStats.merged;
+    mergeSkipped = prismaResult.mergeStats.skipped;
     rowErrors.push(...prismaResult.errors);
   } else if (sqlTablesReady && supabase && supabaseBiometricRows.length > 0) {
     const supabaseResult = await persistBiometricRowsSupabaseResilient(
@@ -260,6 +266,9 @@ export async function POST(request: Request) {
       BATCH_SIZE
     );
     biometricSaved = supabaseResult.saved;
+    mergeInserted = supabaseResult.mergeStats.inserted;
+    mergePatched = supabaseResult.mergeStats.merged;
+    mergeSkipped = supabaseResult.mergeStats.skipped;
     rowErrors.push(...supabaseResult.errors);
   } else if (useStorageFallback && supabase && normalizedRows.length > 0) {
     const reportDate =
@@ -273,6 +282,9 @@ export async function POST(request: Request) {
         workflowCount: imported,
       });
       biometricSaved = storageResult.saved;
+      mergeInserted = storageResult.mergeStats.inserted;
+      mergePatched = storageResult.mergeStats.merged;
+      mergeSkipped = storageResult.mergeStats.skipped;
       savedReportDate = storageResult.reportDate;
     } catch (storageError) {
       rowErrors.push(
@@ -308,6 +320,11 @@ export async function POST(request: Request) {
     );
   }
 
+  const mergeSummary =
+    mergeInserted + mergePatched > 0
+      ? ` (${mergeInserted} new, ${mergePatched} evening merge${mergeSkipped > 0 ? `, ${mergeSkipped} unchanged` : ""})`
+      : "";
+
   if (!supabaseConfigured) {
     return NextResponse.json({
       ok: true,
@@ -316,6 +333,9 @@ export async function POST(request: Request) {
       skipped,
       provisionedEmployees,
       biometricSaved,
+      mergeInserted,
+      mergePatched,
+      mergeSkipped,
       errors: rowErrors,
       records,
     });
@@ -325,9 +345,9 @@ export async function POST(request: Request) {
     ok: true,
     message:
       useStorageFallback && biometricSaved > 0
-        ? `Saved ${biometricSaved} row(s) to cloud storage at LAYER_2_STAGING. Run SQL migration for production tables.`
+        ? `Saved ${biometricSaved} row(s) to cloud storage at LAYER_2_STAGING${mergeSummary}. Run SQL migration for production tables.`
         : biometricSaved > 0
-          ? `Saved ${biometricSaved} row(s) to biometric staging (LAYER_2_STAGING). Approve in Layer 2 to continue.`
+          ? `Saved ${biometricSaved} row(s) to biometric staging (LAYER_2_STAGING)${mergeSummary}. Approve in Layer 2 to continue.`
           : imported > 0
             ? "Bulk attendance import completed."
             : "Bulk import finished with zero saved rows — see errors.",
@@ -335,6 +355,9 @@ export async function POST(request: Request) {
     skipped,
     provisionedEmployees,
     biometricSaved,
+    mergeInserted,
+    mergePatched,
+    mergeSkipped,
     savedReportDate,
     errors: rowErrors.slice(0, 20),
     records,

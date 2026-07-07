@@ -4,6 +4,14 @@ import {
   formatSchemaEnsureFailureMessage,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
+import {
+  bulkMergeKey,
+  buildEveningMergePatch,
+  buildEveningMergePatchPrisma,
+  createInitialMergeStats,
+  type BulkMergeStats,
+} from "@/lib/attendance-bulk-smart-merge";
+import { INITIAL_INGEST_PIPELINE_STAGE } from "@/types/attendance-pipeline";
 import { normalizeAttendanceDateIso, todayIsoDateString } from "@/types/attendance-bulk-import-row";
 import { prisma } from "@/lib/prisma";
 
@@ -47,6 +55,8 @@ export function sanitizeBiometricCreateRow(
       netHours: safeString(row.netHours) || "0",
       workCode: safeString(row.workCode) || "",
       remark: safeString(row.remark) || "",
+      pipelineStage: row.pipelineStage ?? INITIAL_INGEST_PIPELINE_STAGE,
+      workflowStage: row.workflowStage ?? "pending_allocation",
     };
   } catch {
     return {
@@ -61,6 +71,8 @@ export function sanitizeBiometricCreateRow(
       shortHours: "0",
       grossHours: "0",
       netHours: "0",
+      pipelineStage: INITIAL_INGEST_PIPELINE_STAGE,
+      workflowStage: "pending_allocation",
     };
   }
 }
@@ -73,19 +85,87 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-/** createMany with per-row fallback — corrupted rows are skipped, clean rows always commit. */
+async function fetchExistingPrismaRows(
+  rows: Prisma.BiometricAttendanceCreateManyInput[]
+): Promise<Map<string, Record<string, unknown>>> {
+  const map = new Map<string, Record<string, unknown>>();
+  if (!prisma || rows.length === 0) return map;
+
+  const keys = rows
+    .map((row) => ({
+      payCode: safeString(row.payCode),
+      date: normalizeAttendanceDateIso(row.date),
+    }))
+    .filter((entry) => entry.payCode && entry.date);
+
+  if (keys.length === 0) return map;
+
+  const uniqueDates = [...new Set(keys.map((entry) => entry.date))];
+  const payCodes = [...new Set(keys.map((entry) => entry.payCode))];
+
+  const existing = await prisma.biometricAttendance.findMany({
+    where: {
+      payCode: { in: payCodes },
+      date: { in: uniqueDates },
+    },
+    select: {
+      id: true,
+      payCode: true,
+      date: true,
+      outTime: true,
+      duration: true,
+      grossHours: true,
+      netHours: true,
+      department: true,
+      designation: true,
+      pipelineStage: true,
+    },
+  });
+
+  for (const row of existing) {
+    map.set(bulkMergeKey(row.payCode, row.date), row as unknown as Record<string, unknown>);
+  }
+
+  return map;
+}
+
+/** Smart merge: insert new evening labours, patch blank out_time/hours on staging rows only. */
 export async function persistBiometricRowsResilient(
   rows: Prisma.BiometricAttendanceCreateManyInput[],
   batchSize = 50
-): Promise<{ saved: number; errors: string[] }> {
+): Promise<{ saved: number; errors: string[]; mergeStats: BulkMergeStats }> {
   const errors: string[] = [];
-  if (!prisma || rows.length === 0) return { saved: 0, errors };
+  const mergeStats = createInitialMergeStats();
+  if (!prisma || rows.length === 0) return { saved: 0, errors, mergeStats };
 
   const sanitized = rows.map((row) => sanitizeBiometricCreateRow(row));
   let saved = 0;
 
   try {
-    for (const chunk of chunkArray(sanitized, batchSize)) {
+    const existingMap = await fetchExistingPrismaRows(sanitized);
+    const toInsert: Prisma.BiometricAttendanceCreateManyInput[] = [];
+    const toPatch: { id: string; data: Record<string, unknown> }[] = [];
+
+    for (const incoming of sanitized) {
+      const key = bulkMergeKey(incoming.payCode, incoming.date);
+      const existing = existingMap.get(key);
+
+      if (!existing) {
+        toInsert.push(incoming);
+        mergeStats.inserted += 1;
+        continue;
+      }
+
+      const patch = buildEveningMergePatchPrisma(existing, incoming as Record<string, unknown>);
+      if (patch && existing.id) {
+        toPatch.push({ id: String(existing.id), data: patch });
+        mergeStats.merged += 1;
+      } else {
+        mergeStats.skipped += 1;
+      }
+    }
+
+    for (const chunk of chunkArray(toInsert, batchSize)) {
       try {
         const result = await prisma.biometricAttendance.createMany({
           data: chunk,
@@ -109,69 +189,163 @@ export async function persistBiometricRowsResilient(
         }
       }
     }
+
+    for (const { id, data } of toPatch) {
+      try {
+        await prisma.biometricAttendance.update({
+          where: { id },
+          data: data as Prisma.BiometricAttendanceUpdateInput,
+        });
+        saved += 1;
+      } catch (patchError) {
+        errors.push(
+          patchError instanceof Error ? patchError.message : "evening merge patch failed"
+        );
+      }
+    }
   } catch (error) {
     console.error("[bulk-import] persistBiometricRowsResilient outer:", error);
     errors.push(error instanceof Error ? error.message : "biometric persist failed");
   }
 
-  return { saved, errors };
+  return { saved, errors, mergeStats };
 }
 
-async function upsertBiometricChunk(
+async function fetchExistingSupabaseRows(
   supabase: ReturnType<typeof import("@/lib/supabase/admin").createAdminClient>,
-  chunk: Record<string, unknown>[]
-): Promise<{ error?: string }> {
-  const { error } = await supabase.from("biometric_attendance").upsert(chunk, {
-    onConflict: "pay_code,date",
-  });
-  return error ? { error: error.message ?? "batch upsert failed" } : {};
+  rows: Record<string, unknown>[]
+): Promise<Map<string, Record<string, unknown>>> {
+  const map = new Map<string, Record<string, unknown>>();
+  if (rows.length === 0) return map;
+
+  const payCodes = [
+    ...new Set(
+      rows
+        .map((row) => safeString(row.pay_code ?? row.payCode))
+        .filter(Boolean)
+    ),
+  ];
+  const dates = [
+    ...new Set(
+      rows
+        .map((row) => normalizeAttendanceDateIso(row.date))
+        .filter(Boolean)
+    ),
+  ];
+
+  if (payCodes.length === 0 || dates.length === 0) return map;
+
+  const { data, error } = await supabase
+    .from("biometric_attendance")
+    .select("id, pay_code, date, out_time, duration, gross_hours, net_hours, department, designation, pipeline_stage")
+    .in("pay_code", payCodes)
+    .in("date", dates);
+
+  if (error) {
+    throw new Error(error.message ?? "existing row lookup failed");
+  }
+
+  for (const row of data ?? []) {
+    map.set(
+      bulkMergeKey((row as Record<string, unknown>).pay_code, (row as Record<string, unknown>).date),
+      row as Record<string, unknown>
+    );
+  }
+
+  return map;
 }
 
-/** Supabase upsert with per-row fallback when batch conflict fails. */
+/** Supabase smart merge — never overwrites department/designation on existing rows. */
 export async function persistBiometricRowsSupabaseResilient(
   supabase: ReturnType<typeof import("@/lib/supabase/admin").createAdminClient>,
   rows: Record<string, unknown>[],
   batchSize = 50
-): Promise<{ saved: number; errors: string[] }> {
+): Promise<{ saved: number; errors: string[]; mergeStats: BulkMergeStats }> {
   const errors: string[] = [];
+  const mergeStats = createInitialMergeStats();
   let saved = 0;
   let schemaRetried = false;
 
   for (const chunk of chunkArray(rows, batchSize)) {
     try {
-      let batch = await upsertBiometricChunk(supabase, chunk);
-
-      if (batch.error && isAttendanceSchemaError(batch.error) && !schemaRetried) {
-        const ensure = await ensureAttendanceTablesSchema();
-        schemaRetried = true;
-        if (ensure.ok) {
-          batch = await upsertBiometricChunk(supabase, chunk);
+      let existingMap: Map<string, Record<string, unknown>>;
+      try {
+        existingMap = await fetchExistingSupabaseRows(supabase, chunk);
+      } catch (lookupError) {
+        const message = lookupError instanceof Error ? lookupError.message : "lookup failed";
+        if (isAttendanceSchemaError(message) && !schemaRetried) {
+          const ensure = await ensureAttendanceTablesSchema();
+          schemaRetried = true;
+          if (!ensure.ok) {
+            errors.push(formatSchemaEnsureFailureMessage(message));
+            continue;
+          }
+          existingMap = await fetchExistingSupabaseRows(supabase, chunk);
         } else {
-          errors.push(formatSchemaEnsureFailureMessage(batch.error));
+          throw lookupError;
+        }
+      }
+
+      const toInsert: Record<string, unknown>[] = [];
+      const toPatch: { id: string; patch: Record<string, unknown> }[] = [];
+
+      for (const incoming of chunk) {
+        const key = bulkMergeKey(incoming.pay_code ?? incoming.payCode, incoming.date);
+        const existing = existingMap.get(key);
+
+        if (!existing) {
+          toInsert.push({
+            ...incoming,
+            pipeline_stage: incoming.pipeline_stage ?? INITIAL_INGEST_PIPELINE_STAGE,
+          });
+          mergeStats.inserted += 1;
           continue;
         }
+
+        const patch = buildEveningMergePatch(existing, incoming);
+        if (patch && existing.id) {
+          toPatch.push({ id: String(existing.id), patch });
+          mergeStats.merged += 1;
+        } else {
+          mergeStats.skipped += 1;
+        }
       }
 
-      if (batch.error) {
-        for (const row of chunk) {
-          try {
-            const { error: rowError } = await supabase
-              .from("biometric_attendance")
-              .upsert(row, { onConflict: "pay_code,date" });
-            if (rowError) {
-              errors.push(rowError.message ?? "row upsert failed");
-              continue;
+      if (toInsert.length > 0) {
+        const { error: insertError } = await supabase.from("biometric_attendance").insert(toInsert);
+        if (insertError) {
+          for (const row of toInsert) {
+            try {
+              const { error: rowError } = await supabase.from("biometric_attendance").insert(row);
+              if (rowError) {
+                errors.push(rowError.message ?? "row insert failed");
+                continue;
+              }
+              saved += 1;
+            } catch (inner) {
+              errors.push(inner instanceof Error ? inner.message : "row insert failed");
             }
-            saved += 1;
-          } catch (inner) {
-            errors.push(inner instanceof Error ? inner.message : "row upsert failed");
           }
+        } else {
+          saved += toInsert.length;
         }
-        continue;
       }
-      saved += chunk.length;
+
+      for (const { id, patch } of toPatch) {
+        const { error: patchError } = await supabase
+          .from("biometric_attendance")
+          .update(patch)
+          .eq("id", id)
+          .eq("pipeline_stage", INITIAL_INGEST_PIPELINE_STAGE);
+
+        if (patchError) {
+          errors.push(patchError.message ?? "evening merge patch failed");
+          continue;
+        }
+        saved += 1;
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "batch upsert failed";
+      const message = error instanceof Error ? error.message : "batch smart merge failed";
       if (isAttendanceSchemaError(message) && !schemaRetried) {
         const ensure = await ensureAttendanceTablesSchema();
         schemaRetried = true;
@@ -179,24 +353,10 @@ export async function persistBiometricRowsSupabaseResilient(
           errors.push(formatSchemaEnsureFailureMessage(message));
           continue;
         }
-        try {
-          const retry = await upsertBiometricChunk(supabase, chunk);
-          if (retry.error) {
-            errors.push(retry.error);
-          } else {
-            saved += chunk.length;
-          }
-          continue;
-        } catch (retryError) {
-          errors.push(
-            retryError instanceof Error ? retryError.message : "batch upsert failed"
-          );
-          continue;
-        }
       }
       errors.push(message);
     }
   }
 
-  return { saved, errors };
+  return { saved, errors, mergeStats };
 }

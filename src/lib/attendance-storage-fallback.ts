@@ -245,3 +245,15 @@ export async function fetchStorageDateCatalog(
 export function isStorageFallbackError(message: string): boolean {
   return isAttendanceSchemaError(message);
 }
+
+/** True when cloud storage bucket is available for attendance saves (no SQL DDL needed). */
+export async function checkAttendanceStorageReady(
+  supabase: SupabaseClient
+): Promise<boolean> {
+  try {
+    await ensureAttendanceStorageBucket(supabase);
+    return true;
+  } catch {
+    return false;
+  }
+}

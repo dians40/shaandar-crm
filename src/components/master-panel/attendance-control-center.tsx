@@ -125,7 +125,7 @@ type SaveSummary = {
 
 type SaveStatus = "idle" | "saving" | "saved" | "failed";
 
-type SchemaStatus = "checking" | "ready" | "missing" | "ensuring";
+type SchemaStatus = "checking" | "ready" | "missing" | "ensuring" | "storage";
 
 function isSchemaSetupError(message: string): boolean {
   return /schema cache|not find table|setuprequired|SUPABASE_DB_PASSWORD|DATABASE_URL|503/i.test(
@@ -236,14 +236,23 @@ export default function AttendanceControlCenter() {
       const body = (await response.json()) as {
         ok?: boolean;
         ready?: boolean;
+        mode?: "sql" | "storage" | "local" | "none";
         message?: string;
         hint?: string;
         error?: string;
       };
 
       if (response.ok && body.ok) {
-        setSchemaStatus("ready");
-        setSchemaMessage(null);
+        if (body.mode === "storage") {
+          setSchemaStatus("storage");
+          setSchemaMessage(
+            body.message ??
+              "Cloud storage is ready — Process & Save works without SQL tables."
+          );
+        } else {
+          setSchemaStatus("ready");
+          setSchemaMessage(null);
+        }
         return true;
       }
 
@@ -690,7 +699,12 @@ export default function AttendanceControlCenter() {
         storageFallback: savedViaStorage,
       });
       setSaveStatus("saved");
-      setSchemaStatus(savedViaStorage ? "missing" : schemaStatus);
+      if (savedViaStorage) {
+        setSchemaStatus("storage");
+        setSchemaMessage(
+          "Saved to Supabase cloud storage. Records appear in the grid below by date."
+        );
+      }
 
       setImportMessage(
         savedViaStorage
@@ -719,7 +733,11 @@ export default function AttendanceControlCenter() {
   }, [employees, importPreview, ingestManualEntry, loadGridRows, prependEmployee, syncFromApi, ensureAttendanceSchema]);
 
   useEffect(() => {
-    if (schemaStatus !== "ready" || !pendingSaveAfterSchemaRef.current || !importPreview) {
+    if (
+      (schemaStatus !== "ready" && schemaStatus !== "storage") ||
+      !pendingSaveAfterSchemaRef.current ||
+      !importPreview
+    ) {
       return;
     }
     pendingSaveAfterSchemaRef.current = false;
@@ -966,7 +984,23 @@ export default function AttendanceControlCenter() {
         )}
       </div>
 
-      {dbConnected !== false && schemaStatus !== "ready" && (
+      {dbConnected !== false && schemaStatus === "storage" && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-card">
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
+            <div className="space-y-1 text-sm text-emerald-900">
+              <p className="font-semibold">Cloud storage ready — Process &amp; Save is enabled</p>
+              {schemaMessage && <p className="text-emerald-800">{schemaMessage}</p>}
+              <p className="text-xs text-emerald-700">
+                Upload Excel and click Process &amp; Save. Records are stored in Supabase cloud
+                storage and appear in the grid below by date.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dbConnected !== false && schemaStatus !== "ready" && schemaStatus !== "storage" && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-card">
           <div className="flex items-start gap-3">
             {schemaStatus === "ensuring" || schemaStatus === "checking" ? (
@@ -978,7 +1012,7 @@ export default function AttendanceControlCenter() {
               <p className="font-semibold">
                 {schemaStatus === "ensuring" || schemaStatus === "checking"
                   ? "Preparing attendance database tables…"
-                  : "Attendance tables missing — save will fail until this is fixed"}
+                  : "Attendance tables missing — retrying cloud storage setup"}
               </p>
               {schemaMessage && (
                 <p className="text-amber-800">{schemaMessage}</p>

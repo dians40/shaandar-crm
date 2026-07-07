@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
+import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import {
   checkAttendanceSchemaReady,
   ensureAttendanceTablesSchema,
 } from "@/lib/attendance-schema-ensure";
+import { checkAttendanceStorageReady } from "@/lib/attendance-storage-fallback";
 import { getDatabaseUrlResolutionHint } from "@/lib/database-url";
 
 /**
@@ -15,24 +16,7 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       ready: true,
-      message: "Supabase not configured — local session mode.",
-    });
-  }
-
-  const check = await checkAttendanceSchemaReady();
-  return NextResponse.json({
-    ok: check.ready,
-    ready: check.ready,
-    message: check.message ?? (check.ready ? "Attendance tables are ready." : undefined),
-    hint: check.ready ? undefined : getDatabaseUrlResolutionHint(),
-  });
-}
-
-export async function POST() {
-  if (!isSupabaseServerConfigured()) {
-    return NextResponse.json({
-      ok: true,
-      ready: true,
+      mode: "local",
       message: "Supabase not configured — local session mode.",
     });
   }
@@ -42,6 +26,48 @@ export async function POST() {
     return NextResponse.json({
       ok: true,
       ready: true,
+      mode: "sql",
+      message: "Attendance SQL tables are ready.",
+    });
+  }
+
+  const supabase = createAdminClient();
+  const storageReady = await checkAttendanceStorageReady(supabase);
+  if (storageReady) {
+    return NextResponse.json({
+      ok: true,
+      ready: true,
+      mode: "storage",
+      message:
+        "Cloud storage is ready. Process & Save works without SQL tables — records are stored in Supabase Storage.",
+    });
+  }
+
+  return NextResponse.json({
+    ok: false,
+    ready: false,
+    mode: "none",
+    message: check.message ?? "Attendance storage is not ready.",
+    hint: getDatabaseUrlResolutionHint(),
+  });
+}
+
+export async function POST() {
+  if (!isSupabaseServerConfigured()) {
+    return NextResponse.json({
+      ok: true,
+      ready: true,
+      mode: "local",
+      message: "Supabase not configured — local session mode.",
+    });
+  }
+
+  const check = await checkAttendanceSchemaReady();
+  if (check.ready) {
+    return NextResponse.json({
+      ok: true,
+      ready: true,
+      mode: "sql",
       message: "Attendance tables already exist.",
     });
   }
@@ -52,22 +78,36 @@ export async function POST() {
     result.ok ? "success" : result.message
   );
 
-  if (!result.ok) {
-    return NextResponse.json(
-      {
-        ok: false,
-        ready: false,
-        error: result.message,
-        hint: getDatabaseUrlResolutionHint(),
-        setupRequired: true,
-      },
-      { status: 503 }
-    );
+  if (result.ok) {
+    return NextResponse.json({
+      ok: true,
+      ready: true,
+      mode: "sql",
+      message: result.message,
+    });
   }
 
-  return NextResponse.json({
-    ok: true,
-    ready: true,
-    message: result.message,
-  });
+  const supabase = createAdminClient();
+  const storageReady = await checkAttendanceStorageReady(supabase);
+  if (storageReady) {
+    return NextResponse.json({
+      ok: true,
+      ready: true,
+      mode: "storage",
+      message:
+        "SQL tables are not created yet, but cloud storage is ready — Process & Save will work.",
+    });
+  }
+
+  return NextResponse.json(
+    {
+      ok: false,
+      ready: false,
+      mode: "none",
+      error: result.message,
+      hint: getDatabaseUrlResolutionHint(),
+      setupRequired: true,
+    },
+    { status: 503 }
+  );
 }

@@ -176,10 +176,13 @@ export default function AttendanceStagingWorkflowPanel({
   return (
     <section
       className="rounded-xl border-2 border-indigo-200 bg-corporate-surface p-5 shadow-card"
-      aria-label="Biometric attendance staging workflow"
+      aria-label="Layer 2 — Biometric attendance staging workflow"
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-600">
+            Layer 2
+          </p>
           <h3 className="text-base font-bold text-corporate-text">
             Biometric Attendance — Staging Review &amp; Approval
           </h3>

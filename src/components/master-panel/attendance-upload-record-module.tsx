@@ -70,20 +70,23 @@ export default function AttendanceUploadRecordModule({
   return (
     <section
       className="rounded-xl border-2 border-corporate-brand/30 bg-corporate-surface p-5 shadow-card"
-      aria-label="Upload record editor — 22 column Excel staging"
+      aria-label="Layer 1 — Upload record editor — 22 column Excel staging"
     >
       <div className="flex flex-wrap items-start gap-3 border-b border-corporate-border pb-4">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-corporate-brand-light text-corporate-brand">
           <FileSpreadsheet className="h-5 w-5" aria-hidden />
         </div>
         <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-corporate-brand">
+            Layer 1
+          </p>
           <h3 className="text-base font-bold text-corporate-text">
             Upload Record Editor
           </h3>
           <p className="mt-1 text-xs text-corporate-muted">
             Upload Excel, edit all 22 biometric columns (plus Date = 23 fields), then{" "}
-            <strong>Save to Server</strong>. After save, rows move from this staging area to{" "}
-            <strong>Saved Upload Records</strong> below — server storage only.
+            <strong>Save to Server</strong>. After save, rows advance to Layer 2 (staging review),
+            then Layer 3 (live workflow). Committed records appear in Layer 4.
           </p>
           {dbConnected === false && (
             <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">

@@ -840,12 +840,15 @@ export default function AttendanceControlCenter() {
     <section
       ref={gridSectionRef}
       className="flex min-h-[420px] w-full min-w-0 flex-col gap-3"
-      aria-label="Attendance history grid"
+      aria-label="Layer 4 — Attendance history grid"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <FileSpreadsheet className="h-5 w-5 text-corporate-brand" aria-hidden />
           <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-corporate-brand">
+              Layer 4
+            </p>
             <h3 className="text-sm font-bold text-corporate-text">Saved Upload Records</h3>
             <p className="text-xs text-corporate-muted">
               {filterDate
@@ -994,7 +997,8 @@ export default function AttendanceControlCenter() {
               Attendance Control Center
             </h2>
             <p className="text-sm text-corporate-muted">
-              Filter historical records, upload biometric exports, and review the unified attendance grid
+              Four-layer approval pipeline — upload, staging review, live workflow verification, then
+              saved server records
             </p>
           </div>
         </div>
@@ -1189,7 +1193,7 @@ export default function AttendanceControlCenter() {
         )}
       </section>
 
-      {/* Upload Record Editor — 22-column staging above Live Workflow */}
+      {/* Layer 1 — Upload record editor (22-column Excel staging) */}
       <AttendanceUploadRecordModule
         importPreview={
           importPreview
@@ -1226,37 +1230,46 @@ export default function AttendanceControlCenter() {
             Last save: {lastSaveSummary.biometricSaved} row(s) for {lastSaveSummary.savedDate}
           </p>
           <p className="mt-1 text-xs text-emerald-800">
-            File: {lastSaveSummary.fileName} — records moved to{" "}
-            <strong>Saved Upload Records</strong> on the server. Staging area cleared.
+            File: {lastSaveSummary.fileName} — continue in Layer 2 (staging review), then Layer 3
+            (live workflow). Committed rows appear in Layer 4 — Saved Upload Records.
           </p>
           <button
             type="button"
             onClick={() => viewSavedDate(lastSaveSummary.savedDate)}
             className="btn-primary mt-3 inline-flex h-9 items-center gap-2 px-4 text-xs"
           >
-            View in Saved Upload Records
+            View in Layer 4 — Saved Upload Records
           </button>
         </div>
       )}
 
-      {renderHistoryGrid()}
-
+      {/* Layer 2 — Biometric staging review & approval */}
       <AttendanceStagingWorkflowPanel
         filterDate={filterDate}
         refreshToken={stagingRefreshToken}
       />
 
-      {/* Restored live verification workflow — original attendance operations screen */}
-      <section className="space-y-4 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
+      {/* Layer 3 — Live four-stage verification workflow */}
+      <section
+        className="space-y-4 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card"
+        aria-label="Layer 3 — Live attendance workflow"
+      >
         <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-corporate-brand">
+            Layer 3
+          </p>
           <h3 className="text-sm font-bold text-corporate-text">Live Attendance Workflow</h3>
           <p className="text-xs text-corporate-muted">
-            Restored four-stage verification view — review uploaded biometric rows by employee,
-            date, punch times, and machine assignment after Process &amp; Save
+            Four-stage verification — allocation, operator verification, supervisor approval, payroll
+            commit. Review uploaded biometric rows by employee, date, punch times, and machine
+            assignment after staging approval.
           </p>
         </div>
         <AttendanceSystemPanel />
       </section>
+
+      {/* Layer 4 — Saved / merged server records */}
+      {renderHistoryGrid()}
 
       <section className="rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
         <ManualAttendanceEntryPanel />

@@ -16,7 +16,7 @@ import {
   ensureAttendanceTablesSchema,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
-import { fetchStorageGridRows, transitionStoragePipelineStage } from "@/lib/attendance-storage-fallback";
+import { fetchStorageGridRows, transitionStoragePipelineStage, updateStorageRowDepartment } from "@/lib/attendance-storage-fallback";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 
 const BIOMETRIC_TABLE = "biometric_attendance";
@@ -28,11 +28,19 @@ function resolveRowPipelineStage(row: Record<string, unknown>): PipelineStage {
 
 async function fetchRowsByPipelineStageSupabase(
   stage: PipelineStage,
-  options: { limit?: number; date?: string; search?: string } = {}
+  options: {
+    limit?: number;
+    date?: string;
+    fromDate?: string;
+    toDate?: string;
+    search?: string;
+  } = {}
 ): Promise<BiometricAttendanceGridRow[]> {
   const supabase = createAdminClient();
   const limit = options.limit ?? 500;
   const normalizedDate = options.date ? normalizeAttendanceDateIso(options.date) : undefined;
+  const fromDate = options.fromDate ? normalizeAttendanceDateIso(options.fromDate) : undefined;
+  const toDate = options.toDate ? normalizeAttendanceDateIso(options.toDate) : undefined;
   const searchToken = options.search?.trim();
 
   let query = supabase
@@ -43,6 +51,8 @@ async function fetchRowsByPipelineStageSupabase(
     .limit(limit);
 
   if (normalizedDate) query = query.eq("date", normalizedDate);
+  if (fromDate) query = query.gte("date", fromDate);
+  if (toDate) query = query.lte("date", toDate);
   if (searchToken) {
     const pattern = `%${searchToken}%`;
     query = query.or(`employee_name.ilike.${pattern},pay_code.ilike.${pattern}`);
@@ -59,7 +69,13 @@ async function fetchRowsByPipelineStageSupabase(
 
 async function fetchRowsByPipelineStageStorage(
   stage: PipelineStage,
-  options: { limit?: number; date?: string; search?: string } = {}
+  options: {
+    limit?: number;
+    date?: string;
+    fromDate?: string;
+    toDate?: string;
+    search?: string;
+  } = {}
 ): Promise<BiometricAttendanceGridRow[]> {
   if (!isSupabaseServerConfigured()) return [];
   const supabase = createAdminClient();
@@ -67,10 +83,32 @@ async function fetchRowsByPipelineStageStorage(
   return all;
 }
 
+function filterRowsByDateRange(
+  rows: BiometricAttendanceGridRow[],
+  fromDate?: string,
+  toDate?: string
+): BiometricAttendanceGridRow[] {
+  if (!fromDate && !toDate) return rows;
+  const from = fromDate ? normalizeAttendanceDateIso(fromDate) : "";
+  const to = toDate ? normalizeAttendanceDateIso(toDate) : "";
+  return rows.filter((row) => {
+    const date = normalizeAttendanceDateIso(row.date);
+    if (from && date < from) return false;
+    if (to && date > to) return false;
+    return true;
+  });
+}
+
 /** Query biometric rows for exactly one pipeline layer — no cross-layer leakage. */
 export async function fetchRowsByPipelineStage(
   stage: PipelineStage,
-  options: { limit?: number; date?: string; search?: string } = {}
+  options: {
+    limit?: number;
+    date?: string;
+    fromDate?: string;
+    toDate?: string;
+    search?: string;
+  } = {}
 ): Promise<BiometricAttendanceGridRow[]> {
   if (!isPipelineStage(stage)) throw new Error(`Invalid pipeline stage: ${stage}`);
 
@@ -84,13 +122,19 @@ export async function fetchRowsByPipelineStage(
   }
 
   const storageRows = await fetchRowsByPipelineStageStorage(stage, options);
-  if (storageRows.length > 0) return storageRows;
+  if (storageRows.length > 0) {
+    return filterRowsByDateRange(storageRows, options.fromDate, options.toDate);
+  }
 
   const prismaRows = await fetchBiometricGridViaPrisma(options.limit ?? 500, options.date, options.search);
-  return prismaRows.filter((row) => {
-    const token = (row as BiometricAttendanceGridRow & { pipelineStage?: string }).pipelineStage;
-    return (token ?? INITIAL_INGEST_PIPELINE_STAGE) === stage;
-  });
+  return filterRowsByDateRange(
+    prismaRows.filter((row) => {
+      const token = (row as BiometricAttendanceGridRow & { pipelineStage?: string }).pipelineStage;
+      return (token ?? INITIAL_INGEST_PIPELINE_STAGE) === stage;
+    }),
+    options.fromDate,
+    options.toDate
+  );
 }
 
 export function gridRowsToStagingRows(rows: BiometricAttendanceGridRow[]): AttendanceStagingRow[] {
@@ -185,6 +229,42 @@ export async function commitWorkflowToSaved(ids: string[]): Promise<{ transition
     from: PIPELINE_STAGES.LAYER_3_WORKFLOW,
     to: PIPELINE_STAGES.LAYER_4_SAVED,
   });
+}
+
+export async function updateStagingDepartment(
+  ids: string[],
+  department: string
+): Promise<{ updated: number }> {
+  const token = department.trim();
+  if (!token || ids.length === 0) return { updated: 0 };
+
+  let updated = 0;
+  if (isSupabaseServerConfigured()) {
+    await ensureAttendanceTablesSchema();
+    try {
+      const supabase = createAdminClient();
+      const { data, error } = await supabase
+        .from(BIOMETRIC_TABLE)
+        .update({ department: token })
+        .in("id", ids)
+        .eq("pipeline_stage", PIPELINE_STAGES.LAYER_2_STAGING)
+        .select("id");
+      if (!error) updated = data?.length ?? 0;
+    } catch (error) {
+      console.warn("[pipeline] SQL department update failed:", error);
+    }
+  }
+
+  if (updated === 0 && isSupabaseServerConfigured()) {
+    const supabase = createAdminClient();
+    updated = await updateStorageRowDepartment(supabase, ids, token);
+  }
+
+  if (updated === 0 && ids.length > 0) {
+    throw new Error("Department update failed — verify staging records exist at Layer 2.");
+  }
+
+  return { updated };
 }
 
 export { INITIAL_INGEST_PIPELINE_STAGE, PIPELINE_STAGES, resolveRowPipelineStage };

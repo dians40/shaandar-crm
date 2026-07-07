@@ -1,4 +1,6 @@
 import type { UserRoleName } from "@/types/user-permissions";
+import type { UserPipelineStage } from "@/types/user-pipeline";
+import { DEFAULT_SAVED_USER_STAGE } from "@/types/user-pipeline";
 
 export type ManagedUserRecord = {
   id: string;
@@ -8,7 +10,12 @@ export type ManagedUserRecord = {
   role: UserRoleName;
   otpEnabled: boolean;
   createdAt: string;
+  pipelineStage?: UserPipelineStage;
 };
+
+export function resolveUserPipelineStage(user: ManagedUserRecord): UserPipelineStage {
+  return user.pipelineStage ?? DEFAULT_SAVED_USER_STAGE;
+}
 
 export type ManagedUserFormState = {
   fullName: string;

@@ -27,6 +27,8 @@ export type AttendanceStagingRow = {
   isAnomaly: boolean;
   anomalyReason: string;
   editRemark: string;
+  department: string;
+  designation: string;
   isLocked: boolean;
   approvedBy: string | null;
   approvedAt: string | null;

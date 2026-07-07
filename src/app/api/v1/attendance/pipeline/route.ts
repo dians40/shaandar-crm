@@ -6,6 +6,7 @@ import {
   gridRowsToStagingRows,
   gridRowsToWorkflowRecords,
   transitionPipelineStage,
+  updateStagingDepartment,
 } from "@/lib/attendance-pipeline-service";
 import { isPipelineStage, PIPELINE_STAGES } from "@/types/attendance-pipeline";
 
@@ -19,10 +20,18 @@ export async function GET(request: Request) {
 
     const limit = Math.min(Number(searchParams.get("limit") ?? "500"), 500);
     const date = searchParams.get("date")?.trim() || undefined;
+    const fromDate = searchParams.get("fromDate")?.trim() || undefined;
+    const toDate = searchParams.get("toDate")?.trim() || undefined;
     const search = searchParams.get("search")?.trim() || undefined;
     const format = searchParams.get("format")?.trim() ?? "grid";
 
-    const rows = await fetchRowsByPipelineStage(stageParam, { limit, date, search });
+    const rows = await fetchRowsByPipelineStage(stageParam, {
+      limit,
+      date,
+      fromDate,
+      toDate,
+      search,
+    });
 
     if (format === "staging") {
       return NextResponse.json({ rows: gridRowsToStagingRows(rows), meta: { count: rows.length, stage: stageParam } });
@@ -57,6 +66,15 @@ export async function POST(request: Request) {
     if (action === "commit-workflow" || action === "commit-all-workflow") {
       const result = await commitWorkflowToSaved(ids);
       return NextResponse.json({ ok: true, ...result, toStage: PIPELINE_STAGES.LAYER_4_SAVED });
+    }
+
+    if (action === "update-department") {
+      const department = String(body.department ?? "").trim();
+      if (!department) {
+        return NextResponse.json({ error: "department is required." }, { status: 400 });
+      }
+      const result = await updateStagingDepartment(ids, department);
+      return NextResponse.json({ ok: true, ...result });
     }
 
     if (action === "transition") {

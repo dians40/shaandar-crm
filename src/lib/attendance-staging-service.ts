@@ -77,6 +77,8 @@ function mapPayloadToLocalRow(
     isAnomaly: Boolean(payload.is_anomaly),
     anomalyReason: String(payload.anomaly_reason ?? ""),
     editRemark: "",
+    department: String(payload.department ?? ""),
+    designation: String(payload.designation ?? ""),
     isLocked: false,
     approvedBy: null,
     approvedAt: null,

@@ -7,6 +7,7 @@ import {
   updateManagedUser,
   writeManagedUsers,
 } from "@/lib/managed-users-store";
+import { assignInitialUserPipelineStage } from "@/lib/user-pipeline-store";
 import type { ManagedUserRecord } from "@/types/managed-user";
 
 export function useManagedUsers() {
@@ -19,7 +20,7 @@ export function useManagedUsers() {
   }, []);
 
   const addUser = useCallback((user: ManagedUserRecord) => {
-    const next = upsertManagedUser(user);
+    const next = upsertManagedUser(assignInitialUserPipelineStage(user));
     setUsers(next);
     return next;
   }, []);

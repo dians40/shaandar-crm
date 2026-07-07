@@ -64,6 +64,8 @@ export function mapBiometricPrismaRowToStagingRow(row: {
   id: string;
   payCode: string | null;
   employeeName: string | null;
+  department: string | null;
+  designation: string | null;
   date: string | null;
   inTime: string | null;
   outTime: string | null;
@@ -92,6 +94,8 @@ export function mapBiometricPrismaRowToStagingRow(row: {
     isAnomaly: false,
     anomalyReason: "",
     editRemark: row.remark ?? "",
+    department: row.department ?? "",
+    designation: row.designation ?? "",
     isLocked: false,
     approvedBy: null,
     approvedAt: null,

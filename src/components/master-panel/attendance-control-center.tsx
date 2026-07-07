@@ -7,7 +7,6 @@ import {
   FileSpreadsheet,
   Loader2,
   RefreshCw,
-  Search,
   AlertCircle,
 } from "lucide-react";
 import {
@@ -48,6 +47,7 @@ import AttendanceUploadRecordModule from "./attendance-upload-record-module";
 import AttendanceStagingWorkflowPanel from "./attendance-staging-workflow-panel";
 import AttendanceSystemPanel from "./attendance-system-panel";
 import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
+import LayerFilterControls from "./layer-filter-controls";
 import { useEmployees } from "@/hooks/use-employees";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
@@ -163,7 +163,8 @@ export default function AttendanceControlCenter() {
   const [gridMeta, setGridMeta] = useState({ biometricCount: 0, legacyCount: 0, mergedCount: 0 });
   const [isGridLoading, setIsGridLoading] = useState(false);
   const [gridError, setGridError] = useState<string | null>(null);
-  const [filterDate, setFilterDate] = useState("");
+  const [layer4FromDate, setLayer4FromDate] = useState("");
+  const [layer4ToDate, setLayer4ToDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [availableDates, setAvailableDates] = useState<AttendanceDateCatalogEntry[]>([]);
@@ -187,7 +188,8 @@ export default function AttendanceControlCenter() {
     setGridRows([]);
     setGridMeta({ biometricCount: 0, legacyCount: 0, mergedCount: 0 });
     setGridError(null);
-    setFilterDate("");
+    setLayer4FromDate("");
+    setLayer4ToDate("");
     setSearchQuery("");
     setDebouncedSearch("");
     setAvailableDates([]);
@@ -261,14 +263,18 @@ export default function AttendanceControlCenter() {
     setIsGridLoading(true);
     setGridError(null);
     try {
-      const activeDate = dateOverride ?? filterDate;
+      const activeFrom = dateOverride ?? layer4FromDate;
+      const activeTo = dateOverride ?? layer4ToDate;
       const params = new URLSearchParams({
         limit: "300",
         includeDates: "1",
         pipelineStage: "LAYER_4_SAVED",
       });
-      if (activeDate.trim()) {
-        params.set("date", normalizeAttendanceDateIso(activeDate.trim()));
+      if (activeFrom.trim()) {
+        params.set("fromDate", normalizeAttendanceDateIso(activeFrom.trim()));
+      }
+      if (activeTo.trim()) {
+        params.set("toDate", normalizeAttendanceDateIso(activeTo.trim()));
       }
       if (debouncedSearch) {
         params.set("search", debouncedSearch);
@@ -311,7 +317,7 @@ export default function AttendanceControlCenter() {
     } finally {
       setIsGridLoading(false);
     }
-  }, [filterDate, debouncedSearch]);
+  }, [layer4FromDate, layer4ToDate, debouncedSearch]);
 
   useEffect(() => {
     void loadGridRows();
@@ -320,7 +326,8 @@ export default function AttendanceControlCenter() {
   const viewSavedDate = useCallback(
     (date: string) => {
       const normalized = normalizeAttendanceDateIso(date);
-      setFilterDate(normalized);
+      setLayer4FromDate(normalized);
+      setLayer4ToDate(normalized);
       void loadGridRows(normalized);
       gridSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     },
@@ -628,7 +635,8 @@ export default function AttendanceControlCenter() {
           new Date().toISOString().slice(0, 10)
       );
 
-      setFilterDate(savedDate);
+      setLayer4FromDate(savedDate);
+      setLayer4ToDate(savedDate);
       setLastSaveSummary({
         biometricSaved,
         workflowSaved,
@@ -653,7 +661,8 @@ export default function AttendanceControlCenter() {
         setImportError(result.errors.map(toUserFacingAttendanceError).slice(0, 1).join(" · "));
       }
 
-      setFilterDate(savedDate);
+      setLayer4FromDate(savedDate);
+      setLayer4ToDate(savedDate);
       setStagingRefreshToken((token) => token + 1);
       stagingSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
@@ -760,9 +769,9 @@ export default function AttendanceControlCenter() {
             </p>
             <h3 className="text-sm font-bold text-corporate-text">Saved Upload Records</h3>
             <p className="text-xs text-corporate-muted">
-              {filterDate
-                ? `Server records for ${normalizeAttendanceDateIso(filterDate)} — same 22 columns as upload editor`
-                : "Committed server records — pick a date above or upload and save from the editor module"}
+              {layer4FromDate || layer4ToDate
+                ? `Server records from ${layer4FromDate || "…"} to ${layer4ToDate || "…"} — same 22 columns as upload editor`
+                : "Committed server records — pick a date range above or upload and save from the editor module"}
             </p>
           </div>
         </div>
@@ -839,8 +848,8 @@ export default function AttendanceControlCenter() {
                   colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 1}
                   className="px-3 py-10 text-center text-sm text-corporate-muted"
                 >
-                  {filterDate
-                    ? `No saved records for ${normalizeAttendanceDateIso(filterDate)}. Upload an Excel file for this date or pick another uploaded date above.`
+                  {layer4FromDate || layer4ToDate
+                    ? `No saved records for the selected date range. Upload an Excel file or adjust the filter above.`
                     : "No attendance records found. Upload an Excel file or choose an uploaded date chip above."}
                 </td>
               </tr>
@@ -1004,127 +1013,70 @@ export default function AttendanceControlCenter() {
         </div>
       </nav>
 
-      {/* Mandatory filter bar — always rendered at top of workspace */}
-      <section
-        className="rounded-xl border-2 border-corporate-brand/25 bg-corporate-surface p-4 shadow-card"
-        aria-label="Attendance filter controls"
-      >
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-bold text-corporate-text">Filter & Search Controls</h3>
-            <p className="text-xs text-corporate-muted">
-              {isGridLoading
-                ? "Loading attendance history..."
-                : `${gridMeta.mergedCount} saved record(s) in Layer 4`}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void loadGridRows()}
-            disabled={isGridLoading}
-            className="btn-secondary inline-flex h-10 items-center gap-2 px-4 text-sm"
-          >
-            <RefreshCw
-              className={cn("h-4 w-4", isGridLoading && "animate-spin")}
-              aria-hidden
-            />
-            Refresh
-          </button>
-        </div>
+      {/* Layer 4 filter controls */}
+      <LayerFilterControls
+        idPrefix="layer-4-history"
+        fromDate={layer4FromDate}
+        toDate={layer4ToDate}
+        searchQuery={searchQuery}
+        onFromDateChange={setLayer4FromDate}
+        onToDateChange={setLayer4ToDate}
+        onSearchChange={setSearchQuery}
+        onRefresh={() => void loadGridRows()}
+        isRefreshing={isGridLoading}
+        summary={
+          isGridLoading
+            ? "Loading attendance history..."
+            : `${gridMeta.mergedCount} saved record(s) in Layer 4`
+        }
+        searchPlaceholder="Search by Name or Pay Code..."
+      />
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-          <label
-            htmlFor="attendance-filter-date"
-            className="flex min-w-[180px] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-corporate-muted"
-          >
-            Attendance Date
-            <input
-              id="attendance-filter-date"
-              type="date"
-              value={filterDate}
-              onChange={(event) => setFilterDate(event.target.value)}
-              className="h-11 rounded-lg border border-corporate-border bg-white px-3 text-sm font-normal normal-case text-corporate-text shadow-sm"
-            />
-          </label>
+      {gridError && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {gridError}
+        </p>
+      )}
 
-          <label
-            htmlFor="attendance-filter-search"
-            className="flex min-w-[240px] flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-corporate-muted"
-          >
-            Text Search
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-corporate-muted"
-                aria-hidden
-              />
-              <input
-                id="attendance-filter-search"
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search by Name or Pay Code..."
-                className="h-11 w-full rounded-lg border border-corporate-border bg-white pl-9 pr-3 text-sm font-normal normal-case text-corporate-text shadow-sm"
-              />
-            </div>
-          </label>
-
-          {filterDate && (
-            <button
-              type="button"
-              onClick={() => setFilterDate("")}
-              className="h-11 rounded-lg border border-corporate-border bg-white px-4 text-sm font-medium text-corporate-text hover:bg-corporate-bg"
-            >
-              Clear Date
-            </button>
-          )}
-        </div>
-
-        {gridError && (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            {gridError}
+      {lastSaveSummary && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          <p className="font-semibold">Last upload saved successfully</p>
+          <p className="mt-1 text-xs">
+            File: <strong>{lastSaveSummary.fileName}</strong> · Date:{" "}
+            <strong>{lastSaveSummary.savedDate}</strong>
           </p>
-        )}
+          <p className="mt-1 text-xs">
+            Saved to <strong>public.biometric_attendance</strong> at Layer 2 staging (
+            {lastSaveSummary.biometricSaved} rows). Approve in Layer 2, then complete Layer 3
+            workflow — committed rows appear in Layer 4.
+          </p>
+        </div>
+      )}
 
-        {lastSaveSummary && (
-          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-            <p className="font-semibold">Last upload saved successfully</p>
-            <p className="mt-1 text-xs">
-              File: <strong>{lastSaveSummary.fileName}</strong> · Date:{" "}
-              <strong>{lastSaveSummary.savedDate}</strong>
-            </p>
-            <p className="mt-1 text-xs">
-              Saved to <strong>public.biometric_attendance</strong> at Layer 2 staging (
-              {lastSaveSummary.biometricSaved} rows). Approve in Layer 2, then complete Layer 3
-              workflow — committed rows appear in Layer 4.
-            </p>
+      {availableDates.length > 0 && (
+        <div className="rounded-xl border border-corporate-border bg-corporate-surface p-4 shadow-card">
+          <p className="text-xs font-semibold uppercase tracking-wide text-corporate-muted">
+            Uploaded Dates (click to view saved Excel records)
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {availableDates.slice(0, 24).map((entry) => (
+              <button
+                key={entry.date}
+                type="button"
+                onClick={() => viewSavedDate(entry.date)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                  layer4FromDate === entry.date && layer4ToDate === entry.date
+                    ? "border-corporate-brand bg-corporate-brand text-white"
+                    : "border-corporate-border bg-white text-corporate-text hover:border-corporate-brand/40"
+                )}
+              >
+                {entry.date} · {entry.totalCount} rows
+              </button>
+            ))}
           </div>
-        )}
-
-        {availableDates.length > 0 && (
-          <div className="mt-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-corporate-muted">
-              Uploaded Dates (click to view saved Excel records)
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {availableDates.slice(0, 24).map((entry) => (
-                <button
-                  key={entry.date}
-                  type="button"
-                  onClick={() => setFilterDate(entry.date)}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-                    filterDate === entry.date
-                      ? "border-corporate-brand bg-corporate-brand text-white"
-                      : "border-corporate-border bg-white text-corporate-text hover:border-corporate-brand/40"
-                  )}
-                >
-                  {entry.date} · {entry.totalCount} rows
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </section>
+        </div>
+      )}
 
       {/* Layer 1 — Upload record editor (22-column Excel staging) */}
       <div id="attendance-layer-1" className="scroll-mt-28 min-h-[280px]">
@@ -1192,7 +1144,6 @@ export default function AttendanceControlCenter() {
         className="scroll-mt-28 min-h-[320px]"
       >
         <AttendanceStagingWorkflowPanel
-          filterDate={filterDate}
           refreshToken={stagingRefreshToken}
           schemaReady={schemaStatus === "ready" || gridMeta.mergedCount > 0}
           onApproved={() => setWorkflowRefreshToken((token) => token + 1)}

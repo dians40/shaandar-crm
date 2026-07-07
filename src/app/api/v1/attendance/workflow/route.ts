@@ -62,14 +62,24 @@ function recordKey(record: AttendanceWorkflowRecord): string {
   return `${record.employeeId}|${record.attendanceDate}`;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!isSupabaseServerConfigured()) {
     return NextResponse.json({ records: [] });
   }
 
   try {
+    const { searchParams } = new URL(request.url);
+    const fromDate = searchParams.get("fromDate")?.trim() || undefined;
+    const toDate = searchParams.get("toDate")?.trim() || undefined;
+    const search = searchParams.get("search")?.trim() || undefined;
+
     await ensureAttendanceTablesSchema();
-    const rows = await fetchRowsByPipelineStage(PIPELINE_STAGES.LAYER_3_WORKFLOW, { limit: 500 });
+    const rows = await fetchRowsByPipelineStage(PIPELINE_STAGES.LAYER_3_WORKFLOW, {
+      limit: 500,
+      fromDate,
+      toDate,
+      search,
+    });
     const records = gridRowsToWorkflowRecords(rows).sort((a, b) =>
       b.createdAt.localeCompare(a.createdAt)
     );

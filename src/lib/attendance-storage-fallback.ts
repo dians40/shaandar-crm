@@ -148,6 +148,8 @@ export async function fetchStorageGridRows(
   options: {
     limit?: number;
     date?: string;
+    fromDate?: string;
+    toDate?: string;
     search?: string;
     pipelineStage?: PipelineStage;
   } = {}
@@ -200,6 +202,9 @@ export async function fetchStorageGridRows(
         if (!rowMatchesFilters(row, options.date, options.search)) continue;
         const stage = String(row.pipeline_stage ?? INITIAL_INGEST_PIPELINE_STAGE);
         if (options.pipelineStage && stage !== options.pipelineStage) continue;
+        const rowDate = normalizeAttendanceDateIso(String(row.date ?? row.attendance_date ?? reportDate));
+        if (options.fromDate && rowDate < normalizeAttendanceDateIso(options.fromDate)) continue;
+        if (options.toDate && rowDate > normalizeAttendanceDateIso(options.toDate)) continue;
         const rowId = stableStorageRowId(reportDate, row, rowIndex);
         merged.push({
           ...mapBiometricAttendanceGridRow({
@@ -330,6 +335,61 @@ export async function transitionStoragePipelineStage(
   }
 
   return transitioned;
+}
+
+/** Update department on Layer 2 staging rows in cloud storage batches. */
+export async function updateStorageRowDepartment(
+  supabase: SupabaseClient,
+  ids: string[],
+  department: string
+): Promise<number> {
+  if (ids.length === 0) return 0;
+  await ensureAttendanceStorageBucket(supabase);
+  const idSet = new Set(ids);
+  let updated = 0;
+
+  const { data: dateFolders } = await supabase.storage
+    .from(ATTENDANCE_STORAGE_BUCKET)
+    .list("imports", { limit: 200, sortBy: { column: "name", order: "desc" } });
+
+  for (const folder of dateFolders ?? []) {
+    if (folder.name.endsWith(".json")) continue;
+    const reportDate = normalizeAttendanceDateIso(folder.name);
+    if (!reportDate) continue;
+
+    const { data: batchFiles } = await supabase.storage
+      .from(ATTENDANCE_STORAGE_BUCKET)
+      .list(storageImportPrefix(reportDate), { limit: 100 });
+
+    for (const file of batchFiles ?? []) {
+      if (!file.name.endsWith(".json")) continue;
+      const path = `${storageImportPrefix(reportDate)}/${file.name}`;
+      const batch = await downloadStorageBatch(supabase, path);
+      if (!batch) continue;
+
+      let batchChanged = false;
+      for (let index = 0; index < batch.rows.length; index += 1) {
+        const row = batch.rows[index];
+        const rowId = stableStorageRowId(reportDate, row, index);
+        const stage = String(row.pipeline_stage ?? INITIAL_INGEST_PIPELINE_STAGE);
+        if (idSet.has(rowId) && stage === INITIAL_INGEST_PIPELINE_STAGE) {
+          batch.rows[index] = { ...row, id: rowId, department };
+          batchChanged = true;
+          updated += 1;
+        }
+      }
+
+      if (batchChanged) {
+        const body = Buffer.from(JSON.stringify(batch), "utf8");
+        await supabase.storage.from(ATTENDANCE_STORAGE_BUCKET).upload(path, body, {
+          contentType: "application/json",
+          upsert: true,
+        });
+      }
+    }
+  }
+
+  return updated;
 }
 
 export function isStorageFallbackError(message: string): boolean {

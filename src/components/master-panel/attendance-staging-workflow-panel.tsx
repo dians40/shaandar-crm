@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,8 +9,10 @@ import {
   RefreshCw,
   ShieldCheck,
 } from "lucide-react";
+import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
 import { cn } from "@/lib/utils";
 import type { AttendanceStagingRow } from "@/types/attendance-staging";
+import LayerFilterControls from "./layer-filter-controls";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
@@ -20,7 +22,6 @@ import {
 } from "./universal-master-list";
 
 type AttendanceStagingWorkflowPanelProps = {
-  filterDate?: string;
   refreshToken?: number;
   schemaReady?: boolean;
   onApproved?: () => void;
@@ -39,12 +40,14 @@ function formatTime(iso: string | null): string {
 }
 
 export default function AttendanceStagingWorkflowPanel({
-  filterDate = "",
   refreshToken = 0,
   schemaReady = true,
   onApproved,
 }: AttendanceStagingWorkflowPanelProps) {
   const [rows, setRows] = useState<AttendanceStagingRow[]>([]);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -62,7 +65,9 @@ export default function AttendanceStagingWorkflowPanel({
         stage: "LAYER_2_STAGING",
         format: "staging",
       });
-      if (filterDate) params.set("date", filterDate);
+      if (fromDate) params.set("fromDate", fromDate);
+      if (toDate) params.set("toDate", toDate);
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
       const response = await fetch(`/api/v1/attendance/pipeline?${params.toString()}`);
       const body = (await response.json()) as {
         rows?: AttendanceStagingRow[];
@@ -77,11 +82,16 @@ export default function AttendanceStagingWorkflowPanel({
     } finally {
       setLoading(false);
     }
-  }, [filterDate]);
+  }, [fromDate, toDate, searchQuery]);
 
   useEffect(() => {
     void loadRows();
   }, [loadRows, refreshToken]);
+
+  const departmentOptions = useMemo(
+    () => mergeDepartmentOptions(rows.map((row) => row.department)),
+    [rows]
+  );
 
   const postPipelineAction = async (payload: Record<string, unknown>) => {
     const response = await fetch("/api/v1/attendance/pipeline", {
@@ -92,6 +102,29 @@ export default function AttendanceStagingWorkflowPanel({
     const body = (await response.json()) as Record<string, unknown>;
     if (!response.ok) throw new Error(String(body.error ?? "Pipeline action failed."));
     return body;
+  };
+
+  const handleDepartmentChange = async (row: AttendanceStagingRow, department: string) => {
+    if (!department || department === row.department) return;
+    setBusyId(row.id);
+    setError(null);
+    try {
+      await postPipelineAction({
+        action: "update-department",
+        ids: [row.id],
+        department,
+      });
+      setRows((current) =>
+        current.map((entry) => (entry.id === row.id ? { ...entry, department } : entry))
+      );
+      setMessage(`Department updated for ${row.employeeName || row.payCode}.`);
+    } catch (departmentError) {
+      setError(
+        departmentError instanceof Error ? departmentError.message : "Department update failed."
+      );
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const postAction = async (payload: Record<string, unknown>) => {
@@ -233,6 +266,20 @@ export default function AttendanceStagingWorkflowPanel({
         </p>
       )}
 
+      <LayerFilterControls
+        idPrefix="layer-2-staging"
+        fromDate={fromDate}
+        toDate={toDate}
+        searchQuery={searchQuery}
+        onFromDateChange={setFromDate}
+        onToDateChange={setToDate}
+        onSearchChange={setSearchQuery}
+        onRefresh={() => void loadRows()}
+        isRefreshing={loading}
+        summary={`${rows.length} staging record(s) at LAYER_2_STAGING`}
+        searchPlaceholder="Search by name or pay code..."
+      />
+
       <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "max-h-[480px] overflow-auto")}>
         <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[1400px]")}>
           <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
@@ -241,6 +288,7 @@ export default function AttendanceStagingWorkflowPanel({
                 "Actions",
                 "Pay Code",
                 "Employee",
+                "Department",
                 "Shift Date",
                 "Machine In",
                 "Machine Out",
@@ -260,13 +308,13 @@ export default function AttendanceStagingWorkflowPanel({
           <tbody className="divide-y divide-corporate-border bg-white">
             {loading ? (
               <tr>
-                <td colSpan={12} className="px-3 py-8 text-center text-sm text-corporate-muted">
+                <td colSpan={13} className="px-3 py-8 text-center text-sm text-corporate-muted">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" aria-hidden />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={12} className="px-3 py-8 text-center text-sm text-corporate-muted">
+                <td colSpan={13} className="px-3 py-8 text-center text-sm text-corporate-muted">
                   No staging records — upload Excel and click Save to Server (Step 1).
                 </td>
               </tr>
@@ -309,6 +357,26 @@ export default function AttendanceStagingWorkflowPanel({
                   </td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.payCode}</td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.employeeName || "—"}</td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                    {!row.isLocked ? (
+                      <select
+                        value={row.department || ""}
+                        disabled={busyId === row.id}
+                        onChange={(event) => void handleDepartmentChange(row, event.target.value)}
+                        className="min-w-[140px] rounded border border-corporate-border bg-white px-2 py-1 text-xs"
+                        aria-label={`Department for ${row.employeeName || row.payCode}`}
+                      >
+                        <option value="">Select department</option>
+                        {departmentOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      row.department || "—"
+                    )}
+                  </td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.shiftDate}</td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{formatTime(row.machineInTime)}</td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{formatTime(row.machineOutTime)}</td>

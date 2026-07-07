@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarCheck, CheckCircle2, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { CalendarCheck, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
-import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
+import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import type { AttendanceWorkflowRecord } from "@/types/attendance-workflow";
+import LayerFilterControls from "./layer-filter-controls";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
@@ -24,13 +25,17 @@ export default function AttendanceSystemPanel({
   onCommitted,
 }: AttendanceSystemPanelProps) {
   const [records, setRecords] = useState<AttendanceWorkflowRecord[]>([]);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const resetPanelState = useCallback(() => {
+    setFromDate("");
+    setToDate("");
     setSearchQuery("");
     setMessage(null);
     setError(null);
@@ -42,7 +47,14 @@ export default function AttendanceSystemPanel({
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/v1/attendance/workflow");
+      const params = new URLSearchParams();
+      if (fromDate) params.set("fromDate", fromDate);
+      if (toDate) params.set("toDate", toDate);
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
+      const query = params.toString();
+      const response = await fetch(
+        query ? `/api/v1/attendance/workflow?${query}` : "/api/v1/attendance/workflow"
+      );
       const body = (await response.json()) as {
         records?: AttendanceWorkflowRecord[];
         error?: string;
@@ -55,23 +67,11 @@ export default function AttendanceSystemPanel({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fromDate, toDate, searchQuery]);
 
   useEffect(() => {
     void loadRecords();
   }, [loadRecords, refreshToken]);
-
-  const filtered = useMemo(
-    () =>
-      records.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.employeeName, [
-          row.attendanceDate,
-          row.punchIn,
-          row.punchOut,
-        ])
-      ),
-    [records, searchQuery]
-  );
 
   const handleApprove = async (record: AttendanceWorkflowRecord) => {
     setBusyId(record.id);
@@ -84,9 +84,7 @@ export default function AttendanceSystemPanel({
       });
       const body = (await response.json()) as Record<string, unknown>;
       if (!response.ok) throw new Error(String(body.error ?? "Approval failed."));
-      setMessage(
-        `Approved ${record.employeeName} — moved to Layer 4 saved history.`
-      );
+      setMessage(`Approved ${record.employeeName} — moved to Layer 4 saved history.`);
       await loadRecords();
       onCommitted?.();
     } catch (approveError) {
@@ -97,10 +95,10 @@ export default function AttendanceSystemPanel({
   };
 
   const handleApproveAll = async () => {
-    if (filtered.length === 0) return;
+    if (records.length === 0) return;
     setMessage(null);
     try {
-      const ids = filtered.map((row) => row.id);
+      const ids = records.map((row) => row.id);
       const response = await fetch("/api/v1/attendance/pipeline", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -119,43 +117,34 @@ export default function AttendanceSystemPanel({
   return (
     <div className="w-full space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm text-corporate-muted">
-            Layer 3 only — records with pipeline_stage LAYER_3_WORKFLOW. Empty until Layer 2
-            approval. Final approval saves rows to Layer 4 history.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void loadRecords()}
-            disabled={loading}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-corporate-border px-3 text-xs font-medium"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} aria-hidden />
-            Refresh
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleApproveAll()}
-            disabled={filtered.length === 0}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"
-          >
-            <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-            Approve All to Layer 4 ({filtered.length})
-          </button>
-        </div>
+        <p className="text-sm text-corporate-muted">
+          Layer 3 only — records with pipeline_stage LAYER_3_WORKFLOW. Empty until Layer 2
+          approval. Final approval saves rows to Layer 4 history.
+        </p>
+        <button
+          type="button"
+          onClick={() => void handleApproveAll()}
+          disabled={records.length === 0}
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"
+        >
+          <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+          Approve All to Layer 4 ({records.length})
+        </button>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input
-          type="search"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Search employee, date, punch..."
-          className="h-9 w-full max-w-sm rounded-lg border border-corporate-border px-3 text-sm"
-        />
-      </div>
+      <LayerFilterControls
+        idPrefix="layer-3-workflow"
+        fromDate={fromDate}
+        toDate={toDate}
+        searchQuery={searchQuery}
+        onFromDateChange={setFromDate}
+        onToDateChange={setToDate}
+        onSearchChange={setSearchQuery}
+        onRefresh={() => void loadRecords()}
+        isRefreshing={loading}
+        summary={`${records.length} workflow record(s) at LAYER_3_WORKFLOW`}
+        searchPlaceholder="Search employee, date, punch..."
+      />
 
       {message && (
         <p className="flex items-center gap-2 text-sm text-emerald-800">
@@ -187,7 +176,7 @@ export default function AttendanceSystemPanel({
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" aria-hidden />
                 </td>
               </tr>
-            ) : filtered.length === 0 ? (
+            ) : records.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-3 py-10 text-center text-sm text-corporate-muted">
                   <CalendarCheck className="mx-auto mb-2 h-6 w-6 opacity-60" aria-hidden />
@@ -197,7 +186,7 @@ export default function AttendanceSystemPanel({
                 </td>
               </tr>
             ) : (
-              filtered.map((row) => (
+              records.map((row) => (
                 <tr key={row.id}>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>
                     <button

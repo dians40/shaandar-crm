@@ -8,7 +8,6 @@ import { sidebarNavItems } from "@/constants/nav-config";
 import {
   getGroupById,
   getMasterPanelModule,
-  EMPLOYEE_EMBEDDED_MODULE_IDS,
   isMasterPanelModuleId,
   MASTER_PANEL_MODULE_GROUPS,
   type MasterPanelModuleGroupId,
@@ -85,10 +84,8 @@ export default function Sidebar({
       ({
         // Master Panel — full administration routes always visible (role matrix applies inside workspace).
         "master-panel": getGroupById("administration")?.moduleIds ?? [],
-        // Transactions menu — full operational routes; manual entry stays in Employee Management only.
-        transactions: (getGroupById("transaction")?.moduleIds ?? []).filter(
-          (moduleId) => !EMPLOYEE_EMBEDDED_MODULE_IDS.includes(moduleId)
-        ),
+        // Transactions menu — full operational routes including attendance workspace modules.
+        transactions: getGroupById("transaction")?.moduleIds ?? [],
       }) satisfies Record<ExpandableSectionId, MasterPanelModuleId[]>,
     []
   );

@@ -37,6 +37,8 @@ import ItemsManagementPanel from "./items-management-panel";
 import ModulePlaceholder from "./module-placeholder";
 import OvertimeTrackerPanel from "./overtime-tracker-panel";
 import AttendanceControlCenter from "./attendance-control-center";
+import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
+import BiometricAttendanceRecordsPanel from "./biometric-attendance-records-panel";
 import VehicleManagementTransactionPanel from "./vehicle-management-transaction-panel";
 import RepairMaintenancePanel from "./repair-maintenance-panel";
 import TransactionPlaceholderPanel from "./transaction-placeholder-panel";
@@ -109,13 +111,6 @@ function resolveDefaultModuleId(
   scope: MasterPanelModuleGroupId,
   moduleParam: string | null
 ): MasterPanelModuleId {
-  if (
-    moduleParam === "attendance-manual-entry" ||
-    moduleParam === "attendance-biometric-log"
-  ) {
-    return "employee-management";
-  }
-
   if (isMasterPanelModuleId(moduleParam)) {
     const moduleGroup = getGroupForModule(moduleParam);
     if (moduleGroup?.id === scope) {
@@ -244,6 +239,10 @@ function MasterPanelContent({ scope }: MasterPanelContentProps) {
           return <ApiIntegrationGatewayPanel />;
         case "attendance-system":
           return <AttendanceControlCenter />;
+        case "attendance-manual-entry":
+          return <ManualAttendanceEntryPanel />;
+        case "attendance-biometric-log":
+          return <BiometricAttendanceRecordsPanel />;
         case "overtime-tracker":
           return <OvertimeTrackerPanel />;
         case "vehicle-management-transaction":

@@ -27,7 +27,10 @@ export function isAttendanceSchemaError(message: string): boolean {
     lower.includes("not find table") ||
     (lower.includes("relation") && lower.includes("does not exist")) ||
     (lower.includes("public.employee_attendance") && lower.includes("not")) ||
-    (lower.includes("public.biometric_attendance") && lower.includes("not"))
+    (lower.includes("public.biometric_attendance") && lower.includes("not")) ||
+    (lower.includes("public.attendance_staging") && lower.includes("not")) ||
+    (lower.includes("attendance_staging") && lower.includes("schema")) ||
+    (lower.includes("attendance staging") && lower.includes("schema"))
   );
 }
 
@@ -51,7 +54,12 @@ export async function checkAttendanceSchemaReady(): Promise<{
 
   try {
     const supabase = createAdminClient();
-    const tables = ["employee_attendance", "biometric_attendance"] as const;
+    const tables = [
+      "employee_attendance",
+      "biometric_attendance",
+      "attendance_staging",
+      "attendance_audit_log",
+    ] as const;
 
     for (const table of tables) {
       const { error } = await supabase.from(table).select("id").limit(1);

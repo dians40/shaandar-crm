@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ensureAttendanceTablesSchema } from "@/lib/attendance-schema-ensure";
 import {
   approveAllStaging,
   approveStagingRow,
@@ -17,6 +18,7 @@ import { normalizeBiometric23ColumnRecord } from "@/types/attendance-bulk-import
 
 export async function GET(request: Request) {
   try {
+    await ensureAttendanceTablesSchema();
     const { searchParams } = new URL(request.url);
     const shiftDate = searchParams.get("shiftDate")?.trim() || undefined;
     const status = searchParams.get("status")?.trim() || undefined;
@@ -34,6 +36,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    await ensureAttendanceTablesSchema();
     const body = (await request.json()) as Record<string, unknown>;
     const action = String(body.action ?? "bulk-upload");
     const changedBy = String(body.changedBy ?? "Supervisor");

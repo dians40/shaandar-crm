@@ -114,7 +114,11 @@ export default function AttendanceStagingWorkflowPanel({
         if (ok) await handleApproveAll(true);
         return;
       }
-      setMessage(`Bulk approved ${body.approved ?? 0} row(s).`);
+      setMessage(
+        body.storageFallback
+          ? `Bulk approved ${body.approved ?? 0} row(s) in cloud staging (SQL migration 012 pending).`
+          : `Bulk approved ${body.approved ?? 0} row(s).`
+      );
       await loadRows();
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : "Bulk approve failed.");
@@ -156,7 +160,11 @@ export default function AttendanceStagingWorkflowPanel({
         action: "transfer",
         shiftDate: filterDate,
       });
-      setMessage(`Transferred ${body.transferred ?? 0} row(s) to employee_attendance master.`);
+      setMessage(
+        body.storageFallback
+          ? `Saved ${body.transferred ?? 0} approved row(s) to cloud master snapshot (run migration 012 for SQL transfer).`
+          : `Transferred ${body.transferred ?? 0} row(s) to employee_attendance master.`
+      );
     } catch (transferError) {
       setError(transferError instanceof Error ? transferError.message : "Transfer failed.");
     }

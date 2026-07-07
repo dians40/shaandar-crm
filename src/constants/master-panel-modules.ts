@@ -443,7 +443,10 @@ export const MASTER_PANEL_MODULE_GROUPS: MasterPanelModuleGroup[] = [
     id: "transaction",
     label: "Transaction",
     description: "Daily Operations",
-    moduleIds: TRANSACTION_MODULES.map((entry) => entry.id),
+    moduleIds: [
+      ...TRANSACTION_MODULES.map((entry) => entry.id),
+      ...INTERNAL_WORKSPACE_MODULES.map((entry) => entry.id),
+    ],
   },
 ];
 

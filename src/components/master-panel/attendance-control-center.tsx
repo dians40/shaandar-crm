@@ -39,6 +39,8 @@ import {
 } from "@/lib/attendance-import-parser";
 import { bulkRecordHasContent } from "@/types/attendance-bulk-import-row";
 import AttendanceBulkImportPreviewGrid from "./attendance-bulk-import-preview-grid";
+import AttendanceSystemPanel from "./attendance-system-panel";
+import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
 import { useEmployees } from "@/hooks/use-employees";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
@@ -532,6 +534,7 @@ export default function AttendanceControlCenter() {
       setImportPreview(null);
       setSelectedBulkRowIndex(0);
 
+      await syncFromApi();
       await loadGridRows();
     } catch (error) {
       console.error(error);
@@ -541,7 +544,7 @@ export default function AttendanceControlCenter() {
     } finally {
       setIsProcessing(false);
     }
-  }, [employees, importPreview, ingestManualEntry, loadGridRows, prependEmployee]);
+  }, [employees, importPreview, ingestManualEntry, loadGridRows, prependEmployee, syncFromApi]);
 
   const handleBulkRowIndexChange = useCallback(
     (index: number) => {
@@ -807,6 +810,22 @@ export default function AttendanceControlCenter() {
             {importError}
           </p>
         )}
+      </section>
+
+      {/* Restored live verification workflow — original attendance operations screen */}
+      <section className="space-y-4 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
+        <div>
+          <h3 className="text-sm font-bold text-corporate-text">Live Attendance Workflow</h3>
+          <p className="text-xs text-corporate-muted">
+            Restored four-stage verification view — review uploaded biometric rows by employee,
+            date, punch times, and machine assignment after Process &amp; Save
+          </p>
+        </div>
+        <AttendanceSystemPanel />
+      </section>
+
+      <section className="rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
+        <ManualAttendanceEntryPanel />
       </section>
 
       {/* Permanent history grid — always rendered below upload */}

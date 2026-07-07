@@ -339,7 +339,7 @@ const TRANSACTION_MODULES: MasterPanelModule[] = [
     serial: 26,
     navLabel: "Attendance",
     title: "Attendance Control Center",
-    subtitle: "Excel ingestion, live biometric records, and filtered data grid",
+    subtitle: "Excel upload, live verification workflow, manual entry, and merged history grid",
     icon: CalendarCheck,
     placeholderMessage: "",
   },

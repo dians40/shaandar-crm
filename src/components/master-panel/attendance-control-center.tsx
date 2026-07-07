@@ -106,6 +106,24 @@ function safeBulkNumericFromRecord(record: {
 const BULK_SAVE_TIMEOUT_MS = 15_000;
 const SEARCH_DEBOUNCE_MS = 300;
 
+type AttendanceDateCatalogEntry = {
+  date: string;
+  biometricCount: number;
+  legacyCount: number;
+  totalCount: number;
+};
+
+type SaveSummary = {
+  biometricSaved: number;
+  workflowSaved: number;
+  savedDate: string;
+  fileName: string;
+};
+
+function rowSelectionKey(row: BiometricAttendanceGridRow): string {
+  return row.id || `${row.source}-${row.payCode}-${row.date}-${row.employeeName}`;
+}
+
 function mapApiGridRow(raw: Record<string, unknown>): BiometricAttendanceGridRow {
   const sourceRaw = String(raw.source ?? "biometric");
   const source = sourceRaw === "legacy" ? "legacy" : "biometric";
@@ -158,6 +176,9 @@ export default function AttendanceControlCenter() {
   const [filterDate, setFilterDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [availableDates, setAvailableDates] = useState<AttendanceDateCatalogEntry[]>([]);
+  const [lastSaveSummary, setLastSaveSummary] = useState<SaveSummary | null>(null);
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
 
   const resetPanelState = useCallback(() => {
     setImportPreview(null);
@@ -173,6 +194,9 @@ export default function AttendanceControlCenter() {
     setFilterDate("");
     setSearchQuery("");
     setDebouncedSearch("");
+    setAvailableDates([]);
+    setLastSaveSummary(null);
+    setSelectedRowIds(new Set());
   }, []);
 
   useMasterPanelBlockReset("transaction", resetPanelState);
@@ -184,15 +208,16 @@ export default function AttendanceControlCenter() {
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
-  const loadGridRows = useCallback(async () => {
+  const loadGridRows = useCallback(async (dateOverride?: string) => {
     setIsGridLoading(true);
     setGridError(null);
     try {
       await syncFromApi();
 
-      const params = new URLSearchParams({ limit: "300" });
-      if (filterDate.trim()) {
-        params.set("date", normalizeAttendanceDateIso(filterDate.trim()));
+      const activeDate = dateOverride ?? filterDate;
+      const params = new URLSearchParams({ limit: "300", includeDates: "1" });
+      if (activeDate.trim()) {
+        params.set("date", normalizeAttendanceDateIso(activeDate.trim()));
       }
       if (debouncedSearch) {
         params.set("search", debouncedSearch);
@@ -202,14 +227,15 @@ export default function AttendanceControlCenter() {
         rows?: Record<string, unknown>[];
         error?: string;
         meta?: { biometricCount?: number; legacyCount?: number; mergedCount?: number };
+        availableDates?: AttendanceDateCatalogEntry[];
       };
       if (!response.ok) {
         throw new Error(body.error ?? "Failed to load attendance records.");
       }
 
       const apiRows = Array.isArray(body.rows) ? body.rows.map(mapApiGridRow) : [];
-      const normalizedFilterDate = filterDate.trim()
-        ? normalizeAttendanceDateIso(filterDate.trim())
+      const normalizedFilterDate = activeDate.trim()
+        ? normalizeAttendanceDateIso(activeDate.trim())
         : "";
       const searchToken = debouncedSearch.toLowerCase();
 
@@ -233,6 +259,9 @@ export default function AttendanceControlCenter() {
       ]);
 
       setGridRows(mergedRows);
+      if (Array.isArray(body.availableDates)) {
+        setAvailableDates(body.availableDates);
+      }
       setGridMeta({
         biometricCount: body.meta?.biometricCount ?? apiRows.filter((r) => r.source === "biometric").length,
         legacyCount:
@@ -474,6 +503,7 @@ export default function AttendanceControlCenter() {
         provisionedEmployees?: number;
         errors?: string[];
         debug?: { cause?: string; receivedRows?: number };
+        biometricSaved?: number;
         records?: Array<{
           id: string;
           employeeId: string;
@@ -518,8 +548,22 @@ export default function AttendanceControlCenter() {
         }
       }
 
+      const savedDate = normalizeAttendanceDateIso(
+        importPreview.reportDate ||
+          importPreview.bulkRows[0]?.date ||
+          new Date().toISOString().slice(0, 10)
+      );
+
+      setFilterDate(savedDate);
+      setLastSaveSummary({
+        biometricSaved: body.biometricSaved ?? bulkPayloadRows.length,
+        workflowSaved: body.imported ?? 0,
+        savedDate,
+        fileName: importPreview.fileName,
+      });
+
       setImportMessage(
-        `Successfully imported ${result.imported} attendance row(s)` +
+        `Successfully imported ${result.imported} workflow row(s) · ${body.biometricSaved ?? bulkPayloadRows.length} biometric row(s) saved to database for ${savedDate}.` +
           (result.createdEmployees > 0
             ? ` · New employees auto-created: ${result.createdEmployees}`
             : "") +
@@ -535,7 +579,7 @@ export default function AttendanceControlCenter() {
       setSelectedBulkRowIndex(0);
 
       await syncFromApi();
-      await loadGridRows();
+      await loadGridRows(savedDate);
     } catch (error) {
       console.error(error);
       const message =
@@ -598,6 +642,170 @@ export default function AttendanceControlCenter() {
   };
 
   const uploadBusy = isParsing || isProcessing;
+
+  const selectedRows = gridRows.filter((row) => selectedRowIds.has(rowSelectionKey(row)));
+
+  const toggleRowSelection = (row: BiometricAttendanceGridRow) => {
+    const key = rowSelectionKey(row);
+    setSelectedRowIds((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const selectAllVisibleRows = () => {
+    setSelectedRowIds(new Set(gridRows.map((row) => rowSelectionKey(row))));
+  };
+
+  const clearRowSelection = () => setSelectedRowIds(new Set());
+
+  const renderHistoryGrid = () => (
+    <section
+      className="flex min-h-[420px] w-full min-w-0 flex-col gap-3"
+      aria-label="Attendance history grid"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <FileSpreadsheet className="h-5 w-5 text-corporate-brand" aria-hidden />
+          <div>
+            <h3 className="text-sm font-bold text-corporate-text">Saved Upload Records</h3>
+            <p className="text-xs text-corporate-muted">
+              {filterDate
+                ? `Showing records for ${normalizeAttendanceDateIso(filterDate)} — select rows to review or open the workflow panel below`
+                : "Pick an uploaded date above to view your Excel sheet records, or browse all saved rows"}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={selectAllVisibleRows}
+            disabled={gridRows.length === 0}
+            className="rounded-lg border border-corporate-border bg-white px-3 py-2 text-xs font-medium text-corporate-text hover:bg-corporate-bg"
+          >
+            Select All Visible
+          </button>
+          {selectedRowIds.size > 0 && (
+            <button
+              type="button"
+              onClick={clearRowSelection}
+              className="rounded-lg border border-corporate-border bg-white px-3 py-2 text-xs font-medium text-corporate-text hover:bg-corporate-bg"
+            >
+              Clear Selection
+            </button>
+          )}
+        </div>
+      </div>
+
+      {selectedRows.length > 0 && (
+        <div className="rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-3 text-sm text-corporate-text">
+          <p className="font-semibold text-corporate-brand">
+            {selectedRows.length} row(s) selected
+          </p>
+          <p className="mt-1 text-xs text-corporate-muted">
+            Storage: <strong>biometric_attendance</strong> (Excel columns) and{" "}
+            <strong>employee_attendance</strong> (workflow). Selected:{" "}
+            {selectedRows
+              .slice(0, 5)
+              .map((row) => `${row.employeeName || row.payCode} (${row.date})`)
+              .join(" · ")}
+            {selectedRows.length > 5 ? " · …" : ""}
+          </p>
+        </div>
+      )}
+
+      <div
+        className={cn(
+          MASTER_LIST_TABLE_WRAPPER_CLASS,
+          "workspace-table-scroll min-h-[360px] max-h-[calc(100vh-14rem)] w-full overflow-auto"
+        )}
+      >
+        <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[2700px]")}>
+          <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
+            <tr>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Select</th>
+              {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => (
+                <th key={column.key} className={MASTER_LIST_HEADER_CELL_CLASS}>
+                  {column.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-corporate-border bg-white">
+            {isGridLoading ? (
+              <tr>
+                <td
+                  colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length + 1}
+                  className="px-3 py-10 text-center text-corporate-muted"
+                >
+                  <span className="inline-flex items-center gap-2 text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    Loading attendance records...
+                  </span>
+                </td>
+              </tr>
+            ) : gridRows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length + 1}
+                  className="px-3 py-10 text-center text-sm text-corporate-muted"
+                >
+                  {filterDate
+                    ? `No saved records for ${normalizeAttendanceDateIso(filterDate)}. Upload an Excel file for this date or pick another uploaded date above.`
+                    : "No attendance records found. Upload an Excel file or choose an uploaded date chip above."}
+                </td>
+              </tr>
+            ) : (
+              gridRows.map((row) => {
+                const key = rowSelectionKey(row);
+                const isSelected = selectedRowIds.has(key);
+                return (
+                  <tr
+                    key={key}
+                    className={cn(
+                      isSelected && "bg-corporate-brand-light/40",
+                      row.source === "legacy" && !isSelected && "bg-amber-50/40",
+                      row.source === "biometric" && !isSelected && "hover:bg-corporate-bg/40"
+                    )}
+                  >
+                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-center")}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleRowSelection(row)}
+                        aria-label={`Select ${row.employeeName || row.payCode}`}
+                        className="h-4 w-4 rounded border-corporate-border"
+                      />
+                    </td>
+                    {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => {
+                      const value = row[column.key] ?? "";
+                      return (
+                        <td
+                          key={`${key}-${column.key}`}
+                          className={cn(
+                            MASTER_LIST_BODY_CELL_CLASS,
+                            "whitespace-nowrap text-xs text-corporate-text",
+                            (column.key === "shift" ||
+                              column.key === "status" ||
+                              column.key === "otHours") &&
+                              "font-semibold text-corporate-brand"
+                          )}
+                        >
+                          {value || "—"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-5">
@@ -701,7 +909,51 @@ export default function AttendanceControlCenter() {
             {gridError}
           </p>
         )}
+
+        {lastSaveSummary && (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+            <p className="font-semibold">Last upload saved successfully</p>
+            <p className="mt-1 text-xs">
+              File: <strong>{lastSaveSummary.fileName}</strong> · Date:{" "}
+              <strong>{lastSaveSummary.savedDate}</strong>
+            </p>
+            <p className="mt-1 text-xs">
+              Saved to <strong>public.biometric_attendance</strong> (
+              {lastSaveSummary.biometricSaved} rows) and{" "}
+              <strong>public.employee_attendance</strong> workflow (
+              {lastSaveSummary.workflowSaved} rows). Use the date chip below or the date picker to
+              view them in the grid.
+            </p>
+          </div>
+        )}
+
+        {availableDates.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-corporate-muted">
+              Uploaded Dates (click to view saved Excel records)
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {availableDates.slice(0, 24).map((entry) => (
+                <button
+                  key={entry.date}
+                  type="button"
+                  onClick={() => setFilterDate(entry.date)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                    filterDate === entry.date
+                      ? "border-corporate-brand bg-corporate-brand text-white"
+                      : "border-corporate-border bg-white text-corporate-text hover:border-corporate-brand/40"
+                  )}
+                >
+                  {entry.date} · {entry.totalCount} rows
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
+
+      {renderHistoryGrid()}
 
       {/* Upload engine */}
       <section className="rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
@@ -826,94 +1078,6 @@ export default function AttendanceControlCenter() {
 
       <section className="rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
         <ManualAttendanceEntryPanel />
-      </section>
-
-      {/* Permanent history grid — always rendered below upload */}
-      <section
-        className="flex min-h-[420px] w-full min-w-0 flex-col gap-3"
-        aria-label="Attendance history grid"
-      >
-        <div className="flex items-center gap-2">
-          <FileSpreadsheet className="h-5 w-5 text-corporate-brand" aria-hidden />
-          <div>
-            <h3 className="text-sm font-bold text-corporate-text">Attendance History Grid</h3>
-            <p className="text-xs text-corporate-muted">
-              23-column transactional view — legacy manual logs and biometric records merged
-            </p>
-          </div>
-        </div>
-
-        <div
-          className={cn(
-            MASTER_LIST_TABLE_WRAPPER_CLASS,
-            "workspace-table-scroll min-h-[360px] max-h-[calc(100vh-14rem)] w-full overflow-auto"
-          )}
-        >
-          <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[2600px]")}>
-            <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
-              <tr>
-                {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => (
-                  <th key={column.key} className={MASTER_LIST_HEADER_CELL_CLASS}>
-                    {column.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-corporate-border bg-white">
-              {isGridLoading ? (
-                <tr>
-                  <td
-                    colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length}
-                    className="px-3 py-10 text-center text-corporate-muted"
-                  >
-                    <span className="inline-flex items-center gap-2 text-sm">
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                      Loading attendance records...
-                    </span>
-                  </td>
-                </tr>
-              ) : gridRows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length}
-                    className="px-3 py-10 text-center text-sm text-corporate-muted"
-                  >
-                    No attendance records found. Upload an Excel file or adjust your filters.
-                  </td>
-                </tr>
-              ) : (
-                gridRows.map((row) => (
-                  <tr
-                    key={row.id || `${row.source}-${row.payCode}-${row.date}-${row.createdAt}`}
-                    className={cn(
-                      row.source === "legacy" && "bg-amber-50/40",
-                      row.source === "biometric" && "hover:bg-corporate-bg/40"
-                    )}
-                  >
-                    {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => {
-                      const value = row[column.key] ?? "";
-                      return (
-                        <td
-                          key={`${row.id}-${column.key}`}
-                          className={cn(
-                            MASTER_LIST_BODY_CELL_CLASS,
-                            "whitespace-nowrap text-xs text-corporate-text",
-                            (column.key === "shift" ||
-                              column.key === "status" ||
-                              column.key === "otHours") &&
-                              "font-semibold text-corporate-brand"
-                          )}
-                        >
-                          {value || "—"}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
       </section>
     </div>
   );

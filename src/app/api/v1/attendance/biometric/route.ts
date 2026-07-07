@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { mapBiometricAttendanceGridRow } from "@/lib/biometric-attendance-db-mapper";
+import { fetchAttendanceDateCatalog } from "@/lib/attendance-date-catalog";
 import { fetchLegacyAttendanceGridRows } from "@/lib/legacy-attendance-fetch";
 import { mergeAttendanceGridRows } from "@/lib/legacy-attendance-grid-fusion";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
@@ -47,7 +48,22 @@ async function fetchBiometricGridRowsSupabase(
     throw new Error(error.message);
   }
 
-  return (data ?? []).map((row) =>
+  let rows = data ?? [];
+
+  if (normalizedDate && searchToken) {
+    const token = searchToken.toLowerCase();
+    rows = rows.filter((row) => {
+      const rowDate = normalizeAttendanceDateIso(
+        String(row.date ?? row.attendance_date ?? "")
+      );
+      if (rowDate !== normalizedDate) return false;
+      const name = String(row.employee_name ?? "").toLowerCase();
+      const payCode = String(row.pay_code ?? "").toLowerCase();
+      return name.includes(token) || payCode.includes(token);
+    });
+  }
+
+  return rows.map((row) =>
     mapBiometricAttendanceGridRow(row as Record<string, unknown>)
   );
 }
@@ -111,10 +127,12 @@ export async function GET(request: Request) {
     const limit = Math.min(Number(searchParams.get("limit") ?? "300"), MAX_MERGED_ROWS);
     const date = searchParams.get("date")?.trim() || undefined;
     const search = searchParams.get("search")?.trim() || undefined;
+    const includeDates = searchParams.get("includeDates") === "1";
 
-    const [biometricRows, legacyRows] = await Promise.all([
+    const [biometricRows, legacyRows, availableDates] = await Promise.all([
       fetchBiometricGridRows(limit, date, search),
       fetchLegacyAttendanceGridRows({ date, search, limit }),
+      includeDates ? fetchAttendanceDateCatalog() : Promise.resolve(undefined),
     ]);
 
     const rows = mergeAttendanceGridRows(biometricRows, legacyRows).slice(0, MAX_MERGED_ROWS);
@@ -126,6 +144,7 @@ export async function GET(request: Request) {
         legacyCount: legacyRows.length,
         mergedCount: rows.length,
       },
+      availableDates,
     });
   } catch (error) {
     console.error("[attendance/biometric] GET failed:", error);

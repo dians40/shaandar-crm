@@ -44,25 +44,5 @@ export function resolveDatabaseUrl(): string | null {
 
 /** Actionable hint when auto DDL cannot run (no postgres credentials). */
 export function getDatabaseUrlResolutionHint(): string {
-  if (resolveDirectDatabaseUrl()) {
-    return "DATABASE_URL is set but schema ensure failed — verify the connection string and retry save.";
-  }
-
-  if (process.env.SUPABASE_DB_PASSWORD?.trim()) {
-    return "SUPABASE_DB_PASSWORD is set but connection failed — verify the database password in Supabase Dashboard → Project Settings → Database, then retry save.";
-  }
-
-  const hasManagementToken =
-    Boolean(process.env.SUPABASE_ACCESS_TOKEN?.trim()) ||
-    Boolean(process.env.SUPABASE_MANAGEMENT_TOKEN?.trim());
-
-  if (hasManagementToken && readSupabaseUrl()) {
-    return "SUPABASE_ACCESS_TOKEN is set — retry save to auto-create tables via Management API. If it still fails, run: npm run migrate:attendance";
-  }
-
-  if (readSupabaseUrl()) {
-    return "Run npm run setup:supabase (includes database password) or add SUPABASE_DB_PASSWORD to .env.local, then restart dev server — attendance tables will be created automatically on next save.";
-  }
-
-  return "Add DATABASE_URL or NEXT_PUBLIC_SUPABASE_URL + SUPABASE_DB_PASSWORD to .env.local, then run npm run migrate:attendance or npm run setup:supabase.";
+  return "Supabase SQL Editor में migrations 011 + 012 run करें, या SUPABASE_DB_PASSWORD Vercel env में set करें।";
 }

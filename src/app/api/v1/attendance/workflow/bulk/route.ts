@@ -24,10 +24,10 @@ import {
 } from "@/types/attendance-workflow";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ATTENDANCE_SETUP_MESSAGE } from "@/lib/attendance-setup-messages";
 import {
   ensureAttendanceTablesSchema,
   checkAttendanceSchemaReady,
-  formatSchemaEnsureFailureMessage,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
 import { isPrismaConfigured } from "@/lib/prisma";
@@ -107,7 +107,7 @@ async function persistWorkflowRowsSupabase(
         if (ensure.ok) {
           result = await upsertWorkflowChunk(supabase, chunk);
         } else {
-          errors.push(formatSchemaEnsureFailureMessage(result.error));
+          errors.push(ATTENDANCE_SETUP_MESSAGE);
           continue;
         }
       }
@@ -125,7 +125,7 @@ async function persistWorkflowRowsSupabase(
         const ensure = await ensureAttendanceTablesSchema();
         schemaRetried = true;
         if (!ensure.ok) {
-          errors.push(formatSchemaEnsureFailureMessage(message));
+          errors.push(ATTENDANCE_SETUP_MESSAGE);
           continue;
         }
         try {
@@ -269,13 +269,13 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Attendance SQL tables are not configured.",
-        hint: formatSchemaEnsureFailureMessage(),
+        error: ATTENDANCE_SETUP_MESSAGE,
+        hint: ATTENDANCE_SETUP_MESSAGE,
         setupRequired: true,
         imported: 0,
         skipped: normalizedRows.length,
         biometricSaved: 0,
-        errors: [formatSchemaEnsureFailureMessage()],
+        errors: [ATTENDANCE_SETUP_MESSAGE],
       },
       { status: 503 }
     );
@@ -463,14 +463,14 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "Bulk import failed — attendance SQL tables are missing.",
-        hint: formatSchemaEnsureFailureMessage(rowErrors[0]),
+        error: ATTENDANCE_SETUP_MESSAGE,
+        hint: ATTENDANCE_SETUP_MESSAGE,
         setupRequired: true,
         imported: 0,
         skipped,
         provisionedEmployees,
         biometricSaved: 0,
-        errors: rowErrors.slice(0, 20),
+        errors: [ATTENDANCE_SETUP_MESSAGE],
         records: [],
       },
       { status: 503 }

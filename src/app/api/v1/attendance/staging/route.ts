@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
-import { ensureAttendanceTablesSchema } from "@/lib/attendance-schema-ensure";
+import {
+  ATTENDANCE_SETUP_MESSAGE,
+} from "@/lib/attendance-setup-messages";
+import {
+  checkAttendanceSchemaReady,
+  ensureAttendanceTablesSchema,
+} from "@/lib/attendance-schema-ensure";
 import {
   approveAllStaging,
   approveStagingRow,
@@ -9,6 +15,7 @@ import {
   updateStagingEdit,
   upsertEveningStaging,
 } from "@/lib/attendance-staging-service";
+import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import {
   bulkRowToStagingPayload,
   parseStagingTimestamp,
@@ -18,7 +25,18 @@ import { normalizeBiometric23ColumnRecord } from "@/types/attendance-bulk-import
 
 export async function GET(request: Request) {
   try {
-    await ensureAttendanceTablesSchema();
+    if (isSupabaseServerConfigured()) {
+      const check = await checkAttendanceSchemaReady();
+      if (!check.ready) {
+        return NextResponse.json({
+          rows: [],
+          meta: { count: 0, anomalyCount: 0, editedCount: 0 },
+          setupRequired: true,
+          message: ATTENDANCE_SETUP_MESSAGE,
+        });
+      }
+    }
+
     const { searchParams } = new URL(request.url);
     const shiftDate = searchParams.get("shiftDate")?.trim() || undefined;
     const status = searchParams.get("status")?.trim() || undefined;
@@ -27,9 +45,15 @@ export async function GET(request: Request) {
     const editedCount = rows.filter((r) => r.editRemark && r.status === "Pending").length;
     return NextResponse.json({ rows, meta: { count: rows.length, anomalyCount, editedCount } });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to load staging rows.";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to load staging rows.", rows: [] },
-      { status: 500 }
+      {
+        rows: [],
+        setupRequired: true,
+        message: ATTENDANCE_SETUP_MESSAGE,
+        error: message,
+      },
+      { status: 200 }
     );
   }
 }
@@ -141,9 +165,14 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
   } catch (error) {
+    const message = error instanceof Error ? error.message : "Staging action failed.";
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Staging action failed." },
-      { status: 500 }
+      {
+        error: ATTENDANCE_SETUP_MESSAGE,
+        setupRequired: true,
+        detail: message,
+      },
+      { status: 503 }
     );
   }
 }

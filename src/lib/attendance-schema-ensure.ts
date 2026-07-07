@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { ATTENDANCE_SETUP_MESSAGE } from "@/lib/attendance-setup-messages";
 import {
   extractSupabaseProjectRef,
   getDatabaseUrlResolutionHint,
@@ -34,13 +35,9 @@ export function isAttendanceSchemaError(message: string): boolean {
   );
 }
 
-/** User-facing suffix when auto schema ensure cannot run. */
-export function formatSchemaEnsureFailureMessage(originalError?: string): string {
-  const hint = getDatabaseUrlResolutionHint();
-  if (originalError) {
-    return `${originalError} — ${hint}`;
-  }
-  return hint;
+/** Short user-facing message when tables are missing (no stacked npm/env hints). */
+export function formatSchemaEnsureFailureMessage(_originalError?: string): string {
+  return ATTENDANCE_SETUP_MESSAGE;
 }
 
 /** Probe PostgREST for attendance tables without running DDL. */

@@ -22,6 +22,7 @@ import {
 type AttendanceStagingWorkflowPanelProps = {
   filterDate?: string;
   refreshToken?: number;
+  schemaReady?: boolean;
 };
 
 function formatTime(iso: string | null): string {
@@ -39,6 +40,7 @@ function formatTime(iso: string | null): string {
 export default function AttendanceStagingWorkflowPanel({
   filterDate = "",
   refreshToken = 0,
+  schemaReady = true,
 }: AttendanceStagingWorkflowPanelProps) {
   const [rows, setRows] = useState<AttendanceStagingRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,6 +53,11 @@ export default function AttendanceStagingWorkflowPanel({
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const loadRows = useCallback(async () => {
+    if (!schemaReady) {
+      setRows([]);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -60,16 +67,24 @@ export default function AttendanceStagingWorkflowPanel({
       const body = (await response.json()) as {
         rows?: AttendanceStagingRow[];
         error?: string;
+        message?: string;
+        setupRequired?: boolean;
       };
-      if (!response.ok) throw new Error(body.error ?? "Failed to load staging.");
+      if (body.setupRequired) {
+        setRows([]);
+        setError(null);
+        return;
+      }
+      if (!response.ok) throw new Error(body.error ?? body.message ?? "Failed to load staging.");
       setRows(body.rows ?? []);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Load failed.");
+      const message = loadError instanceof Error ? loadError.message : "Load failed.";
+      setError(message);
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [filterDate]);
+  }, [filterDate, schemaReady]);
 
   useEffect(() => {
     void loadRows();
@@ -228,7 +243,13 @@ export default function AttendanceStagingWorkflowPanel({
           {message}
         </p>
       )}
-      {error && (
+      {!schemaReady && (
+        <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Database setup pending — staging records will appear here after the one-time Supabase migration
+          (see banner above).
+        </p>
+      )}
+      {error && schemaReady && (
         <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
           {error}
         </p>

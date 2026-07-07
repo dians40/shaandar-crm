@@ -10,6 +10,13 @@ import {
   Search,
   AlertCircle,
 } from "lucide-react";
+import {
+  ATTENDANCE_SETUP_DEV_HINT,
+  ATTENDANCE_SETUP_MESSAGE,
+  ATTENDANCE_SETUP_TITLE,
+  getSupabaseSqlEditorUrl,
+  isAttendanceSetupError,
+} from "@/lib/attendance-setup-messages";
 import { cn } from "@/lib/utils";
 import {
   createAutoProvisionedEmployee,
@@ -125,9 +132,11 @@ type SaveStatus = "idle" | "saving" | "saved" | "failed";
 type SchemaStatus = "checking" | "ready" | "missing" | "ensuring";
 
 function isSchemaSetupError(message: string): boolean {
-  return /schema cache|not find table|setuprequired|SUPABASE_DB_PASSWORD|DATABASE_URL|503/i.test(
-    message
-  );
+  return isAttendanceSetupError(message);
+}
+
+function toUserFacingAttendanceError(message: string): string {
+  return isSchemaSetupError(message) ? ATTENDANCE_SETUP_MESSAGE : message;
 }
 
 function rowSelectionKey(row: BiometricAttendanceGridRow): string {
@@ -248,14 +257,12 @@ export default function AttendanceControlCenter() {
       }
 
       setSchemaStatus("missing");
-      setSchemaMessage(body.hint ?? body.error ?? body.message ?? "Attendance tables are not set up.");
+      setSchemaMessage(body.hint ?? body.error ?? body.message ?? ATTENDANCE_SETUP_MESSAGE);
       return false;
     } catch (error) {
       console.error("[attendance] schema ensure failed:", error);
       setSchemaStatus("missing");
-      setSchemaMessage(
-        "Could not verify attendance schema. Run npm run setup:supabase or npm run migrate:attendance."
-      );
+      setSchemaMessage(ATTENDANCE_SETUP_MESSAGE);
       return false;
     }
   }, [dbConnected]);
@@ -648,7 +655,7 @@ export default function AttendanceControlCenter() {
           void ensureAttendanceSchema();
         }
 
-        throw new Error(failureMessage);
+        throw new Error(toUserFacingAttendanceError(failureMessage));
       }
 
       const biometricSaved = body.biometricSaved ?? 0;
@@ -670,7 +677,7 @@ export default function AttendanceControlCenter() {
           void ensureAttendanceSchema();
         }
 
-        throw new Error(schemaFailure);
+        throw new Error(toUserFacingAttendanceError(schemaFailure));
       }
 
       result.imported = workflowSaved;
@@ -729,7 +736,7 @@ export default function AttendanceControlCenter() {
       setSaveStatus("idle");
 
       if (result.errors.length > 0) {
-        setImportError(result.errors.slice(0, 3).join(" · "));
+        setImportError(result.errors.map(toUserFacingAttendanceError).slice(0, 1).join(" · "));
       }
 
       await syncFromApi();
@@ -740,7 +747,7 @@ export default function AttendanceControlCenter() {
       console.error(error);
       const message =
         error instanceof Error ? error.message : "Bulk attendance processing failed.";
-      setImportError(message);
+      setImportError(toUserFacingAttendanceError(message));
       setSaveStatus("failed");
     } finally {
       setIsProcessing(false);
@@ -1007,35 +1014,47 @@ export default function AttendanceControlCenter() {
             ) : (
               <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden />
             )}
-            <div className="space-y-2 text-sm text-amber-900">
+            <div className="space-y-3 text-sm text-amber-900">
               <p className="font-semibold">
                 {schemaStatus === "ensuring" || schemaStatus === "checking"
                   ? "Preparing attendance database tables…"
-                  : "Attendance SQL tables missing — run migration before saving"}
+                  : ATTENDANCE_SETUP_TITLE}
               </p>
-              {schemaMessage && (
-                <p className="text-amber-800">{schemaMessage}</p>
-              )}
+              <p className="text-amber-800">
+                {schemaStatus === "ensuring" || schemaStatus === "checking"
+                  ? "Please wait while we verify or create attendance tables."
+                  : ATTENDANCE_SETUP_MESSAGE}
+              </p>
               {schemaStatus === "missing" && (
-                <>
-                  <p className="rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-xs text-amber-950">
-                    One-time fix: npm run setup:supabase
-                  </p>
-                  <p className="text-xs text-amber-800">
-                    Or add <strong>SUPABASE_DB_PASSWORD</strong> to <code className="rounded bg-white px-1">.env.local</code>{" "}
-                    (Supabase Dashboard → Project Settings → Database), restart{" "}
-                    <code className="rounded bg-white px-1">npm run dev</code>, then retry save.
-                    Tables are created automatically when credentials are present.
-                  </p>
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={getSupabaseSqlEditorUrl()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                  >
+                    Open Supabase SQL Editor
+                  </a>
+                  <a
+                    href="/api/v1/attendance/schema/migration-sql"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                  >
+                    Download migration SQL
+                  </a>
                   <button
                     type="button"
                     onClick={() => void ensureAttendanceSchema()}
                     className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
                   >
                     <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                    Retry schema setup
+                    Retry setup
                   </button>
-                </>
+                </div>
+              )}
+              {schemaStatus === "missing" && (
+                <p className="text-xs text-amber-700">{ATTENDANCE_SETUP_DEV_HINT}</p>
               )}
             </div>
           </div>
@@ -1265,6 +1284,7 @@ export default function AttendanceControlCenter() {
         <AttendanceStagingWorkflowPanel
           filterDate={filterDate}
           refreshToken={stagingRefreshToken}
+          schemaReady={schemaStatus === "ready"}
         />
       </div>
 

@@ -173,7 +173,7 @@ export default function EmployeeBioDataCard({
             Labor Bio-Data
           </p>
           <h2 className="mt-1 text-xl font-semibold text-corporate-text">
-            {basic.firstName} {basic.lastName}
+            {basic.name}
           </h2>
         </div>
 
@@ -184,7 +184,7 @@ export default function EmployeeBioDataCard({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={photoUrl}
-                  alt={`${basic.firstName} ${basic.lastName}`}
+                  alt={basic.name}
                   className="h-full w-full object-cover"
                 />
               ) : (
@@ -198,8 +198,7 @@ export default function EmployeeBioDataCard({
           </div>
 
           <dl className="grid gap-5 sm:grid-cols-2">
-            <DetailRow label="First Name" value={basic.firstName} />
-            <DetailRow label="Last Name" value={basic.lastName} />
+            <DetailRow label="Name" value={basic.name} />
             <DetailRow label="Date of Birth" value={formatDate(basic.dateOfBirth)} />
             <DetailRow label="Gender" value={basic.gender} />
             <DetailRow label="Father's Name" value={basic.fatherName} />

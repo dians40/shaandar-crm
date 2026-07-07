@@ -55,8 +55,6 @@ export default function EmployeeList({
     () =>
       employees.filter((employee) =>
         matchesUniversalNameSearch(searchQuery, employee.name, [
-          employee.firstName,
-          employee.lastName,
           employee.mobileNumber,
           employee.employeeType,
           employee.machineAssignment,

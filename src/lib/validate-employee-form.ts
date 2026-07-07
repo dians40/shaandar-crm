@@ -1,8 +1,7 @@
 import type { BasicInformation, BankAndSalary } from "@/types/employee-form";
 
 export type BasicInformationField =
-  | "firstName"
-  | "lastName"
+  | "name"
   | "mobileNumber"
   | "dateOfBirth"
   | "employeeType"
@@ -22,12 +21,8 @@ export function validateBasicInformation(
 ): BasicInformationErrors {
   const errors: BasicInformationErrors = {};
 
-  if (!data.firstName.trim()) {
-    errors.firstName = "First name is required.";
-  }
-
-  if (!data.lastName.trim()) {
-    errors.lastName = "Last name is required.";
+  if (!data.name.trim()) {
+    errors.name = "Name is required.";
   }
 
   if (!data.dateOfBirth) {

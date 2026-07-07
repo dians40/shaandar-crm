@@ -3,8 +3,6 @@ import type { EmployeeType, StatutoryStatus } from "@/types/employee-form";
 export type EmployeeListItem = {
   id: string;
   name: string;
-  firstName: string;
-  lastName: string;
   employeeType: EmployeeType;
   mobileNumber: string;
   machineAssignment: string;

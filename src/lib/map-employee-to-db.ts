@@ -1,10 +1,6 @@
 import type { EmployeeFormData, DocumentNumbers } from "@/types/employee-form";
 import type { DocumentPaths, EmployeeInsert, EmployeeRow } from "@/types/employee-db";
 import type { EmployeeListItem } from "@/types/employee-list";
-import {
-  combineEmployeeName,
-  splitFullName,
-} from "@/lib/employee-name-utils";
 import { combineAssignedFromGroup } from "@/lib/employee-assigned-from";
 import {
   parseStatutoryStatusFromDb,
@@ -75,7 +71,7 @@ export function mapFormToEmployeeInsert(
     null;
 
   return {
-    full_name: combineEmployeeName(basic.firstName, basic.lastName),
+    full_name: basic.name.trim(),
     father_name: basic.fatherName.trim() || null,
     mother_name: basic.motherName.trim() || null,
     date_of_birth: basic.dateOfBirth,
@@ -169,13 +165,9 @@ export function mapEmployeeRowToListItem(
     row.daily_rate,
     row.worked_days
   );
-  const { firstName, lastName } = splitFullName(row.full_name);
-
   return {
     id: row.id,
     name: row.full_name,
-    firstName,
-    lastName,
     employeeType: row.employee_type as EmployeeListItem["employeeType"],
     mobileNumber: row.mobile_number,
     machineAssignment: row.machine_assignment || "—",
@@ -194,12 +186,10 @@ export function mapEmployeeRowToListItem(
 
 export function mapEmployeeRowToFormData(row: EmployeeRow): EmployeeFormData {
   const basicSalary = row.basic_salary ?? row.fix_salary_amount;
-  const { firstName, lastName } = splitFullName(row.full_name);
 
   return {
     basicInformation: {
-      firstName,
-      lastName,
+      name: row.full_name ?? "",
       fatherName: row.father_name ?? "",
       motherName: row.mother_name ?? "",
       dateOfBirth: row.date_of_birth,

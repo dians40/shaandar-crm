@@ -10,17 +10,6 @@ function normalizeCode(code: string): string {
   return code.trim().toUpperCase();
 }
 
-function splitName(fullName: string): { firstName: string; lastName: string } {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) {
-    return { firstName: "Imported", lastName: "Staff" };
-  }
-  if (parts.length === 1) {
-    return { firstName: parts[0], lastName: "Staff" };
-  }
-  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
-}
-
 export function readAutoProvisionedEmployees(): AutoProvisionedEmployeeRecord[] {
   if (typeof window === "undefined") return [];
   try {
@@ -56,15 +45,12 @@ export function createAutoProvisionedEmployee(
   employeeName: string
 ): AutoProvisionedEmployeeRecord {
   const code = normalizeCode(employeeCode);
-  const { firstName, lastName } = splitName(employeeName);
   const id = `auto-emp-${code.replace(/[^A-Z0-9]/g, "")}-${Date.now()}`;
 
   return {
     id,
     employeeCode: code,
     name: employeeName.trim(),
-    firstName,
-    lastName,
     employeeType: "Direct Roll / Employee",
     mobileNumber: code.replace(/\D/g, "").slice(0, 10) || code || "",
     machineAssignment: "",

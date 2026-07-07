@@ -1,5 +1,5 @@
 import { virtualBulkRowToDbPayload } from "@/lib/attendance-bulk-virtual-mapper";
-import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
+import { normalizeAttendanceDateIso, normalizeBiometric23ColumnRecord } from "@/types/attendance-bulk-import-row";
 import {
   atomicFinalizeBulkDbPayload,
   buildBulkDbPayload,
@@ -52,9 +52,18 @@ export function fuzzyReadBulkField(
 /** Normalize any incoming bulk row shape into a safe DB payload with guaranteed punch_in. */
 export function sanitizeIncomingBulkRow(
   raw: Record<string, unknown> | null | undefined
-): AttendanceBulkDbPayload | null {
+): AttendanceBulkDbPayload {
   try {
-    if (!raw || typeof raw !== "object") return null;
+    if (!raw || typeof raw !== "object") {
+      const fallbackDate = todayIsoDate();
+      return atomicFinalizeBulkDbPayload(
+        buildBulkDbPayload({
+          row: normalizeBiometric23ColumnRecord(null, { defaultDate: fallbackDate }),
+          employeeId: `IMPORT-${Date.now()}`,
+          attendanceDate: fallbackDate,
+        })
+      );
+    }
 
     const normalizedKeys = normalizeRawRowKeys(raw);
 
@@ -100,9 +109,7 @@ export function sanitizeIncomingBulkRow(
       "card_no",
     ]);
 
-    if (!employeeId && !employeeName && !payCode && !cardNumber) {
-      return null;
-    }
+    const hasIdentity = Boolean(employeeId || employeeName || payCode || cardNumber);
 
     const rawDate =
       fuzzyReadBulkField(normalizedKeys, ["date", "attendance_date", "attendanceDate"]) || "";
@@ -112,8 +119,13 @@ export function sanitizeIncomingBulkRow(
     const payload = atomicFinalizeBulkDbPayload(
       buildBulkDbPayload({
         row: biometric,
-        employeeId: employeeId || payCode || cardNumber || employeeName,
-        attendanceDate,
+        employeeId:
+          employeeId ||
+          payCode ||
+          cardNumber ||
+          employeeName ||
+          (hasIdentity ? "" : `IMPORT-${Date.now()}`),
+        attendanceDate: attendanceDate || todayIsoDate(),
       })
     );
 
@@ -160,6 +172,13 @@ export function sanitizeIncomingBulkRow(
     });
   } catch (error) {
     console.error("[bulk-import] sanitizeIncomingBulkRow failed:", error);
-    return null;
+    const fallbackDate = todayIsoDate();
+    return atomicFinalizeBulkDbPayload(
+      buildBulkDbPayload({
+        row: normalizeBiometric23ColumnRecord(null, { defaultDate: fallbackDate }),
+        employeeId: `IMPORT-${Date.now()}`,
+        attendanceDate: fallbackDate,
+      })
+    );
   }
 }

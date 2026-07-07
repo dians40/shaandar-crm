@@ -334,7 +334,7 @@ export function countMappedHeaders(
 export function shouldUseHeaderMapping(
   columnMap: Partial<Record<BiometricColumnKey, number>>
 ): boolean {
-  return countMappedHeaders(columnMap) >= 4;
+  return countMappedHeaders(columnMap) >= 1;
 }
 
 /** Detect biometric header row index (e.g. row containing Srl No. + Pay Code). */

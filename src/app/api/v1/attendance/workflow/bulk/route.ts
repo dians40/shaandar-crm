@@ -6,8 +6,9 @@ import {
 } from "@/lib/attendance-bulk-employee-resolver";
 import { sanitizeIncomingBulkRow } from "@/lib/attendance-bulk-row-sanitizer";
 import {
-  detectBiometricColumnStructure,
-} from "@/lib/attendance-bulk-dynamic-alignment";
+  persistBiometricRowsResilient,
+  persistBiometricRowsSupabaseResilient,
+} from "@/lib/attendance-bulk-resilient-persist";
 import { virtualBulkRowToDbPayload } from "@/lib/attendance-bulk-virtual-mapper";
 import {
   mapToBiometricAttendanceCreate,
@@ -23,12 +24,11 @@ import {
 } from "@/types/attendance-workflow";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { isPrismaConfigured, prisma } from "@/lib/prisma";
+import { isPrismaConfigured } from "@/lib/prisma";
 import type { AttendanceBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
 import type { Prisma } from "@prisma/client";
 
 const ATTENDANCE_TABLE = "employee_attendance";
-const BIOMETRIC_TABLE = "biometric_attendance";
 
 function safeString(value: unknown): string {
   try {
@@ -54,32 +54,6 @@ function chunkArray<T>(items: T[], size: number): T[][] {
     chunks.push(items.slice(index, index + size));
   }
   return chunks;
-}
-
-async function persistBiometricRowsSupabase(
-  supabase: ReturnType<typeof createAdminClient>,
-  rows: Record<string, unknown>[]
-): Promise<{ saved: number; errors: string[] }> {
-  const errors: string[] = [];
-  let saved = 0;
-
-  for (const chunk of chunkArray(rows, BATCH_SIZE)) {
-    try {
-      const { error } = await supabase.from(BIOMETRIC_TABLE).upsert(chunk, {
-        onConflict: "pay_code,date",
-      });
-      if (error) {
-        errors.push(error.message ?? "biometric_attendance upsert failed");
-        continue;
-      }
-      saved += chunk.length;
-    } catch (error) {
-      console.error("[bulk-import] supabase biometric upsert:", error);
-      errors.push(error instanceof Error ? error.message : "biometric upsert failed");
-    }
-  }
-
-  return { saved, errors };
 }
 
 async function persistWorkflowRowsSupabase(
@@ -124,36 +98,6 @@ async function withBulkSaveTimeout<T>(operation: () => Promise<T>): Promise<T> {
   ]);
 }
 
-async function persistBiometricRowsPrisma(
-  rows: Prisma.BiometricAttendanceCreateManyInput[]
-): Promise<{ saved: number; errors: string[] }> {
-  const errors: string[] = [];
-  if (!prisma || rows.length === 0) return { saved: 0, errors };
-
-  try {
-    let saved = 0;
-    for (const chunk of chunkArray(rows, BATCH_SIZE)) {
-      try {
-        const result = await prisma.biometricAttendance.createMany({
-          data: chunk,
-          skipDuplicates: true,
-        });
-        saved += result.count;
-      } catch (chunkError) {
-        console.error("[bulk-import] prisma.biometricAttendance createMany chunk:", chunkError);
-        errors.push(
-          chunkError instanceof Error ? chunkError.message : "prisma createMany chunk failed"
-        );
-      }
-    }
-    return { saved, errors };
-  } catch (error) {
-    console.error("[bulk-import] prisma.biometricAttendance createMany failed:", error);
-    errors.push(error instanceof Error ? error.message : "prisma createMany failed");
-    return { saved: 0, errors };
-  }
-}
-
 export async function POST(request: Request) {
   let body: unknown;
   try {
@@ -174,30 +118,25 @@ export async function POST(request: Request) {
     try {
       const raw = payload.rows[index];
       if (!raw || typeof raw !== "object") {
-        rowErrors.push(`Row ${index + 1}: invalid row object.`);
+        rowErrors.push(`Row ${index + 1}: invalid row object — recovered with defaults.`);
+        normalizedRows.push(
+          sanitizeIncomingBulkRow({}) as AttendanceBulkDbPayload
+        );
         continue;
       }
 
       const rawRow = raw as Record<string, unknown>;
-      const rowCells = Array.isArray(raw) ? (raw as unknown[]) : null;
-      const structure = detectBiometricColumnStructure({}, rowCells ?? undefined);
-
-      let defaultDate = normalizeAttendanceDateIso(
-        safeString(rawRow.date) || safeString(rawRow.attendance_date) || todayIsoDate()
+      const defaultDate = normalizeAttendanceDateIso(
+        safeString(rawRow.date) ||
+          safeString(rawRow.attendance_date) ||
+          todayIsoDate()
       );
-      if (structure === "grid-23" && rowCells?.[7]) {
-        defaultDate = normalizeAttendanceDateIso(String(rowCells[7]), defaultDate);
-      }
 
       const normalized =
         virtualBulkRowToDbPayload(
           { ...rawRow, date: rawRow.date ?? defaultDate },
           { defaultDate }
         ) ?? sanitizeIncomingBulkRow(rawRow);
-      if (!normalized) {
-        rowErrors.push(`Row ${index + 1}: missing employee identity fields.`);
-        continue;
-      }
 
       if (!normalized.punch_in) {
         normalized.punch_in = `${normalized.attendance_date || todayIsoDate()}T09:00:00.000Z`;
@@ -211,7 +150,10 @@ export async function POST(request: Request) {
       normalizedRows.push(normalized);
     } catch (rowError) {
       console.error("[bulk-import] row sanitization error:", rowError);
-      rowErrors.push(`Row ${index + 1}: sanitization recovered with skip.`);
+      normalizedRows.push(
+        sanitizeIncomingBulkRow({}) as AttendanceBulkDbPayload
+      );
+      rowErrors.push(`Row ${index + 1}: sanitization recovered with defaults.`);
     }
   }
 
@@ -221,8 +163,7 @@ export async function POST(request: Request) {
         error: "No valid rows to import.",
         errors: rowErrors,
         debug: {
-          cause:
-            "All rows failed sanitization — check pay_code, employee_name, or card_number columns.",
+          cause: "All rows failed sanitization.",
           receivedRows: payload.rows.length,
         },
       },
@@ -266,17 +207,17 @@ export async function POST(request: Request) {
           const resolution = await resolveOrProvisionEmployeeId(supabase, row, {
             autoProvision: true,
           });
-          if (!resolution.employeeId) {
+          if (resolution.employeeId) {
+            resolvedEmployeeId = resolution.employeeId;
+            employeeCache.set(cacheKey, resolvedEmployeeId);
+            if (resolution.provisioned) provisionedEmployees += 1;
+          } else {
             skipped += 1;
             rowErrors.push(
               resolution.error ??
-                `${row.employee_name || row.pay_code || row.employee_id}: employee not found.`
+                `${row.employee_name || row.pay_code || row.employee_id}: employee not found — biometric row still saved.`
             );
-            continue;
           }
-          resolvedEmployeeId = resolution.employeeId;
-          employeeCache.set(cacheKey, resolvedEmployeeId);
-          if (resolution.provisioned) provisionedEmployees += 1;
         }
       } else {
         resolvedEmployeeId =
@@ -310,6 +251,10 @@ export async function POST(request: Request) {
         continue;
       }
 
+      if (!resolvedEmployeeId) {
+        continue;
+      }
+
       const dbStatus = mapExcelStatusToDbStatus(row.status, row.shift);
       const overtimeShift = resolveOvertimeShiftFromBulkRow(row);
       const overtimeHours = safeBulkNumeric(row.overtime_hours);
@@ -340,7 +285,7 @@ export async function POST(request: Request) {
       };
 
       workflowUpsertRows.push({
-        employee_id: resolvedEmployeeId!,
+        employee_id: resolvedEmployeeId,
         attendance_date: rowDate,
         status: dbStatus,
         notes: serializeAttendanceWorkflowNotes(workflowNotes),
@@ -388,13 +333,14 @@ export async function POST(request: Request) {
   }
 
   if (prismaConfigured && prismaBiometricRows.length > 0) {
-    const prismaResult = await persistBiometricRowsPrisma(prismaBiometricRows);
+    const prismaResult = await persistBiometricRowsResilient(prismaBiometricRows, BATCH_SIZE);
     biometricSaved = prismaResult.saved;
     rowErrors.push(...prismaResult.errors);
   } else if (supabase && supabaseBiometricRows.length > 0) {
-    const supabaseResult = await persistBiometricRowsSupabase(
+    const supabaseResult = await persistBiometricRowsSupabaseResilient(
       supabase,
-      supabaseBiometricRows
+      supabaseBiometricRows,
+      BATCH_SIZE
     );
     biometricSaved = supabaseResult.saved;
     rowErrors.push(...supabaseResult.errors);

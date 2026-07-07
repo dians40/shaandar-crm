@@ -575,11 +575,7 @@ export function parseAttendanceImportMatrixSafe(
     }
 
     if (useHeaderMapping || bulkRows.length > 0) {
-      alignmentInfo = formatFlexibleAlignmentInfo(
-        columnMap,
-        reportDate,
-        dataRows.find((row) => Array.isArray(row) && row.some((cell) => String(cell ?? "").trim()))
-      );
+      alignmentInfo = formatFlexibleAlignmentInfo(columnMap, reportDate);
     }
 
     return { rows, bulkRows, skippedRows, warnings, alignmentInfo, reportDate };

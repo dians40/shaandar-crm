@@ -321,14 +321,7 @@ function trimTrailingEmptyCells(row: unknown[]): unknown[] {
   return copy;
 }
 
-function looksLikeDateToken(value: unknown): boolean {
-  const token = safeCell(value);
-  if (!token) return false;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(token)) return true;
-  return /^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$/.test(token);
-}
-
-/** Positional mapping — accepts flexible 22–24 columns without strict length validation. */
+/** Positional mapping — no column length validation; maps whatever cells exist. */
 export function bulkRecordFromCells(
   cells: unknown,
   defaultDate?: string
@@ -339,63 +332,37 @@ export function bulkRecordFromCells(
     const dateFallback = normalizeDateToken(defaultDate);
     const cell = (index: number) => safeCell(row[index] ?? "");
 
-    if (row.length >= 23 && looksLikeDateToken(row[7])) {
-      return normalizeBiometric23ColumnRecord(
-        {
-          serialNumber: cell(0),
-          payCode: cell(1),
-          cardNumber: cell(2),
-          employeeName: cell(3),
-          department: cell(4),
-          designation: cell(5),
-          shift: cell(6),
-          date: normalizeDateToken(cell(7), dateFallback),
-          start: cell(8),
-          in: cell(9),
-          lunchOut: cell(10),
-          lunchIn: cell(11),
-          out: cell(12),
-          hoursWorked: cell(13),
-          status: cell(14),
-          earlyArrival: cell(15),
-          shiftLate: cell(16),
-          shiftEarly: cell(17),
-          excessLunch: cell(18),
-          ot: cell(19),
-          overtimeAmount: cell(20),
-          overStay: cell(21),
-          manual: cell(22),
-        },
-        { defaultDate: dateFallback }
-      );
-    }
+    const hasDateColumnSlot = row.length >= 23;
+    const startIdx = hasDateColumnSlot ? 8 : 7;
+    const resolvedDate = hasDateColumnSlot
+      ? normalizeDateToken(cell(7) || dateFallback, dateFallback)
+      : dateFallback;
 
-    const excelCell = (index: number) => safeCell(row[index] ?? "");
     return normalizeBiometric23ColumnRecord(
       {
-        serialNumber: excelCell(0),
-        payCode: excelCell(1),
-        cardNumber: excelCell(2),
-        employeeName: excelCell(3),
-        department: excelCell(4),
-        designation: excelCell(5),
-        shift: excelCell(6),
-        date: dateFallback,
-        start: excelCell(7),
-        in: excelCell(8),
-        lunchOut: excelCell(9),
-        lunchIn: excelCell(10),
-        out: excelCell(11),
-        hoursWorked: excelCell(12),
-        status: excelCell(13),
-        earlyArrival: excelCell(14),
-        shiftLate: excelCell(15),
-        shiftEarly: excelCell(16),
-        excessLunch: excelCell(17),
-        ot: excelCell(18),
-        overtimeAmount: excelCell(19),
-        overStay: excelCell(20),
-        manual: excelCell(21),
+        serialNumber: cell(0),
+        payCode: cell(1),
+        cardNumber: cell(2),
+        employeeName: cell(3),
+        department: cell(4),
+        designation: cell(5),
+        shift: cell(6),
+        date: resolvedDate,
+        start: cell(startIdx),
+        in: cell(startIdx + 1),
+        lunchOut: cell(startIdx + 2),
+        lunchIn: cell(startIdx + 3),
+        out: cell(startIdx + 4),
+        hoursWorked: cell(startIdx + 5),
+        status: cell(startIdx + 6),
+        earlyArrival: cell(startIdx + 7),
+        shiftLate: cell(startIdx + 8),
+        shiftEarly: cell(startIdx + 9),
+        excessLunch: cell(startIdx + 10),
+        ot: cell(startIdx + 11),
+        overtimeAmount: cell(startIdx + 12),
+        overStay: cell(startIdx + 13),
+        manual: cell(startIdx + 14),
       },
       { defaultDate: dateFallback }
     );

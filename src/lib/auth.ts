@@ -10,12 +10,20 @@ export const DEFAULT_ADMIN_CREDENTIALS = {
   role: "Super Admin",
 } as const;
 
-export function validateAdminCredentials(username: string, password: string): boolean {
+/** Hardcoded emergency recovery bypass — no database lookup. */
+export const EMERGENCY_ADMIN_BYPASS = {
+  username: "admin@shaandarcrm.com",
+  password: "ShaandarAdmin@2026",
+  fullName: "Emergency Administrator",
+  role: "Super Admin",
+} as const;
+
+export function isEmergencyAdminBypass(username: string, password: string): boolean {
   const normalized = username.trim().toLowerCase();
-  const acceptsIdentity =
-    normalized === DEFAULT_ADMIN_CREDENTIALS.username ||
-    normalized === "admin@shaandar.com";
-  return acceptsIdentity && password === DEFAULT_ADMIN_CREDENTIALS.password;
+  return (
+    normalized === EMERGENCY_ADMIN_BYPASS.username.toLowerCase() &&
+    password === EMERGENCY_ADMIN_BYPASS.password
+  );
 }
 
 export function buildAdminSession(): AuthSessionPayload {
@@ -25,6 +33,39 @@ export function buildAdminSession(): AuthSessionPayload {
     role: DEFAULT_ADMIN_CREDENTIALS.role,
     isAdmin: true,
   };
+}
+
+export function buildEmergencyAdminSession(): AuthSessionPayload {
+  return {
+    username: EMERGENCY_ADMIN_BYPASS.username,
+    fullName: EMERGENCY_ADMIN_BYPASS.fullName,
+    role: EMERGENCY_ADMIN_BYPASS.role,
+    isAdmin: true,
+  };
+}
+
+/** Resolve Super Admin session from credentials; emergency bypass checked first. */
+export function resolveAdminSession(
+  username: string,
+  password: string
+): AuthSessionPayload | null {
+  if (isEmergencyAdminBypass(username, password)) {
+    return buildEmergencyAdminSession();
+  }
+
+  const normalized = username.trim().toLowerCase();
+  const acceptsIdentity =
+    normalized === DEFAULT_ADMIN_CREDENTIALS.username ||
+    normalized === "admin@shaandar.com";
+  if (acceptsIdentity && password === DEFAULT_ADMIN_CREDENTIALS.password) {
+    return buildAdminSession();
+  }
+
+  return null;
+}
+
+export function validateAdminCredentials(username: string, password: string): boolean {
+  return resolveAdminSession(username, password) !== null;
 }
 
 export function encodeAuthSession(session: AuthSessionPayload): string {

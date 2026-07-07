@@ -4,9 +4,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
   AUTH_COOKIE,
-  buildAdminSession,
   encodeAuthSession,
-  validateAdminCredentials,
+  resolveAdminSession,
 } from "@/lib/auth";
 import type { AuthSessionPayload } from "@/types/auth-session";
 
@@ -36,11 +35,12 @@ export async function authenticateAdminAction(
     return { error: "Please enter both username and password." };
   }
 
-  if (!validateAdminCredentials(username, password)) {
+  const adminSession = resolveAdminSession(username, password);
+  if (!adminSession) {
     return { error: "Invalid username or password. Please try again." };
   }
 
-  await setSessionCookie(buildAdminSession());
+  await setSessionCookie(adminSession);
   return { success: true, redirectTo: "/dashboard" };
 }
 

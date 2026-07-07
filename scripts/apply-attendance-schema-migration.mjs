@@ -43,7 +43,13 @@ function buildDatabaseUrl(env) {
 }
 
 async function main() {
-  console.log("\n=== Shaandar CRM — Attendance Schema Migration 011 ===\n");
+  const quiet =
+    process.argv.includes("--quiet") ||
+    process.argv.includes("--skip-if-no-credentials");
+
+  if (!quiet) {
+    console.log("\n=== Shaandar CRM — Attendance Schema Migration 011 ===\n");
+  }
 
   if (!fs.existsSync(MIGRATION_FILE)) {
     console.error("FAIL: Migration file not found:", MIGRATION_FILE);
@@ -55,6 +61,9 @@ async function main() {
   const databaseUrl = buildDatabaseUrl(env);
 
   if (!databaseUrl) {
+    if (quiet) {
+      process.exit(0);
+    }
     console.error("FAIL: No database connection configured.");
     console.error("");
     console.error("Add ONE of these to .env.local:");

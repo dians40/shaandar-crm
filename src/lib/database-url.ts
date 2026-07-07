@@ -52,9 +52,17 @@ export function getDatabaseUrlResolutionHint(): string {
     return "SUPABASE_DB_PASSWORD is set but connection failed — verify the database password in Supabase Dashboard → Project Settings → Database, then retry save.";
   }
 
-  if (readSupabaseUrl()) {
-    return "Add SUPABASE_DB_PASSWORD to .env.local (Supabase Dashboard → Project Settings → Database → Database password), then retry save — attendance tables will be created automatically.";
+  const hasManagementToken =
+    Boolean(process.env.SUPABASE_ACCESS_TOKEN?.trim()) ||
+    Boolean(process.env.SUPABASE_MANAGEMENT_TOKEN?.trim());
+
+  if (hasManagementToken && readSupabaseUrl()) {
+    return "SUPABASE_ACCESS_TOKEN is set — retry save to auto-create tables via Management API. If it still fails, run: npm run migrate:attendance";
   }
 
-  return "Add DATABASE_URL or NEXT_PUBLIC_SUPABASE_URL + SUPABASE_DB_PASSWORD to .env.local, then retry save.";
+  if (readSupabaseUrl()) {
+    return "Run npm run setup:supabase (includes database password) or add SUPABASE_DB_PASSWORD to .env.local, then restart dev server — attendance tables will be created automatically on next save.";
+  }
+
+  return "Add DATABASE_URL or NEXT_PUBLIC_SUPABASE_URL + SUPABASE_DB_PASSWORD to .env.local, then run npm run migrate:attendance or npm run setup:supabase.";
 }

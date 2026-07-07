@@ -5,6 +5,7 @@ import {
   getDatabaseUrlResolutionHint,
   resolveDatabaseUrl,
 } from "@/lib/database-url";
+import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 
 const MIGRATION_FILE = "011_ensure_attendance_tables.sql";
 
@@ -34,6 +35,37 @@ export function formatSchemaEnsureFailureMessage(originalError?: string): string
     return `${originalError} — ${hint}`;
   }
   return hint;
+}
+
+/** Probe PostgREST for attendance tables without running DDL. */
+export async function checkAttendanceSchemaReady(): Promise<{
+  ready: boolean;
+  message?: string;
+}> {
+  if (!isSupabaseServerConfigured()) {
+    return { ready: true, message: "Supabase not configured — local session mode." };
+  }
+
+  try {
+    const supabase = createAdminClient();
+    const tables = ["employee_attendance", "biometric_attendance"] as const;
+
+    for (const table of tables) {
+      const { error } = await supabase.from(table).select("id").limit(1);
+      if (error && isAttendanceSchemaError(error.message ?? "")) {
+        return {
+          ready: false,
+          message: `Table public.${table} is missing from the database schema cache.`,
+        };
+      }
+    }
+
+    return { ready: true };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Could not verify attendance schema.";
+    return { ready: false, message };
+  }
 }
 
 function readMigrationSql(): string | null {
@@ -132,6 +164,12 @@ export async function ensureAttendanceTablesSchema(): Promise<{
   ok: boolean;
   message: string;
 }> {
+  const existing = await checkAttendanceSchemaReady();
+  if (existing.ready) {
+    ensureSucceeded = true;
+    return { ok: true, message: "Attendance tables already exist." };
+  }
+
   if (ensureSucceeded) {
     return { ok: true, message: "Attendance tables already ensured this session." };
   }

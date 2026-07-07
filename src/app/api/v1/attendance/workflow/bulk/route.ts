@@ -173,6 +173,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "rows array is required." }, { status: 400 });
   }
 
+  if (isSupabaseServerConfigured()) {
+    const schemaEnsure = await ensureAttendanceTablesSchema();
+    console.log(
+      "[bulk-import] attendance schema ensure:",
+      schemaEnsure.ok ? "ok" : schemaEnsure.message
+    );
+    if (!schemaEnsure.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: formatSchemaEnsureFailureMessage(),
+          hint: schemaEnsure.message,
+          setupRequired: true,
+          debug: {
+            cause: "Attendance tables missing and auto schema ensure could not run.",
+          },
+        },
+        { status: 503 }
+      );
+    }
+  }
+
   const normalizedRows: AttendanceBulkDbPayload[] = [];
   const rowErrors: string[] = [];
 
@@ -235,13 +257,6 @@ export async function POST(request: Request) {
 
   try {
     return await withBulkSaveTimeout(async () => {
-  if (isSupabaseServerConfigured()) {
-    const schemaEnsure = await ensureAttendanceTablesSchema();
-    if (!schemaEnsure.ok) {
-      console.warn("[bulk-import] attendance schema pre-check:", schemaEnsure.message);
-    }
-  }
-
   const records: ReturnType<typeof normalizeAttendanceWorkflowRecord>[] = [];
   const prismaBiometricRows: Prisma.BiometricAttendanceCreateManyInput[] = [];
   const supabaseBiometricRows: Record<string, unknown>[] = [];

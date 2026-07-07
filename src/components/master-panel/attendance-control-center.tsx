@@ -10,6 +10,7 @@ import {
   Save,
   Search,
   Upload,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -123,6 +124,14 @@ type SaveSummary = {
 
 type SaveStatus = "idle" | "saving" | "saved" | "failed";
 
+type SchemaStatus = "checking" | "ready" | "missing" | "ensuring";
+
+function isSchemaSetupError(message: string): boolean {
+  return /schema cache|not find table|setuprequired|SUPABASE_DB_PASSWORD|DATABASE_URL|503/i.test(
+    message
+  );
+}
+
 function rowSelectionKey(row: BiometricAttendanceGridRow): string {
   return row.id || `${row.source}-${row.payCode}-${row.date}-${row.employeeName}`;
 }
@@ -164,6 +173,7 @@ export default function AttendanceControlCenter() {
   const { ingestManualEntry, records: workflowRecords, syncFromApi } = useAttendanceWorkflow();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gridSectionRef = useRef<HTMLElement>(null);
+  const pendingSaveAfterSchemaRef = useRef(false);
 
   const [importPreview, setImportPreview] = useState<ImportPreviewState | null>(null);
   const [selectedBulkRowIndex, setSelectedBulkRowIndex] = useState(0);
@@ -184,6 +194,8 @@ export default function AttendanceControlCenter() {
   const [lastSaveSummary, setLastSaveSummary] = useState<SaveSummary | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [dbConnected, setDbConnected] = useState<boolean | null>(null);
+  const [schemaStatus, setSchemaStatus] = useState<SchemaStatus>("checking");
+  const [schemaMessage, setSchemaMessage] = useState<string | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
 
   const resetPanelState = useCallback(() => {
@@ -203,8 +215,49 @@ export default function AttendanceControlCenter() {
     setAvailableDates([]);
     setLastSaveSummary(null);
     setSaveStatus("idle");
+    setSchemaStatus("checking");
+    setSchemaMessage(null);
     setSelectedRowIds(new Set());
   }, []);
+
+  const ensureAttendanceSchema = useCallback(async (): Promise<boolean> => {
+    if (dbConnected === false) {
+      setSchemaStatus("ready");
+      setSchemaMessage(null);
+      return true;
+    }
+
+    setSchemaStatus((current) => (current === "ready" ? current : "ensuring"));
+    try {
+      const response = await fetch("/api/v1/attendance/schema/ensure", {
+        method: "POST",
+      });
+      const body = (await response.json()) as {
+        ok?: boolean;
+        ready?: boolean;
+        message?: string;
+        hint?: string;
+        error?: string;
+      };
+
+      if (response.ok && body.ok) {
+        setSchemaStatus("ready");
+        setSchemaMessage(null);
+        return true;
+      }
+
+      setSchemaStatus("missing");
+      setSchemaMessage(body.hint ?? body.error ?? body.message ?? "Attendance tables are not set up.");
+      return false;
+    } catch (error) {
+      console.error("[attendance] schema ensure failed:", error);
+      setSchemaStatus("missing");
+      setSchemaMessage(
+        "Could not verify attendance schema. Run npm run setup:supabase or npm run migrate:attendance."
+      );
+      return false;
+    }
+  }, [dbConnected]);
 
   useEffect(() => {
     fetch("/api/health/supabase")
@@ -212,6 +265,11 @@ export default function AttendanceControlCenter() {
       .then((health: { ok?: boolean }) => setDbConnected(Boolean(health.ok)))
       .catch(() => setDbConnected(false));
   }, []);
+
+  useEffect(() => {
+    if (dbConnected === null) return;
+    void ensureAttendanceSchema();
+  }, [dbConnected, ensureAttendanceSchema]);
 
   useMasterPanelBlockReset("transaction", resetPanelState);
 
@@ -533,6 +591,8 @@ export default function AttendanceControlCenter() {
         errors?: string[];
         debug?: { cause?: string; receivedRows?: number };
         biometricSaved?: number;
+        hint?: string;
+        setupRequired?: boolean;
         records?: Array<{
           id: string;
           employeeId: string;
@@ -546,7 +606,16 @@ export default function AttendanceControlCenter() {
 
       if (!response.ok) {
         const detail = body.debug?.cause ? ` ${body.debug.cause}` : "";
-        throw new Error((body.error ?? "Bulk attendance submission failed.") + detail);
+        const failureMessage = (body.error ?? "Bulk attendance submission failed.") + detail;
+
+        if (response.status === 503 || body.setupRequired || isSchemaSetupError(failureMessage)) {
+          pendingSaveAfterSchemaRef.current = true;
+          setSchemaStatus("missing");
+          setSchemaMessage(body.hint ?? body.error ?? failureMessage);
+          void ensureAttendanceSchema();
+        }
+
+        throw new Error(failureMessage);
       }
 
       const biometricSaved = body.biometricSaved ?? 0;
@@ -555,13 +624,20 @@ export default function AttendanceControlCenter() {
 
       if (biometricSaved === 0 && workflowSaved === 0 && bulkPayloadRows.length > 0) {
         const schemaErrors =
-          body.errors?.filter((entry) => /schema cache|not find table|SUPABASE_DB_PASSWORD|DATABASE_URL/i.test(entry)) ??
-          [];
-        throw new Error(
+          body.errors?.filter((entry) => isSchemaSetupError(entry)) ?? [];
+        const schemaFailure =
           schemaErrors.slice(0, 2).join(" · ") ||
-            body.errors?.slice(0, 2).join(" · ") ||
-            "Save did not complete — no rows were persisted. Check Supabase connection and retry."
-        );
+          body.errors?.slice(0, 2).join(" · ") ||
+          "Save did not complete — no rows were persisted. Check Supabase connection and retry.";
+
+        if (isSchemaSetupError(schemaFailure)) {
+          pendingSaveAfterSchemaRef.current = true;
+          setSchemaStatus("missing");
+          setSchemaMessage(schemaFailure);
+          void ensureAttendanceSchema();
+        }
+
+        throw new Error(schemaFailure);
       }
 
       result.imported = workflowSaved;
@@ -630,7 +706,15 @@ export default function AttendanceControlCenter() {
     } finally {
       setIsProcessing(false);
     }
-  }, [employees, importPreview, ingestManualEntry, loadGridRows, prependEmployee, syncFromApi]);
+  }, [employees, importPreview, ingestManualEntry, loadGridRows, prependEmployee, syncFromApi, ensureAttendanceSchema]);
+
+  useEffect(() => {
+    if (schemaStatus !== "ready" || !pendingSaveAfterSchemaRef.current || !importPreview) {
+      return;
+    }
+    pendingSaveAfterSchemaRef.current = false;
+    void processBulkImport();
+  }, [schemaStatus, importPreview, processBulkImport]);
 
   const handleBulkRowIndexChange = useCallback(
     (index: number) => {
@@ -871,6 +955,49 @@ export default function AttendanceControlCenter() {
           </div>
         )}
       </div>
+
+      {dbConnected !== false && schemaStatus !== "ready" && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 shadow-card">
+          <div className="flex items-start gap-3">
+            {schemaStatus === "ensuring" || schemaStatus === "checking" ? (
+              <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-amber-600" aria-hidden />
+            ) : (
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" aria-hidden />
+            )}
+            <div className="space-y-2 text-sm text-amber-900">
+              <p className="font-semibold">
+                {schemaStatus === "ensuring" || schemaStatus === "checking"
+                  ? "Preparing attendance database tables…"
+                  : "Attendance tables missing — save will fail until this is fixed"}
+              </p>
+              {schemaMessage && (
+                <p className="text-amber-800">{schemaMessage}</p>
+              )}
+              {schemaStatus === "missing" && (
+                <>
+                  <p className="rounded-lg border border-amber-300 bg-white px-3 py-2 font-mono text-xs text-amber-950">
+                    One-time fix: npm run setup:supabase
+                  </p>
+                  <p className="text-xs text-amber-800">
+                    Or add <strong>SUPABASE_DB_PASSWORD</strong> to <code className="rounded bg-white px-1">.env.local</code>{" "}
+                    (Supabase Dashboard → Project Settings → Database), restart{" "}
+                    <code className="rounded bg-white px-1">npm run dev</code>, then retry save.
+                    Tables are created automatically when credentials are present.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void ensureAttendanceSchema()}
+                    className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                    Retry schema setup
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mandatory filter bar — always rendered at top of workspace */}
       <section

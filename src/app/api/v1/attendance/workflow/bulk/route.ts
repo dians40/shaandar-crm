@@ -44,9 +44,9 @@ function todayIsoDate(): string {
 }
 
 const BATCH_SIZE = 50;
-const BULK_SAVE_TIMEOUT_MS = 15_000;
+const BULK_SAVE_TIMEOUT_MS = 120_000;
 
-export const maxDuration = 15;
+export const maxDuration = 120;
 
 function chunkArray<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -92,7 +92,7 @@ async function withBulkSaveTimeout<T>(operation: () => Promise<T>): Promise<T> {
     operation(),
     new Promise<T>((_, reject) => {
       setTimeout(() => {
-        reject(new Error("Bulk attendance save timed out after 15 seconds."));
+        reject(new Error("Bulk attendance save timed out after 120 seconds."));
       }, BULK_SAVE_TIMEOUT_MS);
     }),
   ]);
@@ -386,7 +386,7 @@ export async function POST(request: Request) {
         ok: false,
         debug: {
           cause: timedOut
-            ? "Bulk save exceeded 15-second limit — rows were not fully persisted."
+            ? "Bulk save exceeded 120-second limit — rows were not fully persisted."
             : "Bulk save failed during database transaction.",
         },
       },

@@ -103,7 +103,7 @@ function safeBulkNumericFromRecord(record: {
   }
 }
 
-const BULK_SAVE_TIMEOUT_MS = 15_000;
+const BULK_SAVE_TIMEOUT_MS = 120_000;
 const SEARCH_DEBOUNCE_MS = 300;
 
 type AttendanceDateCatalogEntry = {
@@ -118,7 +118,10 @@ type SaveSummary = {
   workflowSaved: number;
   savedDate: string;
   fileName: string;
+  savedLocallyOnly?: boolean;
 };
+
+type SaveStatus = "idle" | "saving" | "saved" | "failed";
 
 function rowSelectionKey(row: BiometricAttendanceGridRow): string {
   return row.id || `${row.source}-${row.payCode}-${row.date}-${row.employeeName}`;
@@ -160,6 +163,7 @@ export default function AttendanceControlCenter() {
   const { employees, prependEmployee } = useEmployees();
   const { ingestManualEntry, records: workflowRecords, syncFromApi } = useAttendanceWorkflow();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const gridSectionRef = useRef<HTMLElement>(null);
 
   const [importPreview, setImportPreview] = useState<ImportPreviewState | null>(null);
   const [selectedBulkRowIndex, setSelectedBulkRowIndex] = useState(0);
@@ -178,6 +182,8 @@ export default function AttendanceControlCenter() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [availableDates, setAvailableDates] = useState<AttendanceDateCatalogEntry[]>([]);
   const [lastSaveSummary, setLastSaveSummary] = useState<SaveSummary | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [dbConnected, setDbConnected] = useState<boolean | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
 
   const resetPanelState = useCallback(() => {
@@ -196,7 +202,15 @@ export default function AttendanceControlCenter() {
     setDebouncedSearch("");
     setAvailableDates([]);
     setLastSaveSummary(null);
+    setSaveStatus("idle");
     setSelectedRowIds(new Set());
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/health/supabase")
+      .then((response) => response.json())
+      .then((health: { ok?: boolean }) => setDbConnected(Boolean(health.ok)))
+      .catch(() => setDbConnected(false));
   }, []);
 
   useMasterPanelBlockReset("transaction", resetPanelState);
@@ -286,6 +300,16 @@ export default function AttendanceControlCenter() {
     void loadGridRows();
   }, [loadGridRows]);
 
+  const viewSavedDate = useCallback(
+    (date: string) => {
+      const normalized = normalizeAttendanceDateIso(date);
+      setFilterDate(normalized);
+      void loadGridRows(normalized);
+      gridSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+    [loadGridRows]
+  );
+
   const autoProvisionMissingEmployees = (
     rows: AttendanceImportRow[],
     registry: ReturnType<typeof readAutoProvisionedEmployees>
@@ -310,6 +334,8 @@ export default function AttendanceControlCenter() {
   const handleFileSelect = async (file: File) => {
     setImportMessage(null);
     setImportError(null);
+    setSaveStatus("idle");
+    setLastSaveSummary(null);
     setIsParsing(true);
 
     try {
@@ -393,6 +419,7 @@ export default function AttendanceControlCenter() {
     setImportMessage(null);
     setImportError(null);
     setIsProcessing(true);
+    setSaveStatus("saving");
 
     try {
       let registry = readAutoProvisionedEmployees();
@@ -470,6 +497,7 @@ export default function AttendanceControlCenter() {
 
       if (bulkPayloadRows.length === 0) {
         setImportError("No valid rows available for bulk submission.");
+        setSaveStatus("failed");
         return;
       }
 
@@ -487,7 +515,7 @@ export default function AttendanceControlCenter() {
       } catch (fetchError) {
         if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
           throw new Error(
-            "Bulk save timed out after 15 seconds. Please verify database connectivity and try again."
+            "Bulk save timed out after 120 seconds. Please verify database connectivity and try again."
           );
         }
         throw fetchError;
@@ -498,6 +526,7 @@ export default function AttendanceControlCenter() {
       const body = (await response.json()) as {
         error?: string;
         ok?: boolean;
+        message?: string;
         imported?: number;
         skipped?: number;
         provisionedEmployees?: number;
@@ -520,7 +549,18 @@ export default function AttendanceControlCenter() {
         throw new Error((body.error ?? "Bulk attendance submission failed.") + detail);
       }
 
-      result.imported = body.imported ?? 0;
+      const biometricSaved = body.biometricSaved ?? 0;
+      const workflowSaved = body.imported ?? 0;
+      const savedLocallyOnly = body.message?.toLowerCase().includes("locally") ?? false;
+
+      if (biometricSaved === 0 && workflowSaved === 0 && bulkPayloadRows.length > 0) {
+        throw new Error(
+          body.errors?.slice(0, 2).join(" · ") ||
+            "Save returned zero rows. Check Supabase connection and run migration 010_biometric_attendance_canonical_schema.sql."
+        );
+      }
+
+      result.imported = workflowSaved;
       result.skipped += body.skipped ?? 0;
       if (body.provisionedEmployees && body.provisionedEmployees > 0) {
         result.createdEmployees += body.provisionedEmployees;
@@ -556,35 +596,33 @@ export default function AttendanceControlCenter() {
 
       setFilterDate(savedDate);
       setLastSaveSummary({
-        biometricSaved: body.biometricSaved ?? bulkPayloadRows.length,
-        workflowSaved: body.imported ?? 0,
+        biometricSaved,
+        workflowSaved,
         savedDate,
         fileName: importPreview.fileName,
+        savedLocallyOnly,
       });
+      setSaveStatus("saved");
 
       setImportMessage(
-        `Successfully imported ${result.imported} workflow row(s) · ${body.biometricSaved ?? bulkPayloadRows.length} biometric row(s) saved to database for ${savedDate}.` +
-          (result.createdEmployees > 0
-            ? ` · New employees auto-created: ${result.createdEmployees}`
-            : "") +
-          (result.skipped > 0 ? ` · Skipped ${result.skipped}` : "") +
-          "."
+        savedLocallyOnly
+          ? `Saved ${biometricSaved} row(s) in browser session only — connect Supabase to persist permanently for ${savedDate}.`
+          : `Saved ${biometricSaved} biometric row(s) and ${workflowSaved} workflow row(s) for ${savedDate}. Scroll down to view saved records.`
       );
 
       if (result.errors.length > 0) {
         setImportError(result.errors.slice(0, 3).join(" · "));
       }
 
-      setImportPreview(null);
-      setSelectedBulkRowIndex(0);
-
       await syncFromApi();
       await loadGridRows(savedDate);
+      gridSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
       console.error(error);
       const message =
         error instanceof Error ? error.message : "Bulk attendance processing failed.";
       setImportError(message);
+      setSaveStatus("failed");
     } finally {
       setIsProcessing(false);
     }
@@ -663,6 +701,7 @@ export default function AttendanceControlCenter() {
 
   const renderHistoryGrid = () => (
     <section
+      ref={gridSectionRef}
       className="flex min-h-[420px] w-full min-w-0 flex-col gap-3"
       aria-label="Attendance history grid"
     >
@@ -953,9 +992,7 @@ export default function AttendanceControlCenter() {
         )}
       </section>
 
-      {renderHistoryGrid()}
-
-      {/* Upload engine */}
+      {/* Upload engine — choose file, preview, Process & Save */}
       <section className="rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
         <div className="flex flex-wrap items-start gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-corporate-brand-light text-corporate-brand">
@@ -967,6 +1004,13 @@ export default function AttendanceControlCenter() {
               Upload biometric Daily Performance exports (.xls, .xlsx, .csv). Drag and drop or browse
               to ingest attendance records into the database.
             </p>
+            {dbConnected === false && (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Database not connected — Process &amp; Save will store rows in browser session only.
+                Run <strong>npm run setup:supabase</strong> for permanent storage in{" "}
+                <strong>biometric_attendance</strong>.
+              </p>
+            )}
           </div>
         </div>
 
@@ -1013,26 +1057,35 @@ export default function AttendanceControlCenter() {
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-3">
               <div>
                 <p className="text-sm font-bold text-corporate-brand">
-                  Ready to import: {importPreview.bulkRows.length} row(s)
+                  {saveStatus === "saved"
+                    ? `Saved: ${importPreview.bulkRows.length} row(s) for ${normalizeAttendanceDateIso(importPreview.reportDate || importPreview.bulkRows[0]?.date || "")}`
+                    : `Ready to import: ${importPreview.bulkRows.length} row(s)`}
                 </p>
                 <p className="text-xs text-corporate-muted">
-                  {importPreview.fileName} — {importPreview.pendingNewEmployees.length} new
-                  employee(s) detected
+                  {importPreview.fileName} · Report date:{" "}
+                  <strong>
+                    {normalizeAttendanceDateIso(
+                      importPreview.reportDate || importPreview.bulkRows[0]?.date || ""
+                    )}
+                  </strong>{" "}
+                  · {importPreview.pendingNewEmployees.length} new employee(s) detected
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => void processBulkImport()}
-                disabled={isProcessing}
-                className="btn-primary inline-flex h-11 min-h-[44px] items-center gap-2 px-5 text-sm"
-              >
-                {isProcessing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                ) : (
-                  <Save className="h-4 w-4" aria-hidden />
-                )}
-                {isProcessing ? "Processing..." : "Process & Save"}
-              </button>
+              {saveStatus !== "saved" && (
+                <button
+                  type="button"
+                  onClick={() => void processBulkImport()}
+                  disabled={isProcessing}
+                  className="btn-primary inline-flex h-11 min-h-[44px] items-center gap-2 px-5 text-sm"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <Save className="h-4 w-4" aria-hidden />
+                  )}
+                  {isProcessing ? "Saving to database..." : "Process & Save"}
+                </button>
+              )}
             </div>
 
             {importPreview.alignmentInfo && (
@@ -1062,7 +1115,100 @@ export default function AttendanceControlCenter() {
             {importError}
           </p>
         )}
+
+        {(saveStatus === "saved" || lastSaveSummary) && lastSaveSummary && (
+          <div className="mt-4 space-y-3 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-bold text-emerald-900">
+                  <CheckCircle2 className="h-4 w-4" aria-hidden />
+                  Save complete — records stored for {lastSaveSummary.savedDate}
+                </p>
+                <p className="mt-1 text-xs text-emerald-800">
+                  File: <strong>{lastSaveSummary.fileName}</strong>
+                </p>
+                <p className="mt-1 text-xs text-emerald-800">
+                  {lastSaveSummary.savedLocallyOnly ? (
+                    <>Browser session only — connect database for permanent storage.</>
+                  ) : (
+                    <>
+                      <strong>public.biometric_attendance</strong>: {lastSaveSummary.biometricSaved}{" "}
+                      rows · <strong>public.employee_attendance</strong>:{" "}
+                      {lastSaveSummary.workflowSaved} workflow rows
+                    </>
+                  )}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => viewSavedDate(lastSaveSummary.savedDate)}
+                className="btn-primary inline-flex h-10 items-center gap-2 px-4 text-sm"
+              >
+                View saved records below
+              </button>
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">
+                Pick a saved date to open in the grid
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => viewSavedDate(lastSaveSummary.savedDate)}
+                  className="rounded-full border border-emerald-400 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900"
+                >
+                  {lastSaveSummary.savedDate} · just saved
+                </button>
+                {availableDates
+                  .filter((entry) => entry.date !== lastSaveSummary.savedDate)
+                  .slice(0, 12)
+                  .map((entry) => (
+                    <button
+                      key={entry.date}
+                      type="button"
+                      onClick={() => viewSavedDate(entry.date)}
+                      className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+                    >
+                      {entry.date} · {entry.totalCount} rows
+                    </button>
+                  ))}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setImportPreview(null);
+                setSaveStatus("idle");
+                setImportMessage(null);
+                setImportError(null);
+              }}
+              className="text-xs font-medium text-emerald-800 underline"
+            >
+              Upload another Excel file
+            </button>
+          </div>
+        )}
+
+        {saveStatus === "failed" && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+            <p className="font-semibold">Save did not complete</p>
+            <p className="mt-1 text-xs">
+              Click <strong>Process &amp; Save</strong> again after checking the error above. If the
+              database is not connected, run Supabase setup first.
+            </p>
+            <button
+              type="button"
+              onClick={() => void processBulkImport()}
+              disabled={isProcessing}
+              className="mt-3 inline-flex h-10 items-center gap-2 rounded-lg bg-red-700 px-4 text-xs font-semibold text-white"
+            >
+              Retry Process &amp; Save
+            </button>
+          </div>
+        )}
       </section>
+
+      {renderHistoryGrid()}
 
       {/* Restored live verification workflow — original attendance operations screen */}
       <section className="space-y-4 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">

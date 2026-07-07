@@ -120,6 +120,7 @@ type SaveSummary = {
   savedDate: string;
   fileName: string;
   savedLocallyOnly?: boolean;
+  storageFallback?: boolean;
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "failed";
@@ -593,6 +594,8 @@ export default function AttendanceControlCenter() {
         biometricSaved?: number;
         hint?: string;
         setupRequired?: boolean;
+        storageFallback?: boolean;
+        savedReportDate?: string;
         records?: Array<{
           id: string;
           employeeId: string;
@@ -620,7 +623,9 @@ export default function AttendanceControlCenter() {
 
       const biometricSaved = body.biometricSaved ?? 0;
       const workflowSaved = body.imported ?? 0;
-      const savedLocallyOnly = body.message?.toLowerCase().includes("locally") ?? false;
+      const savedViaStorage = body.storageFallback === true;
+      const savedLocallyOnly =
+        !savedViaStorage && (body.message?.toLowerCase().includes("locally") ?? false);
 
       if (biometricSaved === 0 && workflowSaved === 0 && bulkPayloadRows.length > 0) {
         const schemaErrors =
@@ -669,7 +674,8 @@ export default function AttendanceControlCenter() {
       }
 
       const savedDate = normalizeAttendanceDateIso(
-        importPreview.reportDate ||
+        body.savedReportDate ||
+          importPreview.reportDate ||
           importPreview.bulkRows[0]?.date ||
           new Date().toISOString().slice(0, 10)
       );
@@ -681,13 +687,17 @@ export default function AttendanceControlCenter() {
         savedDate,
         fileName: importPreview.fileName,
         savedLocallyOnly,
+        storageFallback: savedViaStorage,
       });
       setSaveStatus("saved");
+      setSchemaStatus(savedViaStorage ? "missing" : schemaStatus);
 
       setImportMessage(
-        savedLocallyOnly
-          ? `Saved ${biometricSaved} row(s) in browser session only — connect Supabase to persist permanently for ${savedDate}.`
-          : `Saved ${biometricSaved} biometric row(s) and ${workflowSaved} workflow row(s) for ${savedDate}. Scroll down to view saved records.`
+        savedViaStorage
+          ? `Saved ${biometricSaved} row(s) to Supabase cloud storage for ${savedDate}. Records appear in the grid below — no SQL setup required.`
+          : savedLocallyOnly
+            ? `Saved ${biometricSaved} row(s) in browser session only — connect Supabase to persist permanently for ${savedDate}.`
+            : `Saved ${biometricSaved} biometric row(s) and ${workflowSaved} workflow row(s) for ${savedDate}. Scroll down to view saved records.`
       );
 
       if (result.errors.length > 0) {
@@ -1259,7 +1269,12 @@ export default function AttendanceControlCenter() {
                   File: <strong>{lastSaveSummary.fileName}</strong>
                 </p>
                 <p className="mt-1 text-xs text-emerald-800">
-                  {lastSaveSummary.savedLocallyOnly ? (
+                  {lastSaveSummary.storageFallback ? (
+                    <>
+                      Saved to <strong>Supabase cloud storage</strong> ({lastSaveSummary.biometricSaved}{" "}
+                      rows) — viewable in the grid below without SQL table setup.
+                    </>
+                  ) : lastSaveSummary.savedLocallyOnly ? (
                     <>Browser session only — connect database for permanent storage.</>
                   ) : (
                     <>

@@ -1,6 +1,10 @@
 import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
 import { isPrismaConfigured, prisma } from "@/lib/prisma";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
+import {
+  fetchStorageDateCatalog,
+  isStorageFallbackError,
+} from "@/lib/attendance-storage-fallback";
 
 export type AttendanceDateCatalogEntry = {
   date: string;
@@ -38,6 +42,9 @@ async function fetchDateCatalogSupabase(): Promise<AttendanceDateCatalogEntry[]>
     .limit(2000);
 
   if (biometricError) {
+    if (isStorageFallbackError(biometricError.message ?? "")) {
+      return fetchStorageDateCatalog(supabase);
+    }
     throw new Error(biometricError.message);
   }
 
@@ -96,9 +103,19 @@ async function fetchDateCatalogPrisma(): Promise<AttendanceDateCatalogEntry[]> {
 export async function fetchAttendanceDateCatalog(): Promise<AttendanceDateCatalogEntry[]> {
   if (isSupabaseServerConfigured()) {
     try {
-      return await fetchDateCatalogSupabase();
+      const dbCatalog = await fetchDateCatalogSupabase();
+      if (dbCatalog.length > 0) return dbCatalog;
+
+      const supabase = createAdminClient();
+      return await fetchStorageDateCatalog(supabase);
     } catch (error) {
       console.error("[attendance-date-catalog] supabase failed:", error);
+      try {
+        const supabase = createAdminClient();
+        return await fetchStorageDateCatalog(supabase);
+      } catch (storageError) {
+        console.error("[attendance-date-catalog] storage fallback failed:", storageError);
+      }
     }
   }
 

@@ -26,9 +26,11 @@ import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   ensureAttendanceTablesSchema,
+  checkAttendanceSchemaReady,
   formatSchemaEnsureFailureMessage,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
+import { saveBulkImportToStorage } from "@/lib/attendance-storage-fallback";
 import { isPrismaConfigured } from "@/lib/prisma";
 import type { AttendanceBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
 import type { Prisma } from "@prisma/client";
@@ -174,23 +176,12 @@ export async function POST(request: Request) {
   }
 
   if (isSupabaseServerConfigured()) {
-    const schemaEnsure = await ensureAttendanceTablesSchema();
-    console.log(
-      "[bulk-import] attendance schema ensure:",
-      schemaEnsure.ok ? "ok" : schemaEnsure.message
-    );
-    if (!schemaEnsure.ok) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: formatSchemaEnsureFailureMessage(),
-          hint: schemaEnsure.message,
-          setupRequired: true,
-          debug: {
-            cause: "Attendance tables missing and auto schema ensure could not run.",
-          },
-        },
-        { status: 503 }
+    const schemaProbe = await checkAttendanceSchemaReady();
+    if (!schemaProbe.ready) {
+      const schemaEnsure = await ensureAttendanceTablesSchema();
+      console.log(
+        "[bulk-import] attendance schema ensure:",
+        schemaEnsure.ok ? "ok" : schemaEnsure.message
       );
     }
   }
@@ -271,10 +262,22 @@ export async function POST(request: Request) {
   let skipped = 0;
   let provisionedEmployees = 0;
   let biometricSaved = 0;
+  let storageFallback = false;
+  let storagePath: string | undefined;
+  let savedReportDate: string | undefined;
 
   const supabaseConfigured = isSupabaseServerConfigured();
   const prismaConfigured = isPrismaConfigured();
   const supabase = supabaseConfigured ? createAdminClient() : null;
+  let sqlTablesReady = true;
+
+  if (supabase) {
+    const schemaProbe = await checkAttendanceSchemaReady();
+    if (!schemaProbe.ready) {
+      const ensure = await ensureAttendanceTablesSchema();
+      sqlTablesReady = ensure.ok;
+    }
+  }
 
   const employeeCache = new Map<string, string>();
 
@@ -386,7 +389,7 @@ export async function POST(request: Request) {
     }
   }
 
-  if (supabase && workflowUpsertRows.length > 0) {
+  if (supabase && sqlTablesReady && workflowUpsertRows.length > 0) {
     const workflowResult = await persistWorkflowRowsSupabase(
       supabase,
       workflowUpsertRows.map(({ employee_id, attendance_date, status, notes }) => ({
@@ -416,11 +419,11 @@ export async function POST(request: Request) {
     }
   }
 
-  if (prismaConfigured && prismaBiometricRows.length > 0) {
+  if (sqlTablesReady && prismaConfigured && prismaBiometricRows.length > 0) {
     const prismaResult = await persistBiometricRowsResilient(prismaBiometricRows, BATCH_SIZE);
     biometricSaved = prismaResult.saved;
     rowErrors.push(...prismaResult.errors);
-  } else if (supabase && supabaseBiometricRows.length > 0) {
+  } else if (sqlTablesReady && supabase && supabaseBiometricRows.length > 0) {
     const supabaseResult = await persistBiometricRowsSupabaseResilient(
       supabase,
       supabaseBiometricRows,
@@ -430,6 +433,50 @@ export async function POST(request: Request) {
     rowErrors.push(...supabaseResult.errors);
   } else if (!supabaseConfigured) {
     biometricSaved = prismaBiometricRows.length;
+  }
+
+  const schemaStillMissing =
+    supabase &&
+    rowErrors.some((entry) => isAttendanceSchemaError(entry)) &&
+    biometricSaved === 0 &&
+    imported === 0;
+
+  if (
+    supabase &&
+    (schemaStillMissing || (biometricSaved === 0 && imported === 0)) &&
+    supabaseBiometricRows.length > 0
+  ) {
+    try {
+      const reportDate = normalizeAttendanceDateIso(
+        safeString(normalizedRows[0]?.date) ||
+          safeString(normalizedRows[0]?.attendance_date) ||
+          todayIsoDate()
+      );
+      const storageResult = await saveBulkImportToStorage(supabase, {
+        reportDate,
+        rows: supabaseBiometricRows,
+        workflowCount: workflowUpsertRows.length,
+      });
+      biometricSaved = storageResult.saved;
+      imported = workflowUpsertRows.length;
+      storageFallback = true;
+      storagePath = storageResult.storagePath;
+      savedReportDate = storageResult.reportDate;
+      rowErrors.length = 0;
+      console.log(
+        "[bulk-import] saved via cloud storage fallback:",
+        storageResult.storagePath,
+        storageResult.saved,
+        "rows"
+      );
+    } catch (storageError) {
+      const message =
+        storageError instanceof Error
+          ? storageError.message
+          : "Cloud storage fallback failed.";
+      rowErrors.push(formatSchemaEnsureFailureMessage(message));
+      console.error("[bulk-import] storage fallback failed:", storageError);
+    }
   }
 
   if (!supabaseConfigured) {
@@ -448,13 +495,18 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     message:
-      imported > 0 || biometricSaved > 0
-        ? "Bulk attendance import completed."
-        : "Bulk import finished with zero saved rows — see errors.",
+      storageFallback
+        ? `Bulk attendance saved to cloud storage (${biometricSaved} rows). SQL tables will be used automatically once configured.`
+        : imported > 0 || biometricSaved > 0
+          ? "Bulk attendance import completed."
+          : "Bulk import finished with zero saved rows — see errors.",
     imported,
     skipped,
     provisionedEmployees,
     biometricSaved,
+    storageFallback,
+    storagePath,
+    savedReportDate,
     errors: rowErrors.slice(0, 20),
     records,
   });

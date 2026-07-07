@@ -7,9 +7,7 @@ import {
   FileSpreadsheet,
   Loader2,
   RefreshCw,
-  Save,
   Search,
-  Upload,
   AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,6 +25,7 @@ import {
   safeBulkNumeric,
 } from "@/lib/attendance-bulk-payload-bridge";
 import {
+  ATTENDANCE_BULK_IMPORT_COLUMNS,
   bulkRecordToWorkflowFields,
   normalizeAttendanceDateIso,
   normalizeBiometric23ColumnRecord,
@@ -39,16 +38,13 @@ import {
   type AttendanceImportRow,
 } from "@/lib/attendance-import-parser";
 import { bulkRecordHasContent } from "@/types/attendance-bulk-import-row";
-import AttendanceBulkImportPreviewGrid from "./attendance-bulk-import-preview-grid";
+import AttendanceUploadRecordModule from "./attendance-upload-record-module";
 import AttendanceSystemPanel from "./attendance-system-panel";
 import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
 import { useEmployees } from "@/hooks/use-employees";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
-import {
-  BIOMETRIC_ATTENDANCE_GRID_COLUMNS,
-  type BiometricAttendanceGridRow,
-} from "@/types/biometric-attendance-grid";
+import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
 import {
   mergeAttendanceGridRows,
   mapWorkflowRecordToGridRow,
@@ -60,6 +56,7 @@ import {
   MASTER_LIST_TABLE_CLASS,
   MASTER_LIST_TABLE_WRAPPER_CLASS,
 } from "./universal-master-list";
+import { gridRowToUploadRecord } from "@/lib/attendance-upload-record-mapper";
 
 type ImportPreviewState = {
   fileName: string;
@@ -708,11 +705,15 @@ export default function AttendanceControlCenter() {
 
       setImportMessage(
         savedViaStorage
-          ? `Saved ${biometricSaved} row(s) to Supabase cloud storage for ${savedDate}. Records appear in the grid below — no SQL setup required.`
+          ? `Saved ${biometricSaved} row(s) to server cloud storage for ${savedDate}. Staging cleared — view records below.`
           : savedLocallyOnly
-            ? `Saved ${biometricSaved} row(s) in browser session only — connect Supabase to persist permanently for ${savedDate}.`
-            : `Saved ${biometricSaved} biometric row(s) and ${workflowSaved} workflow row(s) for ${savedDate}. Scroll down to view saved records.`
+            ? `Saved ${biometricSaved} row(s) in browser session for ${savedDate}. Staging cleared.`
+            : `Saved ${biometricSaved} row(s) to server for ${savedDate}. Staging cleared — view Saved Upload Records below.`
       );
+
+      setImportPreview(null);
+      setSelectedBulkRowIndex(0);
+      setSaveStatus("idle");
 
       if (result.errors.length > 0) {
         setImportError(result.errors.slice(0, 3).join(" · "));
@@ -795,8 +796,6 @@ export default function AttendanceControlCenter() {
     if (file) void handleFileSelect(file);
   };
 
-  const uploadBusy = isParsing || isProcessing;
-
   const selectedRows = gridRows.filter((row) => selectedRowIds.has(rowSelectionKey(row)));
 
   const toggleRowSelection = (row: BiometricAttendanceGridRow) => {
@@ -828,8 +827,8 @@ export default function AttendanceControlCenter() {
             <h3 className="text-sm font-bold text-corporate-text">Saved Upload Records</h3>
             <p className="text-xs text-corporate-muted">
               {filterDate
-                ? `Showing records for ${normalizeAttendanceDateIso(filterDate)} — select rows to review or open the workflow panel below`
-                : "Pick an uploaded date above to view your Excel sheet records, or browse all saved rows"}
+                ? `Server records for ${normalizeAttendanceDateIso(filterDate)} — same 22 columns as upload editor`
+                : "Committed server records — pick a date above or upload and save from the editor module"}
             </p>
           </div>
         </div>
@@ -881,7 +880,7 @@ export default function AttendanceControlCenter() {
           <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
             <tr>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Select</th>
-              {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => (
+              {ATTENDANCE_BULK_IMPORT_COLUMNS.map((column) => (
                 <th key={column.key} className={MASTER_LIST_HEADER_CELL_CLASS}>
                   {column.label}
                 </th>
@@ -892,7 +891,7 @@ export default function AttendanceControlCenter() {
             {isGridLoading ? (
               <tr>
                 <td
-                  colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length + 1}
+                  colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 1}
                   className="px-3 py-10 text-center text-corporate-muted"
                 >
                   <span className="inline-flex items-center gap-2 text-sm">
@@ -904,7 +903,7 @@ export default function AttendanceControlCenter() {
             ) : gridRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length + 1}
+                  colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 1}
                   className="px-3 py-10 text-center text-sm text-corporate-muted"
                 >
                   {filterDate
@@ -916,6 +915,7 @@ export default function AttendanceControlCenter() {
               gridRows.map((row) => {
                 const key = rowSelectionKey(row);
                 const isSelected = selectedRowIds.has(key);
+                const uploadRecord = gridRowToUploadRecord(row);
                 return (
                   <tr
                     key={key}
@@ -934,8 +934,8 @@ export default function AttendanceControlCenter() {
                         className="h-4 w-4 rounded border-corporate-border"
                       />
                     </td>
-                    {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => {
-                      const value = row[column.key] ?? "";
+                    {ATTENDANCE_BULK_IMPORT_COLUMNS.map((column) => {
+                      const value = uploadRecord[column.key] ?? "";
                       return (
                         <td
                           key={`${key}-${column.key}`}
@@ -944,7 +944,7 @@ export default function AttendanceControlCenter() {
                             "whitespace-nowrap text-xs text-corporate-text",
                             (column.key === "shift" ||
                               column.key === "status" ||
-                              column.key === "otHours") &&
+                              column.key === "ot") &&
                               "font-semibold text-corporate-brand"
                           )}
                         >
@@ -1167,226 +1167,55 @@ export default function AttendanceControlCenter() {
         )}
       </section>
 
-      {/* Upload engine — choose file, preview, Process & Save */}
-      <section className="rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
-        <div className="flex flex-wrap items-start gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-corporate-brand-light text-corporate-brand">
-            <FileSpreadsheet className="h-5 w-5" aria-hidden />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-bold text-corporate-text">Excel Upload</h3>
-            <p className="mt-1 text-xs text-corporate-muted">
-              Upload biometric Daily Performance exports (.xls, .xlsx, .csv). Drag and drop or browse
-              to ingest attendance records into the database.
-            </p>
-            {dbConnected === false && (
-              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                Database not connected — Process &amp; Save will store rows in browser session only.
-                Run <strong>npm run setup:supabase</strong> for permanent storage in{" "}
-                <strong>biometric_attendance</strong>.
-              </p>
-            )}
-          </div>
+      {/* Upload Record Editor — 22-column staging above Live Workflow */}
+      <AttendanceUploadRecordModule
+        importPreview={
+          importPreview
+            ? {
+                fileName: importPreview.fileName,
+                bulkRows: importPreview.bulkRows,
+                pendingNewEmployees: importPreview.pendingNewEmployees,
+                alignmentInfo: importPreview.alignmentInfo,
+                reportDate: importPreview.reportDate,
+              }
+            : null
+        }
+        selectedBulkRowIndex={selectedBulkRowIndex}
+        onSelectedBulkRowIndexChange={handleBulkRowIndexChange}
+        onBulkRowsChange={handleBulkRowsChange}
+        onFileInputChange={(file) => void handleFileSelect(file)}
+        onProcessSave={() => void processBulkImport()}
+        isParsing={isParsing}
+        isProcessing={isProcessing}
+        isDragging={isDragging}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        fileInputRef={fileInputRef}
+        importMessage={importMessage}
+        importError={importError}
+        dbConnected={dbConnected}
+      />
+
+      {lastSaveSummary && (
+        <div className="rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4">
+          <p className="flex items-center gap-2 text-sm font-bold text-emerald-900">
+            <CheckCircle2 className="h-4 w-4" aria-hidden />
+            Last save: {lastSaveSummary.biometricSaved} row(s) for {lastSaveSummary.savedDate}
+          </p>
+          <p className="mt-1 text-xs text-emerald-800">
+            File: {lastSaveSummary.fileName} — records moved to{" "}
+            <strong>Saved Upload Records</strong> on the server. Staging area cleared.
+          </p>
+          <button
+            type="button"
+            onClick={() => viewSavedDate(lastSaveSummary.savedDate)}
+            className="btn-primary mt-3 inline-flex h-9 items-center gap-2 px-4 text-xs"
+          >
+            View in Saved Upload Records
+          </button>
         </div>
-
-        <div
-          className={cn(
-            "mt-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors",
-            isDragging
-              ? "border-corporate-brand bg-corporate-brand-light/50"
-              : "border-corporate-border bg-corporate-bg",
-            uploadBusy && "pointer-events-none opacity-70"
-          )}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {isParsing ? (
-            <Loader2 className="mb-2 h-8 w-8 animate-spin text-corporate-brand" aria-hidden />
-          ) : (
-            <Upload className="mb-2 h-8 w-8 text-corporate-muted" aria-hidden />
-          )}
-          <p className="text-sm font-medium text-corporate-text">
-            {isDragging ? "Drop file to upload" : "Drag and drop or select a file"}
-          </p>
-          <p className="mt-1 text-xs text-corporate-muted">Supported: .xlsx, .xls, .pdf, .csv</p>
-          <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-corporate-brand px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
-            <Upload className="h-4 w-4" aria-hidden />
-            Choose File
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.pdf,.csv"
-              className="sr-only"
-              disabled={uploadBusy}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void handleFileSelect(file);
-              }}
-            />
-          </label>
-        </div>
-
-        {importPreview && (
-          <div className="mt-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-3">
-              <div>
-                <p className="text-sm font-bold text-corporate-brand">
-                  {saveStatus === "saved"
-                    ? `Saved: ${importPreview.bulkRows.length} row(s) for ${normalizeAttendanceDateIso(importPreview.reportDate || importPreview.bulkRows[0]?.date || "")}`
-                    : `Ready to import: ${importPreview.bulkRows.length} row(s)`}
-                </p>
-                <p className="text-xs text-corporate-muted">
-                  {importPreview.fileName} · Report date:{" "}
-                  <strong>
-                    {normalizeAttendanceDateIso(
-                      importPreview.reportDate || importPreview.bulkRows[0]?.date || ""
-                    )}
-                  </strong>{" "}
-                  · {importPreview.pendingNewEmployees.length} new employee(s) detected
-                </p>
-              </div>
-              {saveStatus !== "saved" && (
-                <button
-                  type="button"
-                  onClick={() => void processBulkImport()}
-                  disabled={isProcessing}
-                  className="btn-primary inline-flex h-11 min-h-[44px] items-center gap-2 px-5 text-sm"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Save className="h-4 w-4" aria-hidden />
-                  )}
-                  {isProcessing ? "Saving to database..." : "Process & Save"}
-                </button>
-              )}
-            </div>
-
-            {importPreview.alignmentInfo && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
-                <p className="font-semibold">Column alignment</p>
-                <p className="mt-1">{importPreview.alignmentInfo}</p>
-              </div>
-            )}
-
-            <AttendanceBulkImportPreviewGrid
-              rows={importPreview.bulkRows}
-              selectedRowIndex={selectedBulkRowIndex}
-              onSelectedRowIndexChange={handleBulkRowIndexChange}
-              onRowsChange={handleBulkRowsChange}
-            />
-          </div>
-        )}
-
-        {importMessage && (
-          <p className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-            {importMessage}
-          </p>
-        )}
-        {importError && (
-          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            {importError}
-          </p>
-        )}
-
-        {(saveStatus === "saved" || lastSaveSummary) && lastSaveSummary && (
-          <div className="mt-4 space-y-3 rounded-xl border-2 border-emerald-300 bg-emerald-50 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="flex items-center gap-2 text-sm font-bold text-emerald-900">
-                  <CheckCircle2 className="h-4 w-4" aria-hidden />
-                  Save complete — records stored for {lastSaveSummary.savedDate}
-                </p>
-                <p className="mt-1 text-xs text-emerald-800">
-                  File: <strong>{lastSaveSummary.fileName}</strong>
-                </p>
-                <p className="mt-1 text-xs text-emerald-800">
-                  {lastSaveSummary.storageFallback ? (
-                    <>
-                      Saved to <strong>Supabase cloud storage</strong> ({lastSaveSummary.biometricSaved}{" "}
-                      rows) — viewable in the grid below without SQL table setup.
-                    </>
-                  ) : lastSaveSummary.savedLocallyOnly ? (
-                    <>Browser session only — connect database for permanent storage.</>
-                  ) : (
-                    <>
-                      <strong>public.biometric_attendance</strong>: {lastSaveSummary.biometricSaved}{" "}
-                      rows · <strong>public.employee_attendance</strong>:{" "}
-                      {lastSaveSummary.workflowSaved} workflow rows
-                    </>
-                  )}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => viewSavedDate(lastSaveSummary.savedDate)}
-                className="btn-primary inline-flex h-10 items-center gap-2 px-4 text-sm"
-              >
-                View saved records below
-              </button>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-900">
-                Pick a saved date to open in the grid
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => viewSavedDate(lastSaveSummary.savedDate)}
-                  className="rounded-full border border-emerald-400 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-900"
-                >
-                  {lastSaveSummary.savedDate} · just saved
-                </button>
-                {availableDates
-                  .filter((entry) => entry.date !== lastSaveSummary.savedDate)
-                  .slice(0, 12)
-                  .map((entry) => (
-                    <button
-                      key={entry.date}
-                      type="button"
-                      onClick={() => viewSavedDate(entry.date)}
-                      className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
-                    >
-                      {entry.date} · {entry.totalCount} rows
-                    </button>
-                  ))}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setImportPreview(null);
-                setSaveStatus("idle");
-                setImportMessage(null);
-                setImportError(null);
-              }}
-              className="text-xs font-medium text-emerald-800 underline"
-            >
-              Upload another Excel file
-            </button>
-          </div>
-        )}
-
-        {saveStatus === "failed" && (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
-            <p className="font-semibold">Save did not complete</p>
-            <p className="mt-1 text-xs">
-              Click <strong>Process &amp; Save</strong> again after checking the error above. If the
-              database is not connected, run Supabase setup first.
-            </p>
-            <button
-              type="button"
-              onClick={() => void processBulkImport()}
-              disabled={isProcessing}
-              className="mt-3 inline-flex h-10 items-center gap-2 rounded-lg bg-red-700 px-4 text-xs font-semibold text-white"
-            >
-              Retry Process &amp; Save
-            </button>
-          </div>
-        )}
-      </section>
+      )}
 
       {renderHistoryGrid()}
 

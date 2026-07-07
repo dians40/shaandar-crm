@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireFullAccessUser } from "@/lib/api/auth-guard";
 import type { ManualAttendanceStatus } from "@/types/manual-attendance-entry";
 import { BIOMETRIC_DAY_CODE } from "@/types/manual-attendance-entry";
 import {
@@ -63,6 +64,9 @@ function recordKey(record: AttendanceWorkflowRecord): string {
 }
 
 export async function GET(request: Request) {
+  const authError = await requireFullAccessUser();
+  if (authError) return authError;
+
   if (!isSupabaseServerConfigured()) {
     return NextResponse.json({ records: [] });
   }
@@ -291,6 +295,9 @@ function mapManualStatusToDbStatus(_status: ManualAttendanceStatus): string {
 }
 
 export async function POST(request: Request) {
+  const authError = await requireFullAccessUser();
+  if (authError) return authError;
+
   let body: unknown;
   try {
     body = await request.json();

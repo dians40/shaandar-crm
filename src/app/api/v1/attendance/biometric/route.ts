@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireFullAccessUser } from "@/lib/api/auth-guard";
 import { fetchAttendanceDateCatalog } from "@/lib/attendance-date-catalog";
 import { fetchRowsByPipelineStage } from "@/lib/attendance-pipeline-service";
 import { isPipelineStage, PIPELINE_STAGES } from "@/types/attendance-pipeline";
@@ -7,6 +8,9 @@ const MAX_MERGED_ROWS = 500;
 
 /** Layer 4 — saved history grid. Only LAYER_4_SAVED biometric rows (no legacy/workflow leakage). */
 export async function GET(request: Request) {
+  const authError = await requireFullAccessUser();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(Number(searchParams.get("limit") ?? "300"), MAX_MERGED_ROWS);

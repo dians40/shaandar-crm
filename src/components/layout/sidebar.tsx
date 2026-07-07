@@ -20,6 +20,7 @@ import {
   filterTransactionModulesForSession,
   LAYER2_STAGING_HOME_HREF,
 } from "@/lib/auth-navigation";
+import { LAYER2_STAGING_WORKSPACE_MODULE } from "@/types/auth-session";
 
 type ExpandableSectionId = "master-panel" | "transactions";
 
@@ -104,10 +105,11 @@ export default function Sidebar({
 
   useEffect(() => {
     if (!isLayer2StagingOnly) return;
-    if (!pathname.startsWith("/transactions")) {
+    const moduleParam = searchParams.get("module");
+    if (!pathname.startsWith("/transactions") || moduleParam !== LAYER2_STAGING_WORKSPACE_MODULE) {
       router.replace(LAYER2_STAGING_HOME_HREF);
     }
-  }, [isLayer2StagingOnly, pathname, router]);
+  }, [isLayer2StagingOnly, pathname, router, searchParams]);
 
   return (
     <aside className="flex h-full w-full shrink-0 flex-col border-r border-corporate-border bg-corporate-surface md:w-64">

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  getApiAuthSession,
+  requireAuth,
+  requireLayer2StagingPost,
+} from "@/lib/api/auth-guard";
+import {
   ATTENDANCE_SETUP_MESSAGE,
 } from "@/lib/attendance-setup-messages";
 import {
@@ -21,9 +26,13 @@ import {
   parseStagingTimestamp,
   validateStagingRow,
 } from "@/lib/attendance-staging-validator";
+import { isLayer2StagingUser } from "@/types/auth-session";
 import { normalizeBiometric23ColumnRecord } from "@/types/attendance-bulk-import-row";
 
 export async function GET(request: Request) {
+  const authError = await requireAuth();
+  if (authError) return authError;
+
   try {
     const { searchParams } = new URL(request.url);
     const shiftDate = searchParams.get("shiftDate")?.trim() || undefined;
@@ -63,6 +72,18 @@ export async function POST(request: Request) {
   try {
     await ensureAttendanceTablesSchema();
     const body = (await request.json()) as Record<string, unknown>;
+
+    const authError = await requireAuth();
+    if (authError) return authError;
+
+    const session = await getApiAuthSession();
+    if (isLayer2StagingUser(session)) {
+      const layer2Error = await requireLayer2StagingPost(body);
+      if (layer2Error) return layer2Error;
+    } else if (!session?.isAdmin) {
+      return NextResponse.json({ error: "Access denied." }, { status: 403 });
+    }
+
     const action = String(body.action ?? "bulk-upload");
     const changedBy = String(body.changedBy ?? "Supervisor");
 

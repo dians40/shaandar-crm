@@ -1,4 +1,5 @@
 import {
+  LAYER2_STAGING_ALLOWED_API_PATH_PREFIXES,
   LAYER2_STAGING_ALLOWED_PATH_PREFIXES,
   LAYER2_STAGING_WORKSPACE_MODULE,
   type AuthSessionPayload,
@@ -17,12 +18,27 @@ export function getPostLoginRedirect(session: AuthSessionPayload): string {
 }
 
 export function isLayer2StagingPathAllowed(pathname: string, moduleParam: string | null): boolean {
+  const onTransactions =
+    pathname === "/transactions" || pathname.startsWith("/transactions/");
+
+  if (!onTransactions) {
+    return false;
+  }
+
   const pathAllowed = LAYER2_STAGING_ALLOWED_PATH_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
-  if (!pathAllowed) return false;
-  if (!moduleParam) return true;
+  if (!pathAllowed) {
+    return false;
+  }
+
   return moduleParam === LAYER2_STAGING_WORKSPACE_MODULE;
+}
+
+export function isLayer2StagingApiPathAllowed(pathname: string): boolean {
+  return LAYER2_STAGING_ALLOWED_API_PATH_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
+  );
 }
 
 export function filterSidebarNavForSession(

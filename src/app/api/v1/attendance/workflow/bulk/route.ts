@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireFullAccessUser } from "@/lib/api/auth-guard";
 import { resolveOrProvisionEmployeeId } from "@/lib/attendance-bulk-employee-resolver";
 import { sanitizeIncomingBulkRow } from "@/lib/attendance-bulk-row-sanitizer";
 import {
@@ -56,6 +57,9 @@ async function withBulkSaveTimeout<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export async function POST(request: Request) {
+  const authError = await requireFullAccessUser();
+  if (authError) return authError;
+
   let body: unknown;
   try {
     body = await request.json();

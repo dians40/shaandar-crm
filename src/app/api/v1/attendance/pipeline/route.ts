@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import {
+  requireLayer2PipelineGet,
+  requireLayer2PipelinePost,
+} from "@/lib/api/auth-guard";
+import {
   approveStagingToWorkflow,
   commitWorkflowToSaved,
   fetchRowsByPipelineStage,
@@ -16,6 +20,8 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const stageParam = searchParams.get("stage")?.trim() ?? PIPELINE_STAGES.LAYER_2_STAGING;
+    const layer2Error = await requireLayer2PipelineGet(stageParam);
+    if (layer2Error) return layer2Error;
     if (!isPipelineStage(stageParam)) {
       return NextResponse.json({ error: `Invalid stage: ${stageParam}` }, { status: 400 });
     }
@@ -57,6 +63,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Record<string, unknown>;
+    const layer2Error = await requireLayer2PipelinePost(body);
+    if (layer2Error) return layer2Error;
     const action = String(body.action ?? "approve-staging");
     const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
 

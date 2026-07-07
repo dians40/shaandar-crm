@@ -327,8 +327,9 @@ export default function AttendanceControlCenter({
   }, [layer4FromDate, layer4ToDate, debouncedSearch]);
 
   useEffect(() => {
+    if (stagingOnly) return;
     void loadGridRows();
-  }, [loadGridRows]);
+  }, [loadGridRows, stagingOnly]);
 
   const viewSavedDate = useCallback(
     (date: string) => {

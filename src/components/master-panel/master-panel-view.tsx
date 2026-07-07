@@ -141,6 +141,12 @@ function MasterPanelContent({ scope }: MasterPanelContentProps) {
   const { isLayer2StagingOnly } = useAuthSession();
   const moduleParam = searchParams.get("module");
 
+  useEffect(() => {
+    if (isLayer2StagingOnly && scope !== "transaction") {
+      router.replace(LAYER2_STAGING_HOME_HREF);
+    }
+  }, [isLayer2StagingOnly, scope, router]);
+
   const [activeModuleId, setActiveModuleId] = useState<MasterPanelModuleId>(() =>
     resolveDefaultModuleId(scope, moduleParam, isLayer2StagingOnly)
   );

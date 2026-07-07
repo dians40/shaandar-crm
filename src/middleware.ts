@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { AUTH_COOKIE } from "@/lib/auth";
+import { decodeAuthSession, AUTH_COOKIE } from "@/lib/auth";
+import { LAYER2_STAGING_HOME_HREF, isLayer2StagingPathAllowed } from "@/lib/auth-navigation";
+import { isLayer2StagingUser } from "@/types/auth-session";
 
 const protectedPrefixes = [
   "/dashboard",
@@ -16,7 +18,9 @@ const protectedPrefixes = [
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const isAuthenticated = request.cookies.get(AUTH_COOKIE)?.value === "true";
+  const sessionRaw = request.cookies.get(AUTH_COOKIE)?.value;
+  const session = decodeAuthSession(sessionRaw);
+  const isAuthenticated = session !== null;
   const isProtected = protectedPrefixes.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
@@ -27,7 +31,20 @@ export function middleware(request: NextRequest) {
   }
 
   if (pathname === "/login" && isAuthenticated) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    const redirectTarget = isLayer2StagingUser(session)
+      ? LAYER2_STAGING_HOME_HREF
+      : "/dashboard";
+    return NextResponse.redirect(new URL(redirectTarget, request.url));
+  }
+
+  if (isAuthenticated && isLayer2StagingUser(session) && isProtected) {
+    const moduleParam = request.nextUrl.searchParams.get("module");
+    if (!isLayer2StagingPathAllowed(pathname, moduleParam)) {
+      return NextResponse.redirect(new URL(LAYER2_STAGING_HOME_HREF, request.url));
+    }
+    if (pathname.startsWith("/transactions") && !moduleParam) {
+      return NextResponse.redirect(new URL(LAYER2_STAGING_HOME_HREF, request.url));
+    }
   }
 
   return NextResponse.next();

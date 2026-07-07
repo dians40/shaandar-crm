@@ -1,13 +1,14 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { AUTH_COOKIE } from "@/lib/auth";
+import { decodeAuthSession, AUTH_COOKIE } from "@/lib/auth";
+import { getPostLoginRedirect } from "@/lib/auth-navigation";
 
 export default async function HomePage() {
   const cookieStore = await cookies();
-  const isAuthenticated = cookieStore.get(AUTH_COOKIE)?.value === "true";
+  const session = decodeAuthSession(cookieStore.get(AUTH_COOKIE)?.value);
 
-  if (isAuthenticated) {
-    redirect("/dashboard");
+  if (session) {
+    redirect(getPostLoginRedirect(session));
   }
 
   redirect("/login");

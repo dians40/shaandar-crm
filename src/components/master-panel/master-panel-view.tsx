@@ -59,6 +59,9 @@ import TransferVoucherPanel from "./transfer-voucher-panel";
 import PartsOrderPanel from "./parts-order-panel";
 import { INVENTORY_VOUCHER_CONFIGS } from "@/constants/inventory-voucher-configs";
 import { EXPENSE_RECEIPT_CONFIGS } from "@/constants/accounting-voucher-configs";
+import { useAuthSession } from "@/contexts/auth-session-context";
+import { LAYER2_STAGING_HOME_HREF } from "@/lib/auth-navigation";
+import { LAYER2_STAGING_WORKSPACE_MODULE } from "@/types/auth-session";
 
 type ErrorBoundaryState = {
   hasError: boolean;
@@ -109,8 +112,13 @@ class MasterPanelErrorBoundary extends Component<
 
 function resolveDefaultModuleId(
   scope: MasterPanelModuleGroupId,
-  moduleParam: string | null
+  moduleParam: string | null,
+  isLayer2StagingOnly: boolean
 ): MasterPanelModuleId {
+  if (isLayer2StagingOnly && scope === "transaction") {
+    return LAYER2_STAGING_WORKSPACE_MODULE;
+  }
+
   if (isMasterPanelModuleId(moduleParam)) {
     const moduleGroup = getGroupForModule(moduleParam);
     if (moduleGroup?.id === scope) {
@@ -130,10 +138,11 @@ type MasterPanelContentProps = {
 function MasterPanelContent({ scope }: MasterPanelContentProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isLayer2StagingOnly } = useAuthSession();
   const moduleParam = searchParams.get("module");
 
   const [activeModuleId, setActiveModuleId] = useState<MasterPanelModuleId>(() =>
-    resolveDefaultModuleId(scope, moduleParam)
+    resolveDefaultModuleId(scope, moduleParam, isLayer2StagingOnly)
   );
   const [workspaceEpoch, setWorkspaceEpoch] = useState(0);
   const activeModuleIdRef = useRef(activeModuleId);
@@ -176,11 +185,18 @@ function MasterPanelContent({ scope }: MasterPanelContentProps) {
   );
 
   useEffect(() => {
-    const nextModuleId = resolveDefaultModuleId(scope, moduleParam);
+    if (isLayer2StagingOnly && scope === "transaction") {
+      if (activeModuleId !== LAYER2_STAGING_WORKSPACE_MODULE) {
+        router.replace(LAYER2_STAGING_HOME_HREF);
+      }
+      return;
+    }
+
+    const nextModuleId = resolveDefaultModuleId(scope, moduleParam, isLayer2StagingOnly);
     if (nextModuleId !== activeModuleIdRef.current) {
       navigateToModule(nextModuleId, false);
     }
-  }, [moduleParam, navigateToModule, scope]);
+  }, [moduleParam, navigateToModule, scope, isLayer2StagingOnly, activeModuleId, router]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -238,7 +254,7 @@ function MasterPanelContent({ scope }: MasterPanelContentProps) {
         case "api-integration-gateway":
           return <ApiIntegrationGatewayPanel />;
         case "attendance-system":
-          return <AttendanceControlCenter />;
+          return <AttendanceControlCenter stagingOnly={isLayer2StagingOnly} />;
         case "attendance-manual-entry":
           return <ManualAttendanceEntryPanel />;
         case "attendance-biometric-log":

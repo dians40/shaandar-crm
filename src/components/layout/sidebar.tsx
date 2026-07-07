@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Building2, ChevronDown, LogOut, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { sidebarNavItems } from "@/constants/nav-config";
 import {
   getGroupById,
   getMasterPanelModule,
@@ -15,6 +14,12 @@ import {
 } from "@/constants/master-panel-modules";
 import { cn } from "@/lib/utils";
 import { logoutAction } from "@/app/login/actions";
+import { useAuthSession } from "@/contexts/auth-session-context";
+import {
+  filterSidebarNavForSession,
+  filterTransactionModulesForSession,
+  LAYER2_STAGING_HOME_HREF,
+} from "@/lib/auth-navigation";
 
 type ExpandableSectionId = "master-panel" | "transactions";
 
@@ -42,6 +47,7 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { session, isLayer2StagingOnly } = useAuthSession();
   const activeModuleParam = searchParams.get("module");
 
   const activeModuleId = isMasterPanelModuleId(activeModuleParam)
@@ -82,13 +88,26 @@ export default function Sidebar({
   const nestedModules = useMemo(
     () =>
       ({
-        // Master Panel — full administration routes always visible (role matrix applies inside workspace).
         "master-panel": getGroupById("administration")?.moduleIds ?? [],
-        // Transactions menu — full operational routes including attendance workspace modules.
-        transactions: getGroupById("transaction")?.moduleIds ?? [],
+        transactions: filterTransactionModulesForSession(
+          getGroupById("transaction")?.moduleIds ?? [],
+          session
+        ),
       }) satisfies Record<ExpandableSectionId, MasterPanelModuleId[]>,
-    []
+    [session]
   );
+
+  const visibleNavItems = useMemo(
+    () => filterSidebarNavForSession(session),
+    [session]
+  );
+
+  useEffect(() => {
+    if (!isLayer2StagingOnly) return;
+    if (!pathname.startsWith("/transactions")) {
+      router.replace(LAYER2_STAGING_HOME_HREF);
+    }
+  }, [isLayer2StagingOnly, pathname, router]);
 
   return (
     <aside className="flex h-full w-full shrink-0 flex-col border-r border-corporate-border bg-corporate-surface md:w-64">
@@ -116,7 +135,7 @@ export default function Sidebar({
 
       <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Main navigation">
         <ul className="space-y-1">
-          {sidebarNavItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const expandableKey = Object.entries(EXPANDABLE_SECTIONS).find(
               ([, config]) => config.href === item.href
             )?.[0] as ExpandableSectionId | undefined;

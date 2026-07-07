@@ -290,6 +290,8 @@ export default function UserManagementPanel() {
         onAddUser={() => openAddModal(2)}
         onEditUser={openEditModal}
         onRemoveUser={handleRemoveUser}
+        showOtp
+        onOtpToggle={setOtpEnabled}
       />
 
       <UserLayerSection
@@ -314,6 +316,8 @@ export default function UserManagementPanel() {
         onAddUser={() => openAddModal(4)}
         onEditUser={openEditModal}
         onRemoveUser={handleRemoveUser}
+        showOtp
+        onOtpToggle={setOtpEnabled}
       />
 
       <RoleModelWorkspace />

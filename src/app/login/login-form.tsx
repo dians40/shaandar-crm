@@ -3,13 +3,18 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Lock, ShieldCheck, User } from "lucide-react";
-import { establishSessionAction, loginAction } from "./actions";
-import { validateDemoAdminLogin } from "@/lib/auth";
+import {
+  authenticateAdminAction,
+  establishManagedUserSessionAction,
+} from "./actions";
+import { getPostLoginRedirect } from "@/lib/auth-navigation";
 import {
   createPendingOtpSession,
   findManagedUserByUsername,
   verifyPendingOtp,
 } from "@/lib/managed-users-store";
+import { resolveUserPipelineStage } from "@/types/managed-user";
+import type { AuthSessionPayload } from "@/types/auth-session";
 
 type LoginStep = "credentials" | "otp";
 
@@ -20,6 +25,8 @@ export default function LoginForm() {
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [simulatedOtp, setSimulatedOtp] = useState("");
+  const [pendingManagedSession, setPendingManagedSession] =
+    useState<AuthSessionPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
 
@@ -29,24 +36,14 @@ export default function LoginForm() {
     }
   }, [step]);
 
-  const completeLogin = async () => {
-    if (validateDemoAdminLogin(username, password)) {
-      const formData = new FormData();
-      formData.set("email", "admin@shaandar.com");
-      formData.set("password", password);
-      const result = await loginAction({}, formData);
-      if (result.success) {
-        router.push("/dashboard");
-        router.refresh();
-      }
+  const completeManagedLogin = async (session: AuthSessionPayload) => {
+    const result = await establishManagedUserSessionAction(session);
+    if (result.error) {
+      setError(result.error);
       return;
     }
-
-    const result = await establishSessionAction();
-    if (result.success) {
-      router.push("/dashboard");
-      router.refresh();
-    }
+    router.push(getPostLoginRedirect(session));
+    router.refresh();
   };
 
   const handleCredentialsSubmit = async (event: React.FormEvent) => {
@@ -63,8 +60,10 @@ export default function LoginForm() {
         return;
       }
 
-      if (validateDemoAdminLogin(trimmedUsername, trimmedPassword)) {
-        await completeLogin();
+      const adminResult = await authenticateAdminAction(trimmedUsername, trimmedPassword);
+      if (adminResult.success) {
+        router.push(adminResult.redirectTo ?? "/dashboard");
+        router.refresh();
         return;
       }
 
@@ -74,14 +73,23 @@ export default function LoginForm() {
         return;
       }
 
+      const managedSession: AuthSessionPayload = {
+        username: managedUser.username,
+        fullName: managedUser.fullName,
+        role: managedUser.role,
+        pipelineStage: resolveUserPipelineStage(managedUser),
+        isAdmin: false,
+      };
+
       if (managedUser.otpEnabled) {
         const session = createPendingOtpSession(managedUser.username, 6);
         setSimulatedOtp(session.code);
+        setPendingManagedSession(managedSession);
         setStep("otp");
         return;
       }
 
-      await completeLogin();
+      await completeManagedLogin(managedSession);
     } finally {
       setIsPending(false);
     }
@@ -103,7 +111,13 @@ export default function LoginForm() {
         return;
       }
 
-      await completeLogin();
+      if (!pendingManagedSession) {
+        setError("Session expired. Please sign in again.");
+        setStep("credentials");
+        return;
+      }
+
+      await completeManagedLogin(pendingManagedSession);
     } finally {
       setIsPending(false);
     }
@@ -164,6 +178,7 @@ export default function LoginForm() {
               setStep("credentials");
               setError(null);
               setSimulatedOtp("");
+              setPendingManagedSession(null);
             }}
             className="rounded-full border border-corporate-border px-5 py-2.5 text-sm font-semibold text-corporate-text hover:bg-corporate-bg"
           >
@@ -199,7 +214,7 @@ export default function LoginForm() {
             required
             value={username}
             onChange={(event) => setUsername(event.target.value)}
-            placeholder="admin or your username"
+            placeholder="Enter your username"
             className="input-field pl-10"
           />
         </div>
@@ -245,8 +260,7 @@ export default function LoginForm() {
       </button>
 
       <p className="rounded-lg border border-corporate-border bg-corporate-bg px-3 py-2 text-center text-xs text-corporate-muted">
-        Demo admin: <span className="font-medium text-corporate-text">admin</span> /{" "}
-        <span className="font-medium text-corporate-text">admin123</span>
+        Authorized access only. Contact your administrator for credentials.
       </p>
     </form>
   );

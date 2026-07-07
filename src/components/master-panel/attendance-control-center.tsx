@@ -144,7 +144,11 @@ function mapApiGridRow(raw: Record<string, unknown>): BiometricAttendanceGridRow
   };
 }
 
-export default function AttendanceControlCenter() {
+export default function AttendanceControlCenter({
+  stagingOnly = false,
+}: {
+  stagingOnly?: boolean;
+} = {}) {
   const { employees, prependEmployee } = useEmployees();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gridSectionRef = useRef<HTMLElement>(null);
@@ -997,6 +1001,38 @@ export default function AttendanceControlCenter() {
       </div>
     </section>
   );
+
+  if (stagingOnly) {
+    return (
+      <div className="flex w-full min-w-0 flex-col gap-5">
+        <div className="flex flex-col gap-2 border-b border-corporate-border pb-3">
+          <div className="flex items-center gap-2">
+            <CalendarCheck className="h-5 w-5 text-corporate-brand" aria-hidden />
+            <div>
+              <h2 className="text-lg font-semibold text-corporate-text">
+                Attendance — Layer 2 Staging Review &amp; Approval
+              </h2>
+              <p className="text-sm text-corporate-muted">
+                Review and approve biometric attendance records at pipeline stage LAYER_2_STAGING.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="attendance-layer-2"
+          ref={stagingSectionRef}
+          className="scroll-mt-28 min-h-[320px]"
+        >
+          <AttendanceStagingWorkflowPanel
+            refreshToken={stagingRefreshToken}
+            schemaReady={schemaStatus === "ready" || gridMeta.mergedCount > 0}
+            onApproved={() => setWorkflowRefreshToken((token) => token + 1)}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-5">

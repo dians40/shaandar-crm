@@ -58,3 +58,45 @@ model EmployeeAttendance {
   @@index([attendanceDate], map: "idx_employee_attendance_date")
   @@map("employee_attendance")
 }
+
+/// Draft/review staging — Step 1–4 biometric workflow.
+model AttendanceStaging {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employeeId       String?   @map("employee_id") @db.Uuid
+  payCode          String    @map("pay_code")
+  employeeName     String?   @map("employee_name")
+  date             DateTime  @db.Date
+  shiftDate        DateTime  @map("shift_date") @db.Date
+  machineInTime    DateTime? @map("machine_in_time") @db.Timestamptz(6)
+  machineOutTime   DateTime? @map("machine_out_time") @db.Timestamptz(6)
+  correctedInTime  DateTime? @map("corrected_in_time") @db.Timestamptz(6)
+  correctedOutTime DateTime? @map("corrected_out_time") @db.Timestamptz(6)
+  duration         String?
+  otHours          String?   @map("ot_hours")
+  status           String    @default("Pending")
+  isAnomaly        Boolean   @default(false) @map("is_anomaly")
+  anomalyReason    String?   @map("anomaly_reason")
+  editRemark       String?   @map("edit_remark")
+  isLocked         Boolean   @default(false) @map("is_locked")
+  approvedBy       String?   @map("approved_by")
+  approvedAt       DateTime? @map("approved_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([payCode, shiftDate])
+  @@map("attendance_staging")
+}
+
+model AttendanceAuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  stagingId  String   @map("staging_id") @db.Uuid
+  changedBy  String   @map("changed_by")
+  changeType String   @map("change_type")
+  oldValue   Json?    @map("old_value")
+  newValue   Json?    @map("new_value")
+  remark     String?
+  timestamp  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([stagingId], map: "idx_attendance_audit_log_staging_id")
+  @@map("attendance_audit_log")
+}

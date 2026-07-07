@@ -7,7 +7,10 @@ import {
 } from "@/lib/database-url";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 
-const MIGRATION_FILE = "011_ensure_attendance_tables.sql";
+const MIGRATION_FILES = [
+  "011_ensure_attendance_tables.sql",
+  "012_attendance_staging_workflow.sql",
+];
 
 let ensureInFlight: Promise<{ ok: boolean; message: string }> | null = null;
 let ensureSucceeded = false;
@@ -69,14 +72,13 @@ export async function checkAttendanceSchemaReady(): Promise<{
 }
 
 function readMigrationSql(): string | null {
-  const migrationPath = path.join(
-    process.cwd(),
-    "supabase",
-    "migrations",
-    MIGRATION_FILE
-  );
-  if (!fs.existsSync(migrationPath)) return null;
-  return fs.readFileSync(migrationPath, "utf8");
+  const parts: string[] = [];
+  for (const file of MIGRATION_FILES) {
+    const migrationPath = path.join(process.cwd(), "supabase", "migrations", file);
+    if (!fs.existsSync(migrationPath)) return null;
+    parts.push(fs.readFileSync(migrationPath, "utf8"));
+  }
+  return parts.join("\n\n");
 }
 
 async function applyMigrationViaPostgres(
@@ -179,7 +181,7 @@ export async function ensureAttendanceTablesSchema(): Promise<{
   ensureInFlight = (async () => {
     const sql = readMigrationSql();
     if (!sql) {
-      return { ok: false, message: `Migration file not found: ${MIGRATION_FILE}` };
+      return { ok: false, message: `Migration files not found: ${MIGRATION_FILES.join(", ")}` };
     }
 
     const databaseUrl = resolveDatabaseUrl();

@@ -12,12 +12,10 @@ import fs from "fs";
 import path from "path";
 import { loadProjectEnv, resolveSupabaseEnv } from "./load-env.mjs";
 
-const MIGRATION_FILE = path.join(
-  process.cwd(),
-  "supabase",
-  "migrations",
-  "011_ensure_attendance_tables.sql"
-);
+const MIGRATION_FILES = [
+  path.join(process.cwd(), "supabase", "migrations", "011_ensure_attendance_tables.sql"),
+  path.join(process.cwd(), "supabase", "migrations", "012_attendance_staging_workflow.sql"),
+];
 
 function buildDatabaseUrl(env) {
   const direct =
@@ -48,15 +46,17 @@ async function main() {
     process.argv.includes("--skip-if-no-credentials");
 
   if (!quiet) {
-    console.log("\n=== Shaandar CRM — Attendance Schema Migration 011 ===\n");
+    console.log("\n=== Shaandar CRM — Attendance Schema Migrations 011 + 012 ===\n");
   }
 
-  if (!fs.existsSync(MIGRATION_FILE)) {
-    console.error("FAIL: Migration file not found:", MIGRATION_FILE);
-    process.exit(1);
+  for (const migrationPath of MIGRATION_FILES) {
+    if (!fs.existsSync(migrationPath)) {
+      console.error("FAIL: Migration file not found:", migrationPath);
+      process.exit(1);
+    }
   }
 
-  const sql = fs.readFileSync(MIGRATION_FILE, "utf8");
+  const sql = MIGRATION_FILES.map((file) => fs.readFileSync(file, "utf8")).join("\n\n");
   const env = loadProjectEnv();
   const databaseUrl = buildDatabaseUrl(env);
 
@@ -70,8 +70,8 @@ async function main() {
     console.error("  DATABASE_URL=postgresql://postgres:PASSWORD@db.PROJECT_REF.supabase.co:5432/postgres");
     console.error("  SUPABASE_DB_PASSWORD=your-db-password  (with NEXT_PUBLIC_SUPABASE_URL set)");
     console.error("");
-    console.error("Or paste this file in Supabase Dashboard → SQL Editor → Run:");
-    console.error(`  ${MIGRATION_FILE}`);
+    console.error("Or paste migration files in Supabase Dashboard → SQL Editor → Run:");
+    for (const file of MIGRATION_FILES) console.error(`  ${file}`);
     console.error("");
     process.exit(1);
   }
@@ -93,20 +93,22 @@ async function main() {
 
   try {
     await client.connect();
-    console.log("Connected to Postgres. Applying migration 011...");
+    console.log("Connected to Postgres. Applying migrations 011 + 012...");
     await client.query(sql);
-    console.log("SUCCESS: Attendance tables created/synced and PostgREST schema cache reloaded.");
+    console.log("SUCCESS: Attendance + staging tables synced and PostgREST cache reloaded.");
     console.log("");
     console.log("Tables ready:");
     console.log("  - public.employee_attendance");
     console.log("  - public.biometric_attendance");
+    console.log("  - public.attendance_staging");
+    console.log("  - public.attendance_audit_log");
     console.log("");
     process.exit(0);
   } catch (err) {
     console.error("FAIL:", err instanceof Error ? err.message : err);
     console.error("");
     console.error("Manual fallback: Supabase Dashboard → SQL Editor");
-    console.error(`Paste: ${MIGRATION_FILE}`);
+    console.error(`Paste: ${MIGRATION_FILES.join(", ")}`);
     process.exit(1);
   } finally {
     await client.end().catch(() => {});

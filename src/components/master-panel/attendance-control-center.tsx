@@ -39,6 +39,7 @@ import {
 } from "@/lib/attendance-import-parser";
 import { bulkRecordHasContent } from "@/types/attendance-bulk-import-row";
 import AttendanceUploadRecordModule from "./attendance-upload-record-module";
+import AttendanceStagingWorkflowPanel from "./attendance-staging-workflow-panel";
 import AttendanceSystemPanel from "./attendance-system-panel";
 import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
@@ -195,6 +196,7 @@ export default function AttendanceControlCenter() {
   const [schemaStatus, setSchemaStatus] = useState<SchemaStatus>("checking");
   const [schemaMessage, setSchemaMessage] = useState<string | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const [stagingRefreshToken, setStagingRefreshToken] = useState(0);
 
   const resetPanelState = useCallback(() => {
     setImportPreview(null);
@@ -566,6 +568,25 @@ export default function AttendanceControlCenter() {
         return;
       }
 
+      const stagingResponse = await fetch("/api/v1/attendance/staging", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "bulk-upload",
+          rows: bulkPayloadRows,
+          changedBy: "Supervisor",
+          remark: `Step 1 upload — ${importPreview.fileName}`,
+        }),
+      });
+      const stagingBody = (await stagingResponse.json()) as {
+        ok?: boolean;
+        saved?: number;
+        error?: string;
+      };
+      if (!stagingResponse.ok) {
+        throw new Error(stagingBody.error ?? "Failed to save to attendance_staging.");
+      }
+
       const controller = new AbortController();
       const timeoutId = window.setTimeout(() => controller.abort(), BULK_SAVE_TIMEOUT_MS);
 
@@ -721,6 +742,7 @@ export default function AttendanceControlCenter() {
 
       await syncFromApi();
       await loadGridRows(savedDate);
+      setStagingRefreshToken((token) => token + 1);
       gridSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
       console.error(error);
@@ -1218,6 +1240,11 @@ export default function AttendanceControlCenter() {
       )}
 
       {renderHistoryGrid()}
+
+      <AttendanceStagingWorkflowPanel
+        filterDate={filterDate}
+        refreshToken={stagingRefreshToken}
+      />
 
       {/* Restored live verification workflow — original attendance operations screen */}
       <section className="space-y-4 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">

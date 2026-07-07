@@ -174,15 +174,15 @@ export function mapLegacyEmployeeAttendanceToGridRow(
 }
 
 function fusionDedupeKey(row: BiometricAttendanceGridRow): string {
+  const id = safeString(row.id);
+  if (id) return `${row.source}|${id}`;
   const date = normalizeAttendanceDateIso(row.date);
   const payCode = safeString(row.payCode).toLowerCase();
-  if (payCode && date) return `${payCode}|${date}`;
   const employeeName = safeString(row.employeeName).toLowerCase();
-  if (employeeName && date) return `${employeeName}|${date}`;
-  return `${row.source}|${row.id}`;
+  return `${row.source}|${payCode}|${employeeName}|${date}`;
 }
 
-/** Merge biometric + legacy rows; prefer biometric when pay_code+date collide. */
+/** Merge biometric + legacy rows — both sources kept; only exact duplicate keys collapse. */
 export function mergeAttendanceGridRows(
   biometricRows: BiometricAttendanceGridRow[],
   legacyRows: BiometricAttendanceGridRow[]
@@ -190,7 +190,7 @@ export function mergeAttendanceGridRows(
   const merged = new Map<string, BiometricAttendanceGridRow>();
 
   for (const row of legacyRows) {
-    merged.set(fusionDedupeKey(row), row);
+    merged.set(fusionDedupeKey({ ...row, source: "legacy" }), { ...row, source: "legacy" });
   }
 
   for (const row of biometricRows) {
@@ -204,6 +204,9 @@ export function mergeAttendanceGridRows(
     const leftDate = normalizeAttendanceDateIso(left.date);
     const rightDate = normalizeAttendanceDateIso(right.date);
     if (leftDate !== rightDate) return rightDate.localeCompare(leftDate);
+    if (left.source !== right.source) {
+      return left.source === "legacy" ? -1 : 1;
+    }
     return safeString(left.payCode).localeCompare(safeString(right.payCode));
   });
 }

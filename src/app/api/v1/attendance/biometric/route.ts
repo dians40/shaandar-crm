@@ -10,6 +10,7 @@ import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const BIOMETRIC_TABLE = "biometric_attendance";
+const MAX_MERGED_ROWS = 500;
 
 function buildPrismaWhere(
   date?: string,
@@ -111,35 +112,35 @@ async function fetchBiometricGridRows(
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = Math.min(Number(searchParams.get("limit") ?? "300"), 500);
-    const date = searchParams.get("date")?.trim();
-    const search = searchParams.get("search")?.trim();
+    const limit = Math.min(Number(searchParams.get("limit") ?? "300"), MAX_MERGED_ROWS);
+    const date = searchParams.get("date")?.trim() || undefined;
+    const search = searchParams.get("search")?.trim() || undefined;
 
-    const biometricRows = await fetchBiometricGridRows(limit, date, search);
+    const [biometricRows, legacyRows] = await Promise.all([
+      fetchBiometricGridRows(limit, date, search),
+      fetchLegacyAttendanceGridRows({ date, search, limit }),
+    ]);
 
-    let legacyRows: BiometricAttendanceGridRow[] = [];
-    if (isSupabaseServerConfigured()) {
-      try {
-        const supabase = createAdminClient();
-        legacyRows = await fetchLegacyAttendanceGridRows(supabase, {
-          date,
-          search,
-          limit,
-        });
-      } catch (legacyError) {
-        console.error("[attendance/biometric] legacy fetch failed:", legacyError);
-      }
-    }
+    const rows = mergeAttendanceGridRows(biometricRows, legacyRows).slice(
+      0,
+      Math.min(MAX_MERGED_ROWS, limit * 2)
+    );
 
-    const rows = mergeAttendanceGridRows(biometricRows, legacyRows).slice(0, limit);
-
-    return NextResponse.json({ rows });
+    return NextResponse.json({
+      rows,
+      meta: {
+        biometricCount: biometricRows.length,
+        legacyCount: legacyRows.length,
+        mergedCount: rows.length,
+      },
+    });
   } catch (error) {
     console.error("[attendance/biometric] GET failed:", error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Failed to load attendance records.",
         rows: [],
+        meta: { biometricCount: 0, legacyCount: 0, mergedCount: 0 },
       },
       { status: 500 }
     );

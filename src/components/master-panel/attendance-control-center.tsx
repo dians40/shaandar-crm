@@ -146,6 +146,7 @@ export default function AttendanceControlCenter() {
   const [isDragging, setIsDragging] = useState(false);
 
   const [gridRows, setGridRows] = useState<BiometricAttendanceGridRow[]>([]);
+  const [gridMeta, setGridMeta] = useState({ biometricCount: 0, legacyCount: 0, mergedCount: 0 });
   const [isGridLoading, setIsGridLoading] = useState(false);
   const [gridError, setGridError] = useState<string | null>(null);
   const [filterDate, setFilterDate] = useState("");
@@ -161,6 +162,7 @@ export default function AttendanceControlCenter() {
     setIsProcessing(false);
     setIsDragging(false);
     setGridRows([]);
+    setGridMeta({ biometricCount: 0, legacyCount: 0, mergedCount: 0 });
     setGridError(null);
     setFilterDate("");
     setSearchQuery("");
@@ -191,6 +193,7 @@ export default function AttendanceControlCenter() {
       const body = (await response.json()) as {
         rows?: Record<string, unknown>[];
         error?: string;
+        meta?: { biometricCount?: number; legacyCount?: number; mergedCount?: number };
       };
       if (!response.ok) {
         throw new Error(body.error ?? "Failed to load attendance records.");
@@ -198,6 +201,11 @@ export default function AttendanceControlCenter() {
       setGridRows(
         Array.isArray(body.rows) ? body.rows.map(mapApiGridRow) : []
       );
+      setGridMeta({
+        biometricCount: body.meta?.biometricCount ?? 0,
+        legacyCount: body.meta?.legacyCount ?? 0,
+        mergedCount: body.meta?.mergedCount ?? (body.rows?.length ?? 0),
+      });
     } catch (loadError) {
       console.error(loadError);
       setGridError(
@@ -589,7 +597,7 @@ export default function AttendanceControlCenter() {
             <p className="text-xs text-corporate-muted">
               {isGridLoading
                 ? "Loading attendance history..."
-                : `${gridRows.length} record(s) in view`}
+                : `${gridMeta.mergedCount} record(s) — ${gridMeta.legacyCount} legacy · ${gridMeta.biometricCount} biometric`}
             </p>
           </div>
           <button
@@ -779,7 +787,7 @@ export default function AttendanceControlCenter() {
           <div>
             <h3 className="text-sm font-bold text-corporate-text">Attendance History Grid</h3>
             <p className="text-xs text-corporate-muted">
-              23-column transactional view — legacy and biometric records merged
+              23-column transactional view — legacy manual logs and biometric records merged
             </p>
           </div>
         </div>

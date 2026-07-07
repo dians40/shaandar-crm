@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Shield, UserRound } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Pencil, Plus, Shield, Trash2, UserRound } from "lucide-react";
 import AddUserModal from "./add-user-modal";
 import RoleModelWorkspace from "./role-model-workspace";
 import RoleSelectorWithActions from "./role-selector-with-actions";
@@ -10,6 +10,7 @@ import { useRoleModels } from "@/hooks/use-role-models";
 import { useUserPermissions } from "@/contexts/user-permissions-context";
 import { cn } from "@/lib/utils";
 import type { ManagedUserRecord } from "@/types/managed-user";
+import { resolveUserPipelineStage } from "@/types/managed-user";
 import {
   PERMISSION_LABELS,
   PERMISSION_MODULES,
@@ -17,6 +18,10 @@ import {
   type PermissionKey,
   type PermissionModuleId,
 } from "@/types/user-permissions";
+import {
+  USER_PIPELINE_STAGES,
+  type UserPipelineStage,
+} from "@/types/user-pipeline";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
@@ -29,6 +34,12 @@ const PERMISSIONS = (
   Object.entries(PERMISSION_LABELS) as [PermissionKey, string][]
 ).map(([key, label]) => ({ key, label }));
 
+const LAYER_STAGE_MAP: Record<2 | 3 | 4, UserPipelineStage> = {
+  2: USER_PIPELINE_STAGES.LAYER_2_STAGING,
+  3: USER_PIPELINE_STAGES.LAYER_3_WORKFLOW,
+  4: USER_PIPELINE_STAGES.LAYER_4_SAVED,
+};
+
 type UserLayerSectionProps = {
   layer: 2 | 3 | 4;
   title: string;
@@ -36,9 +47,10 @@ type UserLayerSectionProps = {
   users: ManagedUserRecord[];
   isReady: boolean;
   onAddUser: () => void;
+  onEditUser: (user: ManagedUserRecord) => void;
+  onRemoveUser: (user: ManagedUserRecord) => void;
   showOtp?: boolean;
   onOtpToggle?: (userId: string, enabled: boolean) => void;
-  readOnly?: boolean;
 };
 
 function UserLayerSection({
@@ -48,9 +60,10 @@ function UserLayerSection({
   users,
   isReady,
   onAddUser,
+  onEditUser,
+  onRemoveUser,
   showOtp = false,
   onOtpToggle,
-  readOnly = false,
 }: UserLayerSectionProps) {
   return (
     <section
@@ -66,16 +79,14 @@ function UserLayerSection({
           <h3 className="text-sm font-bold text-corporate-text">{title}</h3>
           <p className="text-xs text-corporate-muted">{description}</p>
         </div>
-        {!readOnly && (
-          <button
-            type="button"
-            onClick={onAddUser}
-            className="btn-primary inline-flex min-h-10 items-center gap-2 px-4 text-sm"
-          >
-            <Plus className="h-4 w-4" aria-hidden />
-            Add New User
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onAddUser}
+          className="btn-primary inline-flex min-h-10 items-center gap-2 px-4 text-sm"
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+          Add New User
+        </button>
       </div>
 
       <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "rounded-none border-0 shadow-none")}>
@@ -89,18 +100,25 @@ function UserLayerSection({
                 <th className={MASTER_LIST_HEADER_CELL_CLASS}>Secure OTP on Login</th>
               )}
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Created</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
             {!isReady ? (
               <tr>
-                <td colSpan={showOtp ? 5 : 4} className="px-4 py-8 text-center text-sm text-corporate-muted">
+                <td
+                  colSpan={showOtp ? 6 : 5}
+                  className="px-4 py-8 text-center text-sm text-corporate-muted"
+                >
                   Loading user accounts...
                 </td>
               </tr>
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={showOtp ? 5 : 4} className="px-4 py-8 text-center text-sm text-corporate-muted">
+                <td
+                  colSpan={showOtp ? 6 : 5}
+                  className="px-4 py-8 text-center text-sm text-corporate-muted"
+                >
                   No users in this section yet. Use Add New User to register credentials.
                 </td>
               </tr>
@@ -131,6 +149,28 @@ function UserLayerSection({
                   <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-xs text-corporate-muted")}>
                     {user.createdAt.slice(0, 10)}
                   </td>
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onEditUser(user)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-corporate-border px-2.5 py-1.5 text-xs font-semibold text-corporate-text hover:bg-corporate-bg"
+                        aria-label={`Edit ${user.fullName}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" aria-hidden />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveUser(user)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                        aria-label={`Remove ${user.fullName}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        Remove
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))
             )}
@@ -152,10 +192,57 @@ export default function UserManagementPanel() {
     editRole,
     removeRole,
   } = useUserPermissions();
-  const { users, isReady, addUser, setOtpEnabled, reload } = useManagedUsers();
+  const { users, isReady, addUser, editUser, removeUser, setOtpEnabled, reload } =
+    useManagedUsers();
   const { syncAfterRoleRename, syncAfterRoleRemove } = useRoleModels();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [targetStage, setTargetStage] = useState<UserPipelineStage>(
+    USER_PIPELINE_STAGES.LAYER_2_STAGING
+  );
+  const [editingUser, setEditingUser] = useState<ManagedUserRecord | null>(null);
   const isSuperAdmin = isProtectedRole(selectedRole);
+
+  const layer2Users = useMemo(
+    () =>
+      users
+        .filter((user) => resolveUserPipelineStage(user) === USER_PIPELINE_STAGES.LAYER_2_STAGING)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    [users]
+  );
+  const layer3Users = useMemo(
+    () =>
+      users
+        .filter((user) => resolveUserPipelineStage(user) === USER_PIPELINE_STAGES.LAYER_3_WORKFLOW)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    [users]
+  );
+  const layer4Users = useMemo(
+    () =>
+      users
+        .filter((user) => resolveUserPipelineStage(user) === USER_PIPELINE_STAGES.LAYER_4_SAVED)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+    [users]
+  );
+
+  const openAddModal = (layer: 2 | 3 | 4) => {
+    setEditingUser(null);
+    setTargetStage(LAYER_STAGE_MAP[layer]);
+    setIsAddModalOpen(true);
+  };
+
+  const openEditModal = (user: ManagedUserRecord) => {
+    setEditingUser(user);
+    setTargetStage(user.pipelineStage ?? USER_PIPELINE_STAGES.LAYER_2_STAGING);
+    setIsAddModalOpen(true);
+  };
+
+  const handleRemoveUser = (user: ManagedUserRecord) => {
+    const confirmed = window.confirm(
+      `Remove ${user.fullName} from this layer? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+    removeUser(user.id);
+  };
 
   const handleEditRole = (currentName: string, nextName: string) => {
     const result = editRole(currentName, nextName);
@@ -198,18 +285,22 @@ export default function UserManagementPanel() {
         layer={2}
         title="User Intake &amp; Staging Review"
         description="Register new user credentials and review pending account intake before activation."
-        users={users}
+        users={layer2Users}
         isReady={isReady}
-        onAddUser={() => setIsAddModalOpen(true)}
+        onAddUser={() => openAddModal(2)}
+        onEditUser={openEditModal}
+        onRemoveUser={handleRemoveUser}
       />
 
       <UserLayerSection
         layer={3}
         title="Active Users Workflow"
         description="Manage active user accounts, OTP login protection, and operational access controls."
-        users={users}
+        users={layer3Users}
         isReady={isReady}
-        onAddUser={() => setIsAddModalOpen(true)}
+        onAddUser={() => openAddModal(3)}
+        onEditUser={openEditModal}
+        onRemoveUser={handleRemoveUser}
         showOtp
         onOtpToggle={setOtpEnabled}
       />
@@ -218,10 +309,11 @@ export default function UserManagementPanel() {
         layer={4}
         title="Saved User Records Log"
         description="Historical saved user account records and registration audit trail."
-        users={[...users].sort((left, right) => right.createdAt.localeCompare(left.createdAt))}
+        users={layer4Users}
         isReady={isReady}
-        onAddUser={() => setIsAddModalOpen(true)}
-        readOnly
+        onAddUser={() => openAddModal(4)}
+        onEditUser={openEditModal}
+        onRemoveUser={handleRemoveUser}
       />
 
       <RoleModelWorkspace />
@@ -322,9 +414,15 @@ export default function UserManagementPanel() {
 
       <AddUserModal
         open={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setEditingUser(null);
+        }}
         onCreate={addUser}
+        onUpdate={editUser}
         roles={roles}
+        targetStage={targetStage}
+        editingUser={editingUser}
       />
     </section>
   );

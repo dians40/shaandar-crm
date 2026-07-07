@@ -25,34 +25,11 @@ import {
   MASTER_LIST_TABLE_WRAPPER_CLASS,
 } from "./universal-master-list";
 
-type ManualAttendanceLogRow = {
-  id: string;
-  employeeName: string;
-  attendanceDate: string;
-  status: string;
-  overtimeShift: OvertimeShiftType | "";
-  dailyWage: number;
-  remarks: string;
-};
-
-const MANUAL_WAGE_LOG_STORAGE_KEY = "shaandar-manual-wage-entry-log";
-
-function readWageLog(): ManualAttendanceLogRow[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(MANUAL_WAGE_LOG_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as ManualAttendanceLogRow[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeWageLog(rows: ManualAttendanceLogRow[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(MANUAL_WAGE_LOG_STORAGE_KEY, JSON.stringify(rows));
-}
+import {
+  readManualAttendanceLog,
+  writeManualAttendanceLog,
+  type ManualAttendanceLogRow,
+} from "@/lib/manual-attendance-log-store";
 
 function formatRupee(value: number): string {
   return value.toLocaleString("en-IN", {
@@ -72,7 +49,7 @@ export default function ManualAttendanceEntryPanel() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setWageLog(readWageLog());
+    setWageLog(readManualAttendanceLog());
     setLogReady(true);
   }, []);
 
@@ -157,7 +134,7 @@ export default function ManualAttendanceEntryPanel() {
         overtimeHours: payload.overtime_hours,
       });
 
-      const nextLog = [
+      const nextLog: ManualAttendanceLogRow[] = [
         {
           id: recordId,
           employeeName: selectedEmployee?.name ?? "",
@@ -170,7 +147,7 @@ export default function ManualAttendanceEntryPanel() {
         ...wageLog.filter((row) => row.id !== recordId),
       ];
       setWageLog(nextLog);
-      writeWageLog(nextLog);
+      writeManualAttendanceLog(nextLog);
 
       setSuccess(result.message ?? "Attendance and wage entry saved successfully.");
       setForm({

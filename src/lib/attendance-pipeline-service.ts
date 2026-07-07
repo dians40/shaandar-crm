@@ -161,6 +161,9 @@ async function transitionRowsSupabase(
   if (to === PIPELINE_STAGES.LAYER_4_SAVED) {
     updatePayload.workflow_stage = "finalized";
   }
+  if (to === PIPELINE_STAGES.LAYER_4_ARCHIVED) {
+    updatePayload.workflow_stage = "archived";
+  }
 
   const { data, error } = await supabase
     .from(BIOMETRIC_TABLE)
@@ -299,19 +302,15 @@ export async function updateStagingDesignation(
   });
 }
 
-export async function persistSavedRow(id: string): Promise<{ ok: boolean }> {
+export async function persistSavedRow(id: string): Promise<{ ok: boolean; archived: boolean }> {
   if (!id.trim()) throw new Error("Row id is required.");
-  const rows = await fetchRowsByPipelineStage(PIPELINE_STAGES.LAYER_4_SAVED, { limit: 500 });
-  const row = rows.find((entry) => entry.id === id);
-  if (!row) throw new Error("Saved row not found at Layer 4.");
 
-  const result = await updatePipelineRowFields({
+  const result = await transitionPipelineStage({
     ids: [id],
-    stage: PIPELINE_STAGES.LAYER_4_SAVED,
-    department: row.department,
-    designation: row.designation,
+    from: PIPELINE_STAGES.LAYER_4_SAVED,
+    to: PIPELINE_STAGES.LAYER_4_ARCHIVED,
   });
-  return { ok: result.updated > 0 };
+  return { ok: result.transitioned > 0, archived: result.transitioned > 0 };
 }
 
 export async function persistSavedRows(ids: string[]): Promise<{ saved: number }> {

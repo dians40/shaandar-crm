@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarCheck, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
 import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
+import {
+  MANUAL_ATTENDANCE_LOG_UPDATED_EVENT,
+  mergeManualEntryNamesIntoOptions,
+} from "@/lib/manual-attendance-log-store";
 import { cn } from "@/lib/utils";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
@@ -34,6 +38,17 @@ export default function AttendanceSystemPanel({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [manualLogRefresh, setManualLogRefresh] = useState(0);
+
+  useEffect(() => {
+    const handler = () => setManualLogRefresh((current) => current + 1);
+    window.addEventListener(MANUAL_ATTENDANCE_LOG_UPDATED_EVENT, handler);
+    window.addEventListener("storage", handler);
+    return () => {
+      window.removeEventListener(MANUAL_ATTENDANCE_LOG_UPDATED_EVENT, handler);
+      window.removeEventListener("storage", handler);
+    };
+  }, []);
 
   const resetPanelState = useCallback(() => {
     setFromDate("");
@@ -75,15 +90,19 @@ export default function AttendanceSystemPanel({
     void loadRecords();
   }, [loadRecords, refreshToken]);
 
-  const departmentOptions = useMemo(
-    () => mergeDepartmentOptions(rows.map((row) => row.department)),
-    [rows]
-  );
+  const departmentOptions = useMemo(() => {
+    void manualLogRefresh;
+    return mergeManualEntryNamesIntoOptions(
+      mergeDepartmentOptions(rows.map((row) => row.department))
+    );
+  }, [rows, manualLogRefresh]);
 
-  const designationOptions = useMemo(
-    () => mergeDesignationOptions(rows.map((row) => row.designation)),
-    [rows]
-  );
+  const designationOptions = useMemo(() => {
+    void manualLogRefresh;
+    return mergeManualEntryNamesIntoOptions(
+      mergeDesignationOptions(rows.map((row) => row.designation))
+    );
+  }, [rows, manualLogRefresh]);
 
   const postPipelineAction = async (payload: Record<string, unknown>) => {
     const response = await fetch("/api/v1/attendance/pipeline", {

@@ -766,9 +766,18 @@ export default function AttendanceControlCenter() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "persist-saved-row", ids: [row.id] }),
       });
-      const body = (await response.json()) as { error?: string; ok?: boolean };
+      const body = (await response.json()) as { error?: string; ok?: boolean; archived?: boolean };
       if (!response.ok) throw new Error(body.error ?? "Failed to save row to server.");
-      setLayer4SaveMessage(`Saved ${row.employeeName || row.payCode} (${row.date}) to Supabase.`);
+      setGridRows((current) => current.filter((entry) => entry.id !== row.id));
+      setSelectedRowIds((current) => {
+        const next = new Set(current);
+        next.delete(rowSelectionKey(row));
+        return next;
+      });
+      if (activeLayer4RowId === row.id) setActiveLayer4RowId(null);
+      setLayer4SaveMessage(
+        `Archived ${row.employeeName || row.payCode} (${row.date}) to Saved File/Archive storage.`
+      );
     } catch (saveError) {
       setLayer4SaveMessage(
         saveError instanceof Error ? saveError.message : "Layer 4 save failed."
@@ -776,7 +785,7 @@ export default function AttendanceControlCenter() {
     } finally {
       setLayer4SavingId(null);
     }
-  }, []);
+  }, [activeLayer4RowId]);
 
   const handleLayer4RowActivate = useCallback(
     (row: BiometricAttendanceGridRow) => {
@@ -800,7 +809,14 @@ export default function AttendanceControlCenter() {
       });
       const body = (await response.json()) as { error?: string; saved?: number };
       if (!response.ok) throw new Error(body.error ?? "Bulk save failed.");
-      setLayer4SaveMessage(`Saved ${body.saved ?? ids.length} row(s) to Supabase server tables.`);
+      const savedCount = body.saved ?? ids.length;
+      const idSet = new Set(ids);
+      setGridRows((current) => current.filter((entry) => !idSet.has(entry.id)));
+      setSelectedRowIds(new Set());
+      setActiveLayer4RowId(null);
+      setLayer4SaveMessage(
+        `Archived ${savedCount} row(s) to Saved File/Archive storage.`
+      );
     } catch (saveError) {
       setLayer4SaveMessage(saveError instanceof Error ? saveError.message : "Bulk save failed.");
     } finally {

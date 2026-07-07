@@ -25,9 +25,17 @@ export function upsertManagedUser(user: ManagedUserRecord): ManagedUserRecord[] 
   return next;
 }
 
+export function deleteManagedUser(userId: string): ManagedUserRecord[] {
+  const next = readManagedUsers().filter((row) => row.id !== userId);
+  writeManagedUsers(next);
+  return next;
+}
+
 export function updateManagedUser(
   userId: string,
-  patch: Partial<Pick<ManagedUserRecord, "otpEnabled" | "password" | "role" | "fullName">>
+  patch: Partial<
+    Pick<ManagedUserRecord, "otpEnabled" | "password" | "role" | "fullName" | "username" | "pipelineStage">
+  >
 ): ManagedUserRecord[] {
   const next = readManagedUsers().map((row) =>
     row.id === userId ? { ...row, ...patch } : row

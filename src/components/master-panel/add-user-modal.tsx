@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { KeyRound, Plus, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { KeyRound, Pencil, Plus, X } from "lucide-react";
 import { TextInput, SelectInput } from "@/components/forms/form-fields";
 import { cn } from "@/lib/utils";
 import { isUsernameTaken } from "@/lib/managed-users-store";
@@ -13,17 +13,46 @@ import {
   type ManagedUserRecord,
 } from "@/types/managed-user";
 import type { UserRoleName } from "@/types/user-permissions";
+import type { UserPipelineStage } from "@/types/user-pipeline";
 
 type AddUserModalProps = {
   open: boolean;
   onClose: () => void;
-  onCreate: (user: ManagedUserRecord) => void;
+  onCreate: (user: ManagedUserRecord, pipelineStage: UserPipelineStage) => void;
+  onUpdate?: (userId: string, patch: Partial<ManagedUserRecord>) => void;
   roles: string[];
+  targetStage: UserPipelineStage;
+  editingUser?: ManagedUserRecord | null;
 };
 
-export default function AddUserModal({ open, onClose, onCreate, roles }: AddUserModalProps) {
+export default function AddUserModal({
+  open,
+  onClose,
+  onCreate,
+  onUpdate,
+  roles,
+  targetStage,
+  editingUser = null,
+}: AddUserModalProps) {
+  const isEditMode = Boolean(editingUser);
   const [form, setForm] = useState<ManagedUserFormState>(EMPTY_MANAGED_USER_FORM);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    if (editingUser) {
+      setForm({
+        fullName: editingUser.fullName,
+        username: editingUser.username,
+        password: editingUser.password,
+        role: editingUser.role,
+        otpEnabled: editingUser.otpEnabled,
+      });
+    } else {
+      setForm(EMPTY_MANAGED_USER_FORM);
+    }
+    setError(null);
+  }, [open, editingUser]);
 
   if (!open) return null;
 
@@ -35,8 +64,21 @@ export default function AddUserModal({ open, onClose, onCreate, roles }: AddUser
       return;
     }
 
-    if (isUsernameTaken(form.username)) {
+    if (isUsernameTaken(form.username, editingUser?.id)) {
       setError("This username is already registered.");
+      return;
+    }
+
+    if (isEditMode && editingUser && onUpdate) {
+      onUpdate(editingUser.id, {
+        fullName: form.fullName.trim(),
+        username: form.username.trim(),
+        password: form.password,
+        role: form.role as UserRoleName,
+        otpEnabled: form.otpEnabled,
+      });
+      setForm(EMPTY_MANAGED_USER_FORM);
+      onClose();
       return;
     }
 
@@ -48,9 +90,10 @@ export default function AddUserModal({ open, onClose, onCreate, roles }: AddUser
       role: form.role as UserRoleName,
       otpEnabled: form.otpEnabled,
       createdAt: new Date().toISOString(),
+      pipelineStage: targetStage,
     };
 
-    onCreate(user);
+    onCreate(user, targetStage);
     setForm(EMPTY_MANAGED_USER_FORM);
     onClose();
   };
@@ -66,17 +109,19 @@ export default function AddUserModal({ open, onClose, onCreate, roles }: AddUser
         <div className="mb-5 flex items-start justify-between gap-3">
           <div>
             <h3 id="add-user-modal-title" className="text-lg font-semibold text-corporate-text">
-              Add New User
+              {isEditMode ? "Edit User" : "Add New User"}
             </h3>
             <p className="mt-1 text-sm text-corporate-muted">
-              Create credentials and assign role-based access for this workspace.
+              {isEditMode
+                ? "Update credentials and role-based access for this workspace user."
+                : "Create credentials and assign role-based access for this workspace."}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded-lg border border-corporate-border p-2 text-corporate-muted hover:bg-corporate-bg"
-            aria-label="Close add user dialog"
+            aria-label="Close user dialog"
           >
             <X className="h-4 w-4" />
           </button>
@@ -190,8 +235,17 @@ export default function AddUserModal({ open, onClose, onCreate, roles }: AddUser
               "btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm"
             )}
           >
-            <Plus className="h-4 w-4" aria-hidden />
-            Create User
+            {isEditMode ? (
+              <>
+                <Pencil className="h-4 w-4" aria-hidden />
+                Save Changes
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4" aria-hidden />
+                Create User
+              </>
+            )}
           </button>
         </div>
       </div>

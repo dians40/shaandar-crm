@@ -295,7 +295,11 @@ export default function AttendanceControlCenter() {
       await syncFromApi();
 
       const activeDate = dateOverride ?? filterDate;
-      const params = new URLSearchParams({ limit: "300", includeDates: "1" });
+      const params = new URLSearchParams({
+        limit: "300",
+        includeDates: "1",
+        pipelineStage: "LAYER_4_SAVED",
+      });
       if (activeDate.trim()) {
         params.set("date", normalizeAttendanceDateIso(activeDate.trim()));
       }

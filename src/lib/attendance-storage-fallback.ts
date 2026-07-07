@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { INITIAL_INGEST_PIPELINE_STAGE } from "@/types/attendance-pipeline";
 import { mapBiometricAttendanceGridRow } from "@/lib/biometric-attendance-db-mapper";
 import { isAttendanceSchemaError } from "@/lib/attendance-schema-ensure";
 import type { AttendanceDateCatalogEntry } from "@/lib/attendance-date-catalog";
@@ -63,7 +64,10 @@ export async function saveBulkImportToStorage(
     version: 1,
     savedAt: new Date().toISOString(),
     reportDate,
-    rows: input.rows,
+    rows: input.rows.map((row) => ({
+      ...row,
+      pipeline_stage: INITIAL_INGEST_PIPELINE_STAGE,
+    })),
     biometricCount: input.rows.length,
     workflowCount: input.workflowCount ?? 0,
   };
@@ -183,7 +187,8 @@ export async function fetchStorageGridRows(
             source: "storage",
           }),
           source: "biometric" as const,
-        });
+          pipelineStage: String(row.pipeline_stage ?? INITIAL_INGEST_PIPELINE_STAGE),
+        } as BiometricAttendanceGridRow & { pipelineStage?: string });
         if (merged.length >= limit) return merged;
       }
     }

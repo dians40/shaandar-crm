@@ -53,29 +53,20 @@ export default function AttendanceStagingWorkflowPanel({
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const loadRows = useCallback(async () => {
-    if (!schemaReady) {
-      setRows([]);
-      setError(null);
-      return;
-    }
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (filterDate) params.set("shiftDate", filterDate);
-      const response = await fetch(`/api/v1/attendance/staging?${params.toString()}`);
+      const params = new URLSearchParams({
+        stage: "LAYER_2_STAGING",
+        format: "staging",
+      });
+      if (filterDate) params.set("date", filterDate);
+      const response = await fetch(`/api/v1/attendance/pipeline?${params.toString()}`);
       const body = (await response.json()) as {
         rows?: AttendanceStagingRow[];
         error?: string;
-        message?: string;
-        setupRequired?: boolean;
       };
-      if (body.setupRequired) {
-        setRows([]);
-        setError(null);
-        return;
-      }
-      if (!response.ok) throw new Error(body.error ?? body.message ?? "Failed to load staging.");
+      if (!response.ok) throw new Error(body.error ?? "Failed to load staging.");
       setRows(body.rows ?? []);
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Load failed.";
@@ -84,11 +75,22 @@ export default function AttendanceStagingWorkflowPanel({
     } finally {
       setLoading(false);
     }
-  }, [filterDate, schemaReady]);
+  }, [filterDate]);
 
   useEffect(() => {
     void loadRows();
   }, [loadRows, refreshToken]);
+
+  const postPipelineAction = async (payload: Record<string, unknown>) => {
+    const response = await fetch("/api/v1/attendance/pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = (await response.json()) as Record<string, unknown>;
+    if (!response.ok) throw new Error(String(body.error ?? "Pipeline action failed."));
+    return body;
+  };
 
   const postAction = async (payload: Record<string, unknown>) => {
     const response = await fetch("/api/v1/attendance/staging", {
@@ -105,8 +107,8 @@ export default function AttendanceStagingWorkflowPanel({
     setBusyId(row.id);
     setMessage(null);
     try {
-      await postAction({ action: "approve", id: row.id, approvedBy: "HR-Admin" });
-      setMessage(`Approved ${row.employeeName || row.payCode}`);
+      await postPipelineAction({ action: "approve-staging", ids: [row.id] });
+      setMessage(`Approved ${row.employeeName || row.payCode} — moved to Live Workflow (Layer 3).`);
       await loadRows();
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : "Approve failed.");
@@ -115,21 +117,20 @@ export default function AttendanceStagingWorkflowPanel({
     }
   };
 
-  const handleApproveAll = async (confirm = false) => {
+  const handleApproveAll = async () => {
     setMessage(null);
     try {
-      const body = await postAction({
-        action: "approve-all",
-        shiftDate: filterDate || undefined,
-        confirm,
-        approvedBy: "HR-Admin",
-      });
-      if (body.requiresConfirmation) {
-        const ok = window.confirm(String(body.message));
-        if (ok) await handleApproveAll(true);
-        return;
+      const pendingIds = rows.filter((r) => r.status === "Pending" && !r.isLocked).map((r) => r.id);
+      if (pendingIds.length === 0) return;
+      const anomalyCount = rows.filter((r) => r.isAnomaly || r.editRemark).length;
+      if (anomalyCount > 0) {
+        const ok = window.confirm(
+          `${anomalyCount} record(s) have anomalies or edits — confirm bulk approve to Layer 3?`
+        );
+        if (!ok) return;
       }
-      setMessage(`Bulk approved ${body.approved ?? 0} row(s).`);
+      const body = await postPipelineAction({ action: "approve-all-staging", ids: pendingIds });
+      setMessage(`Moved ${body.transitioned ?? 0} row(s) to Live Workflow (Layer 3).`);
       await loadRows();
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : "Bulk approve failed.");
@@ -161,24 +162,6 @@ export default function AttendanceStagingWorkflowPanel({
     }
   };
 
-  const handleTransfer = async () => {
-    if (!filterDate) {
-      setError("Select a date before final transfer.");
-      return;
-    }
-    try {
-      const body = await postAction({
-        action: "transfer",
-        shiftDate: filterDate,
-      });
-      setMessage(
-        `Transferred ${body.transferred ?? 0} row(s) to employee_attendance master.`
-      );
-    } catch (transferError) {
-      setError(transferError instanceof Error ? transferError.message : "Transfer failed.");
-    }
-  };
-
   const pendingCount = rows.filter((r) => r.status === "Pending").length;
   const anomalyCount = rows.filter((r) => r.isAnomaly && r.status === "Pending").length;
 
@@ -196,9 +179,8 @@ export default function AttendanceStagingWorkflowPanel({
             Biometric Attendance — Staging Review &amp; Approval
           </h3>
           <p className="mt-1 text-xs text-corporate-muted">
-            Step 1–3: Pending draft in <strong>attendance_staging</strong> · machine times preserved ·
-            edits require remark · approve locks row · audit in{" "}
-            <strong>attendance_audit_log</strong>
+            Step 1–3: Layer 2 staging only (<strong>pipeline_stage = LAYER_2_STAGING</strong>) · approve
+            advances rows to Layer 3 workflow · no skip allowed
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -213,19 +195,12 @@ export default function AttendanceStagingWorkflowPanel({
           </button>
           <button
             type="button"
-            onClick={() => void handleApproveAll(false)}
+            onClick={() => void handleApproveAll()}
             disabled={pendingCount === 0}
             className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white"
           >
             <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
-            Approve All ({pendingCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleTransfer()}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 text-xs font-semibold text-indigo-900"
-          >
-            Transfer to Master
+            Approve All to Layer 3 ({pendingCount})
           </button>
         </div>
       </div>
@@ -245,7 +220,7 @@ export default function AttendanceStagingWorkflowPanel({
       )}
       {!schemaReady && rows.length === 0 && (
         <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          Database setup pending — staging records will appear here after upload or SQL migration.
+          No Layer 2 staging records — upload Excel in Layer 1 to ingest rows at LAYER_2_STAGING.
         </p>
       )}
       {error && schemaReady && (

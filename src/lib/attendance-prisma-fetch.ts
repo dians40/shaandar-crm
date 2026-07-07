@@ -4,6 +4,7 @@ import { mapBiometricAttendanceGridRow } from "@/lib/biometric-attendance-db-map
 import { mapStagingRowFromDb } from "@/lib/attendance-staging-mapper";
 import type { AttendanceStagingRow } from "@/types/attendance-staging";
 import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
+import { INITIAL_INGEST_PIPELINE_STAGE } from "@/types/attendance-pipeline";
 
 function isoDate(value: Date | string | null | undefined): string {
   if (!value) return "";
@@ -204,6 +205,7 @@ export async function fetchBiometricGridViaPrisma(
         work_code: row.workCode,
         remark: row.remark,
         created_at: row.createdAt?.toISOString(),
+        pipeline_stage: row.pipelineStage ?? INITIAL_INGEST_PIPELINE_STAGE,
       })
     );
   } catch (error) {

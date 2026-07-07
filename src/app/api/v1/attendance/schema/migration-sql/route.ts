@@ -5,6 +5,7 @@ import path from "path";
 const MIGRATION_FILES = [
   "011_ensure_attendance_tables.sql",
   "012_attendance_staging_workflow.sql",
+  "013_biometric_attendance_pipeline_stage.sql",
 ];
 
 /** GET — combined attendance migration SQL for Supabase SQL Editor (copy/paste). */

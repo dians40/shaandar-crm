@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { INITIAL_INGEST_PIPELINE_STAGE } from "@/types/attendance-pipeline";
 import type { AttendanceBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
 import { sanitizeBulkRowInput } from "@/lib/attendance-bulk-payload-bridge";
 import {
@@ -131,6 +132,8 @@ export function mapToBiometricAttendanceCreate(
       netHours: safeString(biometric.hoursWorked) || "0",
       workCode: safeString(biometric.shift) || "",
       remark: remark || "",
+      pipelineStage: INITIAL_INGEST_PIPELINE_STAGE,
+      workflowStage: "pending_allocation",
     };
   } catch (error) {
     console.error("[biometric-mapper] fallback row:", error);
@@ -186,6 +189,8 @@ export function mapToBiometricAttendanceRow(
     net_hours: prismaRow.netHours ?? null,
     work_code: prismaRow.workCode ?? null,
     remark: prismaRow.remark ?? null,
+    pipeline_stage: INITIAL_INGEST_PIPELINE_STAGE,
+    workflow_stage: "pending_allocation",
   };
 }
 

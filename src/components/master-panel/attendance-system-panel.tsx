@@ -127,6 +127,11 @@ export default function AttendanceSystemPanel() {
       supervisorApprovedBy: "Supervisor",
     });
     commitToPayrollTally(record.employeeId, record.attendanceDate);
+    void fetch("/api/v1/attendance/pipeline", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "commit-workflow", ids: [record.id] }),
+    }).catch(() => undefined);
   };
 
   if (!isReady || !settingsReady) {
@@ -155,7 +160,8 @@ export default function AttendanceSystemPanel() {
                 {VERIFICATION_STAGE_LABELS[activeStage]}
               </h2>
               <p className="text-sm text-corporate-muted">
-                Biometric logs enter Stage 1 automatically via the API gateway webhook.
+                Layer 3 only — records with pipeline_stage LAYER_3_WORKFLOW. Empty until Layer 2
+                approval. Final approval moves rows to Layer 4 saved history.
               </p>
               <p className="mt-1 text-xs text-corporate-muted">
                 Monthly payroll attendance days committed:{" "}

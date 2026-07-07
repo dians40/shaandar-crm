@@ -10,8 +10,8 @@ import {
 } from "@/types/attendance-workflow";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { fetchStagingRows } from "@/lib/attendance-staging-service";
-import { mapStagingRowToWorkflowRecord } from "@/lib/attendance-staging-mapper";
+import { fetchRowsByPipelineStage, gridRowsToWorkflowRecords } from "@/lib/attendance-pipeline-service";
+import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
 import {
   ensureAttendanceTablesSchema,
   formatSchemaEnsureFailureMessage,
@@ -69,55 +69,11 @@ export async function GET() {
 
   try {
     await ensureAttendanceTablesSchema();
-
-    const merged = new Map<string, AttendanceWorkflowRecord>();
-
-    // Stage 1 — pending machine allocation reads from attendance_staging (Pending).
-    try {
-      const stagingRows = await fetchStagingRows({ status: "Pending" });
-      for (const row of stagingRows) {
-        const record = mapStagingRowToWorkflowRecord(row);
-        merged.set(recordKey(record), record);
-      }
-    } catch (stagingError) {
-      const message =
-        stagingError instanceof Error ? stagingError.message : "Staging fetch failed.";
-      if (!isAttendanceSchemaError(message)) {
-        console.warn("[attendance/workflow] staging fetch:", message);
-      }
-    }
-
-    // Stages 2–4 — records advanced in Live Workflow live in employee_attendance.notes.
-    const supabase = createAdminClient();
-    const { data, error } = await supabase
-      .from(ATTENDANCE_TABLE)
-      .select("id, employee_id, attendance_date, status, notes, employees(name)")
-      .order("attendance_date", { ascending: false })
-      .limit(200);
-
-    if (error && isAttendanceSchemaError(error.message ?? "")) {
-      return NextResponse.json({
-        records: Array.from(merged.values()),
-        warning: formatSchemaEnsureFailureMessage(error.message),
-      });
-    }
-    if (error) throw error;
-
-    for (const row of data ?? []) {
-      const record = mapDbRowToWorkflow(row as DbRow);
-      if (!record) continue;
-      if (record.workflowStage === "pending_allocation") {
-        // Staging is authoritative for Stage 1 — skip duplicate employee_attendance rows.
-        continue;
-      }
-      merged.set(recordKey(record), record);
-    }
-
-    const records = Array.from(merged.values()).sort((a, b) =>
+    const rows = await fetchRowsByPipelineStage(PIPELINE_STAGES.LAYER_3_WORKFLOW, { limit: 500 });
+    const records = gridRowsToWorkflowRecords(rows).sort((a, b) =>
       b.createdAt.localeCompare(a.createdAt)
     );
-
-    return NextResponse.json({ records });
+    return NextResponse.json({ records, meta: { pipelineStage: PIPELINE_STAGES.LAYER_3_WORKFLOW } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load workflow.";
     return NextResponse.json({ error: message, records: [] }, { status: 500 });

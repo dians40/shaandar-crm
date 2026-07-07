@@ -37,7 +37,11 @@ model BiometricAttendance {
   netHours     String?   @map("net_hours")
   workCode     String?   @map("work_code")
   remark       String?
+  pipelineStage String   @default("LAYER_2_STAGING") @map("pipeline_stage")
+  workflowStage String?  @default("pending_allocation") @map("workflow_stage")
   createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([pipelineStage], map: "idx_biometric_attendance_pipeline_stage")
 
   @@index([payCode], map: "idx_biometric_attendance_pay_code")
   @@index([date], map: "idx_biometric_attendance_date_text")

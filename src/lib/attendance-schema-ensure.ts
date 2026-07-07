@@ -11,6 +11,7 @@ import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/ad
 const MIGRATION_FILES = [
   "011_ensure_attendance_tables.sql",
   "012_attendance_staging_workflow.sql",
+  "013_biometric_attendance_pipeline_stage.sql",
 ];
 
 let ensureInFlight: Promise<{ ok: boolean; message: string }> | null = null;

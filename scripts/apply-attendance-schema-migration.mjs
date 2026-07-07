@@ -15,6 +15,7 @@ import { loadProjectEnv, resolveSupabaseEnv } from "./load-env.mjs";
 const MIGRATION_FILES = [
   path.join(process.cwd(), "supabase", "migrations", "011_ensure_attendance_tables.sql"),
   path.join(process.cwd(), "supabase", "migrations", "012_attendance_staging_workflow.sql"),
+  path.join(process.cwd(), "supabase", "migrations", "013_biometric_attendance_pipeline_stage.sql"),
 ];
 
 function buildDatabaseUrl(env) {

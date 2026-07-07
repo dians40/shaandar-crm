@@ -10,7 +10,7 @@ import {
 } from "@/lib/attendance-bulk-dynamic-alignment";
 import { virtualBulkRowToDbPayload } from "@/lib/attendance-bulk-virtual-mapper";
 import {
-  mapToAttendanceCreate,
+  mapToBiometricAttendanceCreate,
   mapToBiometricAttendanceRow,
 } from "@/lib/biometric-attendance-db-mapper";
 import { safeBulkNumeric, sanitizeBulkRowInput } from "@/lib/attendance-bulk-payload-bridge";
@@ -56,11 +56,6 @@ function chunkArray<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
-function isMissingDateColumnError(message: string): boolean {
-  const lower = message.toLowerCase();
-  return lower.includes("date") && (lower.includes("column") || lower.includes("schema cache"));
-}
-
 async function persistBiometricRowsSupabase(
   supabase: ReturnType<typeof createAdminClient>,
   rows: Record<string, unknown>[]
@@ -71,24 +66,9 @@ async function persistBiometricRowsSupabase(
   for (const chunk of chunkArray(rows, BATCH_SIZE)) {
     try {
       const { error } = await supabase.from(BIOMETRIC_TABLE).upsert(chunk, {
-        onConflict: "employee_id,attendance_date",
+        onConflict: "pay_code,date",
       });
       if (error) {
-        if (isMissingDateColumnError(error.message ?? "")) {
-          const legacyChunk = chunk.map((row) => {
-            const { date: _date, ...legacy } = row;
-            return legacy;
-          });
-          const { error: legacyError } = await supabase.from(BIOMETRIC_TABLE).upsert(legacyChunk, {
-            onConflict: "employee_id,attendance_date",
-          });
-          if (legacyError) {
-            errors.push(legacyError.message ?? "biometric_attendance upsert failed");
-            continue;
-          }
-          saved += legacyChunk.length;
-          continue;
-        }
         errors.push(error.message ?? "biometric_attendance upsert failed");
         continue;
       }
@@ -144,8 +124,8 @@ async function withBulkSaveTimeout<T>(operation: () => Promise<T>): Promise<T> {
   ]);
 }
 
-async function persistAttendanceRowsPrisma(
-  rows: Prisma.AttendanceCreateManyInput[]
+async function persistBiometricRowsPrisma(
+  rows: Prisma.BiometricAttendanceCreateManyInput[]
 ): Promise<{ saved: number; errors: string[] }> {
   const errors: string[] = [];
   if (!prisma || rows.length === 0) return { saved: 0, errors };
@@ -154,13 +134,13 @@ async function persistAttendanceRowsPrisma(
     let saved = 0;
     for (const chunk of chunkArray(rows, BATCH_SIZE)) {
       try {
-        const result = await prisma.attendance.createMany({
+        const result = await prisma.biometricAttendance.createMany({
           data: chunk,
           skipDuplicates: true,
         });
         saved += result.count;
       } catch (chunkError) {
-        console.error("[bulk-import] prisma.attendance createMany chunk:", chunkError);
+        console.error("[bulk-import] prisma.biometricAttendance createMany chunk:", chunkError);
         errors.push(
           chunkError instanceof Error ? chunkError.message : "prisma createMany chunk failed"
         );
@@ -168,7 +148,7 @@ async function persistAttendanceRowsPrisma(
     }
     return { saved, errors };
   } catch (error) {
-    console.error("[bulk-import] prisma.attendance createMany failed:", error);
+    console.error("[bulk-import] prisma.biometricAttendance createMany failed:", error);
     errors.push(error instanceof Error ? error.message : "prisma createMany failed");
     return { saved: 0, errors };
   }
@@ -253,7 +233,7 @@ export async function POST(request: Request) {
   try {
     return await withBulkSaveTimeout(async () => {
   const records: ReturnType<typeof normalizeAttendanceWorkflowRecord>[] = [];
-  const prismaAttendanceRows: Prisma.AttendanceCreateManyInput[] = [];
+  const prismaBiometricRows: Prisma.BiometricAttendanceCreateManyInput[] = [];
   const supabaseBiometricRows: Record<string, unknown>[] = [];
   const workflowUpsertRows: Array<{
     employee_id: string;
@@ -307,8 +287,8 @@ export async function POST(request: Request) {
         safeString(row.date) || safeString(row.attendance_date)
       );
 
-      const prismaRow = mapToAttendanceCreate(row, resolvedEmployeeId, rowDate);
-      prismaAttendanceRows.push(prismaRow);
+      const prismaRow = mapToBiometricAttendanceCreate(row, resolvedEmployeeId, rowDate);
+      prismaBiometricRows.push(prismaRow);
       supabaseBiometricRows.push(mapToBiometricAttendanceRow(row, resolvedEmployeeId, rowDate));
 
       if (!supabaseConfigured) {
@@ -407,8 +387,8 @@ export async function POST(request: Request) {
     }
   }
 
-  if (prismaConfigured && prismaAttendanceRows.length > 0) {
-    const prismaResult = await persistAttendanceRowsPrisma(prismaAttendanceRows);
+  if (prismaConfigured && prismaBiometricRows.length > 0) {
+    const prismaResult = await persistBiometricRowsPrisma(prismaBiometricRows);
     biometricSaved = prismaResult.saved;
     rowErrors.push(...prismaResult.errors);
   } else if (supabase && supabaseBiometricRows.length > 0) {
@@ -419,7 +399,7 @@ export async function POST(request: Request) {
     biometricSaved = supabaseResult.saved;
     rowErrors.push(...supabaseResult.errors);
   } else if (!supabaseConfigured) {
-    biometricSaved = prismaAttendanceRows.length;
+    biometricSaved = prismaBiometricRows.length;
   }
 
   if (!supabaseConfigured) {

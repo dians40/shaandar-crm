@@ -15,16 +15,9 @@ export async function GET(request: Request) {
 
     if (isPrismaConfigured() && prisma) {
       const normalizedDate = date ? normalizeAttendanceDateIso(date) : undefined;
-      const rows = await prisma.attendance.findMany({
-        where: normalizedDate
-          ? {
-              OR: [
-                { attendanceDate: new Date(`${normalizedDate}T00:00:00.000Z`) },
-                { date: normalizedDate },
-              ],
-            }
-          : undefined,
-        orderBy: [{ attendanceDate: "desc" }, { date: "desc" }, { payCode: "asc" }],
+      const rows = await prisma.biometricAttendance.findMany({
+        where: normalizedDate ? { date: normalizedDate } : undefined,
+        orderBy: [{ date: "desc" }, { payCode: "asc" }],
         take: limit,
       });
 
@@ -32,31 +25,29 @@ export async function GET(request: Request) {
         rows: rows.map((row) =>
           mapAttendanceRecordFromDb({
             id: row.id,
-            employee_id: row.employeeId,
-            attendance_date: row.attendanceDate?.toISOString().slice(0, 10),
-            srl_number: row.srlNumber,
+            srl_no: row.srlNo,
             pay_code: row.payCode,
-            card_number: row.cardNumber,
+            card_no: row.cardNo,
             employee_name: row.employeeName,
             department: row.department,
             designation: row.designation,
             shift: row.shift,
             date: row.date,
-            start: row.start,
-            in_time: row.inTime,
-            lunch_out: row.lunchOut,
-            lunch_in: row.lunchIn,
-            out_time: row.outTime,
-            hours_worked: row.hoursWorked,
             status: row.status,
-            early_arrival: row.earlyArrival,
-            shift_late: row.shiftLate,
-            shift_early: row.shiftEarly,
-            excess_lunch: row.excessLunch,
-            ot: row.ot,
-            overtime: row.overtime,
-            overstay: row.overstay,
-            manual: row.manual,
+            in_time: row.inTime,
+            out_time: row.outTime,
+            duration: row.duration,
+            early_in: row.earlyIn,
+            late_in: row.lateIn,
+            early_out: row.earlyOut,
+            late_out: row.lateOut,
+            ot_hours: row.otHours,
+            short_hours: row.shortHours,
+            gross_hours: row.grossHours,
+            net_hours: row.netHours,
+            work_code: row.workCode,
+            remark: row.remark,
+            created_at: row.createdAt,
           })
         ),
       });
@@ -67,14 +58,12 @@ export async function GET(request: Request) {
       let query = supabase
         .from(BIOMETRIC_TABLE)
         .select("*")
-        .order("attendance_date", { ascending: false })
+        .order("date", { ascending: false })
         .limit(limit);
 
       if (date) {
         const normalizedDate = normalizeAttendanceDateIso(date);
-        query = query.or(
-          `attendance_date.eq.${normalizedDate},date.eq.${normalizedDate}`
-        );
+        query = query.eq("date", normalizedDate);
       }
 
       const { data, error } = await query;

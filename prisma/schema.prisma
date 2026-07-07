@@ -1,6 +1,6 @@
-// Shaandar CRM — Attendance model with 23 structural grid columns (includes explicit date)
+// Shaandar CRM — public.biometric_attendance canonical schema
 // Generate client: npx prisma generate
-// Apply SQL: supabase/migrations/007 + 008
+// Apply SQL: supabase/migrations/010_biometric_attendance_canonical_schema.sql
 
 generator client {
   provider = "prisma-client-js"
@@ -11,45 +11,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Master Panel attendance layer — 23 independent optional string fields + metadata.
-model Attendance {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  employeeId     String?   @map("employee_id") @db.Uuid
-  attendanceDate DateTime? @map("attendance_date") @db.Date
+/// Maps to public.biometric_attendance — all fields optional for safe bulk ingestion.
+model BiometricAttendance {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  srlNo        Int?      @map("srl_no")
+  payCode      String?   @map("pay_code")
+  cardNo       String?   @map("card_no")
+  employeeName String?   @map("employee_name")
+  department   String?
+  designation  String?
+  shift        String?
+  date         String?
+  status       String?
+  inTime       String?   @map("in_time")
+  outTime      String?   @map("out_time")
+  duration     String?
+  earlyIn      String?   @map("early_in")
+  lateIn       String?   @map("late_in")
+  earlyOut     String?   @map("early_out")
+  lateOut      String?   @map("late_out")
+  otHours      String?   @map("ot_hours")
+  shortHours   String?   @map("short_hours")
+  grossHours   String?   @map("gross_hours")
+  netHours     String?   @map("net_hours")
+  workCode     String?   @map("work_code")
+  remark       String?
+  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  srlNumber    String? @default("") @map("srl_number")
-  payCode      String? @default("") @map("pay_code")
-  cardNumber   String? @default("") @map("card_number")
-  employeeName String? @default("") @map("employee_name")
-  department   String? @default("")
-  designation  String? @default("")
-  shift        String? @default("")
-  date         String? @default("")
-  start        String? @default("")
-  inTime       String? @default("") @map("in_time")
-  lunchOut     String? @default("") @map("lunch_out")
-  lunchIn      String? @default("") @map("lunch_in")
-  outTime      String? @default("") @map("out_time")
-  hoursWorked  String? @default("") @map("hours_worked")
-  status       String? @default("")
-  earlyArrival String? @default("") @map("early_arrival")
-  shiftLate    String? @default("") @map("shift_late")
-  shiftEarly   String? @default("") @map("shift_early")
-  excessLunch  String? @default("") @map("excess_lunch")
-  ot           String? @default("")
-  overtime     String? @default("")
-  overstay     String? @default("")
-  manual       String? @default("")
-
-  punchIn  String? @default("") @map("punch_in")
-  punchOut String? @default("") @map("punch_out")
-  remarks  String? @default("")
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-
-  @@unique([employeeId, attendanceDate], map: "biometric_attendance_employee_date_key")
   @@index([payCode], map: "idx_biometric_attendance_pay_code")
-  @@index([attendanceDate], map: "idx_biometric_attendance_date")
+  @@index([date], map: "idx_biometric_attendance_date_text")
+  @@unique([payCode, date], map: "biometric_attendance_pay_code_date_key")
   @@map("biometric_attendance")
 }

@@ -4,81 +4,61 @@ import { sanitizeBulkRowInput } from "@/lib/attendance-bulk-payload-bridge";
 import {
   applyDateFallback,
   normalizeBiometric23ColumnRecord,
+  normalizeAttendanceDateIso,
   todayIsoDateString,
   type Biometric23ColumnRecord,
 } from "@/types/attendance-bulk-import-row";
 
-export type AttendanceCreateManyInput = Prisma.AttendanceCreateManyInput;
+export type BiometricAttendanceCreateManyInput =
+  Prisma.BiometricAttendanceCreateManyInput;
 
-function safeString(value: unknown): string {
+/** @deprecated Use BiometricAttendanceCreateManyInput */
+export type AttendanceCreateManyInput = BiometricAttendanceCreateManyInput;
+
+function safeString(value: unknown): string | null {
   try {
-    if (value == null) return "";
-    return String(value).trim();
+    if (value == null) return null;
+    const token = String(value).trim();
+    return token || null;
   } catch {
-    return "";
+    return null;
   }
 }
 
-function safeNumericString(value: unknown): string {
-  try {
-    const token = safeString(value).replace(/[$,]/g, "");
-    if (!token) return "";
-    const parsed = Number(token);
-    return Number.isFinite(parsed) ? String(parsed) : safeString(value);
-  } catch {
-    return "";
-  }
-}
-
-function parseAttendanceDate(value: unknown): Date {
+function safeNumericToken(value: unknown): string | null {
   try {
     const token = safeString(value);
-    if (!token) return new Date(`${todayIsoDateString()}T00:00:00.000Z`);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(token)) {
-      return new Date(`${token}T00:00:00.000Z`);
-    }
-    const parsed = Date.parse(token);
-    if (!Number.isNaN(parsed)) return new Date(parsed);
-    return new Date(`${todayIsoDateString()}T00:00:00.000Z`);
+    if (!token) return null;
+    const cleaned = token.replace(/[$,]/g, "");
+    if (!cleaned) return null;
+    const parsed = Number(cleaned);
+    return Number.isFinite(parsed) ? String(parsed) : cleaned;
   } catch {
-    return new Date(`${todayIsoDateString()}T00:00:00.000Z`);
+    return null;
   }
 }
 
-function emptyAttendanceRow(
-  employeeId: string | null | undefined
-): AttendanceCreateManyInput {
-  const today = todayIsoDateString();
-  return {
-    employeeId: safeString(employeeId) || null,
-    attendanceDate: new Date(`${today}T00:00:00.000Z`),
-    srlNumber: "",
-    payCode: "",
-    cardNumber: "",
-    employeeName: "",
-    department: "",
-    designation: "",
-    shift: "",
-    date: today,
-    start: "",
-    inTime: "",
-    lunchOut: "",
-    lunchIn: "",
-    outTime: "",
-    hoursWorked: "",
-    status: "",
-    earlyArrival: "",
-    shiftLate: "",
-    shiftEarly: "",
-    excessLunch: "",
-    ot: "",
-    overtime: "",
-    overstay: "",
-    manual: "",
-    punchIn: `${today}T09:00:00.000Z`,
-    punchOut: "",
-    remarks: "",
-  };
+function parseSrlNo(value: unknown): number | null {
+  try {
+    const token = safeString(value);
+    if (!token) return null;
+    const digits = token.replace(/\D/g, "");
+    if (!digits) return null;
+    const parsed = Number(digits);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function fuzzyRead(source: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) {
+    const direct = source[key];
+    if (direct != null && String(direct).trim()) return direct;
+    const lower = source[key.toLowerCase()];
+    if (lower != null && String(lower).trim()) return lower;
+  }
+  return undefined;
 }
 
 function toBiometricRecord(
@@ -97,140 +77,145 @@ function toBiometricRecord(
   return normalizeBiometric23ColumnRecord(row as Record<string, unknown>, { defaultDate });
 }
 
-/** Map preview grid row → Prisma Attendance create input (23 independent columns). */
-export function mapToAttendanceCreate(
+/** Map bulk import row → Prisma BiometricAttendance create input (canonical columns). */
+export function mapToBiometricAttendanceCreate(
   row: AttendanceBulkDbPayload | Biometric23ColumnRecord | Record<string, unknown>,
-  employeeId: string | null | undefined,
+  _employeeId?: string | null,
   defaultDate?: string
-): AttendanceCreateManyInput {
+): BiometricAttendanceCreateManyInput {
   try {
+    const raw = row as Record<string, unknown>;
     const payload =
       "srl_number" in row && typeof (row as AttendanceBulkDbPayload).srl_number === "string"
         ? (row as AttendanceBulkDbPayload)
         : null;
 
-    const fallbackDate =
+    const fallbackDate = normalizeAttendanceDateIso(
       defaultDate ||
-      safeString(payload?.attendance_date) ||
-      applyDateFallback(row as Biometric23ColumnRecord, defaultDate);
+        safeString(payload?.attendance_date) ||
+        safeString(payload?.date) ||
+        applyDateFallback(row as Biometric23ColumnRecord, defaultDate),
+      todayIsoDateString()
+    );
 
     const biometric = toBiometricRecord(row, fallbackDate);
-    const resolvedDate = applyDateFallback(biometric, fallbackDate);
-    const attendanceDate = parseAttendanceDate(resolvedDate);
+    const resolvedDate = normalizeAttendanceDateIso(
+      applyDateFallback(biometric, fallbackDate),
+      fallbackDate
+    );
+
+    const remark =
+      safeString(payload?.remarks) ||
+      safeString(fuzzyRead(raw, ["remark", "remarks", "shift_remarks"]));
 
     return {
-      employeeId: safeString(employeeId) || null,
-      attendanceDate,
-      srlNumber: safeString(biometric.serialNumber),
+      srlNo: parseSrlNo(biometric.serialNumber),
       payCode: safeString(biometric.payCode),
-      cardNumber: safeString(biometric.cardNumber),
+      cardNo: safeString(biometric.cardNumber),
       employeeName: safeString(biometric.employeeName),
       department: safeString(biometric.department),
       designation: safeString(biometric.designation),
       shift: safeString(biometric.shift),
       date: resolvedDate,
-      start: safeString(biometric.start),
-      inTime: safeString(biometric.in),
-      lunchOut: safeString(biometric.lunchOut),
-      lunchIn: safeString(biometric.lunchIn),
-      outTime: safeString(biometric.out),
-      hoursWorked: safeString(biometric.hoursWorked),
       status: safeString(biometric.status),
-      earlyArrival: safeNumericString(biometric.earlyArrival),
-      shiftLate: safeNumericString(biometric.shiftLate),
-      shiftEarly: safeNumericString(biometric.shiftEarly),
-      excessLunch: safeNumericString(biometric.excessLunch),
-      ot: safeNumericString(biometric.ot),
-      overtime: safeNumericString(biometric.overtimeAmount) || "0",
-      overstay: safeNumericString(biometric.overStay) || "0",
-      manual: safeNumericString(biometric.manual) || "0",
-      punchIn:
-        safeString(payload?.punch_in) ||
-        `${attendanceDate.toISOString().slice(0, 10)}T09:00:00.000Z`,
-      punchOut: safeString(payload?.punch_out),
-      remarks: safeString(payload?.remarks),
+      inTime: safeString(biometric.in),
+      outTime: safeString(biometric.out),
+      duration: safeString(biometric.hoursWorked),
+      earlyIn: safeNumericToken(biometric.earlyArrival),
+      lateIn: safeNumericToken(biometric.shiftLate),
+      earlyOut: safeNumericToken(biometric.shiftEarly),
+      lateOut: safeNumericToken(biometric.excessLunch),
+      otHours: safeNumericToken(biometric.ot),
+      shortHours: safeNumericToken(biometric.manual),
+      grossHours: safeString(biometric.hoursWorked),
+      netHours: safeString(biometric.hoursWorked),
+      workCode: safeString(biometric.shift),
+      remark,
     };
   } catch (error) {
-    console.error("[attendance-mapper] fallback row:", error);
-    return emptyAttendanceRow(employeeId);
+    console.error("[biometric-mapper] fallback row:", error);
+    return {
+      date: normalizeAttendanceDateIso(defaultDate, todayIsoDateString()),
+    };
   }
 }
 
-/** @deprecated Use mapToAttendanceCreate */
-export const mapToBiometricAttendanceCreate = mapToAttendanceCreate;
+/** @deprecated Use mapToBiometricAttendanceCreate */
+export const mapToAttendanceCreate = mapToBiometricAttendanceCreate;
 
-/** Map to Supabase snake_case row (23 columns). */
+/** @deprecated Use mapToBiometricAttendanceCreate */
+export const mapToBiometricAttendanceCreateLegacy = mapToBiometricAttendanceCreate;
+
+/** Map to Supabase snake_case row (canonical biometric_attendance columns). */
 export function mapToBiometricAttendanceRow(
   row: AttendanceBulkDbPayload,
-  employeeId: string | null | undefined,
+  employeeId?: string | null,
   defaultDate?: string
 ): Record<string, unknown> {
-  const prismaRow = mapToAttendanceCreate(row, employeeId, defaultDate);
-  const dateStr =
-    safeString(prismaRow.date) ||
-    (prismaRow.attendanceDate
-      ? new Date(prismaRow.attendanceDate).toISOString().slice(0, 10)
-      : todayIsoDateString());
-
+  const prismaRow = mapToBiometricAttendanceCreate(row, employeeId, defaultDate);
   return {
-    employee_id: prismaRow.employeeId,
-    attendance_date: dateStr,
-    srl_number: prismaRow.srlNumber ?? "",
-    pay_code: prismaRow.payCode ?? "",
-    card_number: prismaRow.cardNumber ?? "",
-    employee_name: prismaRow.employeeName ?? "",
-    department: prismaRow.department ?? "",
-    designation: prismaRow.designation ?? "",
-    shift: prismaRow.shift ?? "",
-    date: dateStr,
-    start: prismaRow.start ?? "",
-    in_time: prismaRow.inTime ?? "",
-    lunch_out: prismaRow.lunchOut ?? "",
-    lunch_in: prismaRow.lunchIn ?? "",
-    out_time: prismaRow.outTime ?? "",
-    hours_worked: prismaRow.hoursWorked ?? "",
-    status: prismaRow.status ?? "",
-    early_arrival: prismaRow.earlyArrival ?? "",
-    shift_late: prismaRow.shiftLate ?? "",
-    shift_early: prismaRow.shiftEarly ?? "",
-    excess_lunch: prismaRow.excessLunch ?? "",
-    ot: prismaRow.ot ?? "",
-    overtime: prismaRow.overtime ?? "",
-    overstay: prismaRow.overstay ?? "",
-    manual: prismaRow.manual ?? "",
-    punch_in: prismaRow.punchIn ?? "",
-    punch_out: prismaRow.punchOut ?? "",
-    remarks: prismaRow.remarks ?? "",
+    srl_no: prismaRow.srlNo ?? null,
+    pay_code: prismaRow.payCode ?? null,
+    card_no: prismaRow.cardNo ?? null,
+    employee_name: prismaRow.employeeName ?? null,
+    department: prismaRow.department ?? null,
+    designation: prismaRow.designation ?? null,
+    shift: prismaRow.shift ?? null,
+    date: prismaRow.date ?? null,
+    status: prismaRow.status ?? null,
+    in_time: prismaRow.inTime ?? null,
+    out_time: prismaRow.outTime ?? null,
+    duration: prismaRow.duration ?? null,
+    early_in: prismaRow.earlyIn ?? null,
+    late_in: prismaRow.lateIn ?? null,
+    early_out: prismaRow.earlyOut ?? null,
+    late_out: prismaRow.lateOut ?? null,
+    ot_hours: prismaRow.otHours ?? null,
+    short_hours: prismaRow.shortHours ?? null,
+    gross_hours: prismaRow.grossHours ?? null,
+    net_hours: prismaRow.netHours ?? null,
+    work_code: prismaRow.workCode ?? null,
+    remark: prismaRow.remark ?? null,
   };
 }
 
+/** Map DB row → 23-column grid shape (canonical + legacy column fallbacks). */
 export function mapAttendanceRecordFromDb(row: Record<string, unknown>) {
+  const date =
+    safeString(row.date) ||
+    safeString(row.attendance_date ?? row.attendanceDate) ||
+    "";
+
   return {
-    id: safeString(row.id),
-    employeeId: safeString(row.employee_id ?? row.employeeId),
-    attendanceDate: safeString(row.attendance_date ?? row.attendanceDate),
-    srlNumber: safeString(row.srl_number ?? row.srlNumber),
-    payCode: safeString(row.pay_code ?? row.payCode),
-    cardNumber: safeString(row.card_number ?? row.cardNumber),
-    employeeName: safeString(row.employee_name ?? row.employeeName),
-    department: safeString(row.department),
-    designation: safeString(row.designation),
-    shift: safeString(row.shift),
-    date: safeString(row.date) || safeString(row.attendance_date ?? row.attendanceDate),
-    start: safeString(row.start),
-    inTime: safeString(row.in_time ?? row.inTime),
-    lunchOut: safeString(row.lunch_out ?? row.lunchOut),
-    lunchIn: safeString(row.lunch_in ?? row.lunchIn),
-    outTime: safeString(row.out_time ?? row.outTime),
-    hoursWorked: safeString(row.hours_worked ?? row.hoursWorked),
-    status: safeString(row.status),
-    earlyArrival: safeString(row.early_arrival ?? row.earlyArrival),
-    shiftLate: safeString(row.shift_late ?? row.shiftLate),
-    shiftEarly: safeString(row.shift_early ?? row.shiftEarly),
-    excessLunch: safeString(row.excess_lunch ?? row.excessLunch),
-    ot: safeString(row.ot),
-    overtime: safeString(row.overtime),
-    overstay: safeString(row.overstay),
-    manual: safeString(row.manual),
+    id: safeString(row.id) ?? "",
+    employeeId: safeString(row.employee_id ?? row.employeeId) ?? "",
+    attendanceDate: date,
+    srlNumber: String(row.srl_no ?? row.srl_number ?? row.srlNumber ?? ""),
+    payCode: safeString(row.pay_code ?? row.payCode) ?? "",
+    cardNumber: safeString(row.card_no ?? row.card_number ?? row.cardNumber) ?? "",
+    employeeName: safeString(row.employee_name ?? row.employeeName) ?? "",
+    department: safeString(row.department) ?? "",
+    designation: safeString(row.designation) ?? "",
+    shift: safeString(row.shift) ?? "",
+    date,
+    start: safeString(row.start) ?? "",
+    inTime:
+      safeString(row.in_time ?? row.inTime) ??
+      safeString(row.in) ??
+      "",
+    lunchOut: safeString(row.lunch_out ?? row.lunchOut) ?? "",
+    lunchIn: safeString(row.lunch_in ?? row.lunchIn) ?? "",
+    outTime: safeString(row.out_time ?? row.outTime) ?? "",
+    hoursWorked:
+      safeString(row.duration ?? row.hours_worked ?? row.hoursWorked) ?? "",
+    status: safeString(row.status) ?? "",
+    earlyArrival: safeString(row.early_in ?? row.early_arrival ?? row.earlyArrival) ?? "",
+    shiftLate: safeString(row.late_in ?? row.shift_late ?? row.shiftLate) ?? "",
+    shiftEarly: safeString(row.early_out ?? row.shift_early ?? row.shiftEarly) ?? "",
+    excessLunch: safeString(row.late_out ?? row.excess_lunch ?? row.excessLunch) ?? "",
+    ot: safeString(row.ot_hours ?? row.ot) ?? "",
+    overtime: safeString(row.overtime) ?? "",
+    overstay: safeString(row.overstay) ?? "",
+    manual: safeString(row.short_hours ?? row.manual) ?? "",
   };
 }

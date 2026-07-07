@@ -1,4 +1,6 @@
 import type { AuthSessionPayload } from "@/types/auth-session";
+import { LAYER_2_USER_ROLE } from "@/types/managed-user";
+import { USER_PIPELINE_STAGES } from "@/types/user-pipeline";
 
 export const AUTH_COOKIE = "shaandar-auth";
 
@@ -17,6 +19,48 @@ export const EMERGENCY_ADMIN_BYPASS = {
   fullName: "Emergency Administrator",
   role: "Super Admin",
 } as const;
+
+/** Hardcoded Layer 2 staging bypass for Sanjeev — no database lookup required. */
+export const SANJEEV_LAYER2_BYPASS = {
+  username: "sanjeev",
+  hindiUsername: "संजीव",
+  password: "abcd@1234",
+  fullName: "Sanjeev",
+  role: LAYER_2_USER_ROLE,
+  pipelineStage: USER_PIPELINE_STAGES.LAYER_2_STAGING,
+} as const;
+
+export function isSanjeevLayer2Username(username: string): boolean {
+  const trimmed = username.trim();
+  if (trimmed.toLowerCase() === SANJEEV_LAYER2_BYPASS.username) {
+    return true;
+  }
+  return trimmed === SANJEEV_LAYER2_BYPASS.hindiUsername;
+}
+
+export function isSanjeevLayer2Bypass(username: string, password: string): boolean {
+  return isSanjeevLayer2Username(username) && password === SANJEEV_LAYER2_BYPASS.password;
+}
+
+export function buildSanjeevLayer2Session(): AuthSessionPayload {
+  return {
+    username: SANJEEV_LAYER2_BYPASS.username,
+    fullName: SANJEEV_LAYER2_BYPASS.fullName,
+    role: SANJEEV_LAYER2_BYPASS.role,
+    pipelineStage: SANJEEV_LAYER2_BYPASS.pipelineStage,
+    isAdmin: false,
+  };
+}
+
+export function resolveSanjeevLayer2Session(
+  username: string,
+  password: string
+): AuthSessionPayload | null {
+  if (isSanjeevLayer2Bypass(username, password)) {
+    return buildSanjeevLayer2Session();
+  }
+  return null;
+}
 
 export function isEmergencyAdminBypass(username: string, password: string): boolean {
   const normalized = username.trim().toLowerCase();

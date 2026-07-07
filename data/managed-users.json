@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "id": "sanjeev-layer2",
+    "fullName": "Sanjeev",
+    "username": "sanjeev",
+    "password": "abcd@1234",
+    "role": "LAYER_2",
+    "otpEnabled": false,
+    "createdAt": "2026-07-07T00:00:00.000Z",
+    "pipelineStage": "LAYER_2_STAGING"
+  }
+]

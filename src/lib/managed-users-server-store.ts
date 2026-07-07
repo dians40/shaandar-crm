@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { isSanjeevLayer2Username } from "@/lib/auth";
 import type { ManagedUserRecord } from "@/types/managed-user";
 
 const DATA_DIR = path.join(process.cwd(), "data");
@@ -24,7 +25,14 @@ export async function findManagedUserByUsernameServer(
   username: string
 ): Promise<ManagedUserRecord | undefined> {
   const normalized = username.trim().toLowerCase();
-  return (await readManagedUsersServer()).find(
-    (row) => row.username.trim().toLowerCase() === normalized
-  );
+  return (await readManagedUsersServer()).find((row) => {
+    const rowNormalized = row.username.trim().toLowerCase();
+    if (rowNormalized === normalized) {
+      return true;
+    }
+    if (isSanjeevLayer2Username(username) && rowNormalized === "sanjeev") {
+      return true;
+    }
+    return false;
+  });
 }

@@ -6,6 +6,7 @@ import {
   AUTH_COOKIE,
   encodeAuthSession,
   resolveAdminSession,
+  resolveSanjeevLayer2Session,
 } from "@/lib/auth";
 import { getPostLoginRedirect } from "@/lib/auth-navigation";
 import {
@@ -64,6 +65,16 @@ export async function authenticateManagedUserAction(
 ): Promise<ManagedUserAuthResult> {
   if (!username.trim() || !password) {
     return { error: "Please enter both username and password." };
+  }
+
+  const sanjeevSession = resolveSanjeevLayer2Session(username, password);
+  if (sanjeevSession) {
+    return {
+      success: true,
+      session: sanjeevSession,
+      otpRequired: false,
+      redirectTo: getPostLoginRedirect(sanjeevSession),
+    };
   }
 
   const managedUser = await findManagedUserByUsernameServer(username);

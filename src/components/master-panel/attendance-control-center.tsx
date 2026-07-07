@@ -557,7 +557,7 @@ export default function AttendanceControlCenter() {
   const uploadBusy = isParsing || isProcessing;
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-6">
+    <div className="flex w-full min-w-0 flex-col gap-5">
       <div className="flex flex-col gap-2 border-b border-corporate-border pb-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
           <CalendarCheck className="h-5 w-5 text-corporate-brand" aria-hidden />
@@ -566,7 +566,7 @@ export default function AttendanceControlCenter() {
               Attendance Control Center
             </h2>
             <p className="text-sm text-corporate-muted">
-              Excel ingestion, legacy manual records, live biometric data, and unified 24-column grid
+              Filter historical records, upload biometric exports, and review the unified attendance grid
             </p>
           </div>
         </div>
@@ -578,252 +578,284 @@ export default function AttendanceControlCenter() {
         )}
       </div>
 
-      <div className="grid w-full min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
-        <section className="rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
-          <div className="flex flex-wrap items-start gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-corporate-brand-light text-corporate-brand">
-              <FileSpreadsheet className="h-5 w-5" aria-hidden />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-bold text-corporate-text">Bulk Import</h3>
-              <p className="mt-1 text-xs text-corporate-muted">
-                Upload biometric Daily Performance exports (.xls, .xlsx, .csv). Drag and drop
-                or browse to ingest attendance records into the database.
-              </p>
-            </div>
+      {/* Mandatory filter bar — always rendered at top of workspace */}
+      <section
+        className="rounded-xl border-2 border-corporate-brand/25 bg-corporate-surface p-4 shadow-card"
+        aria-label="Attendance filter controls"
+      >
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-corporate-text">Filter & Search Controls</h3>
+            <p className="text-xs text-corporate-muted">
+              {isGridLoading
+                ? "Loading attendance history..."
+                : `${gridRows.length} record(s) in view`}
+            </p>
           </div>
-
-          <div
-            className={cn(
-              "mt-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors",
-              isDragging
-                ? "border-corporate-brand bg-corporate-brand-light/50"
-                : "border-corporate-border bg-corporate-bg",
-              uploadBusy && "pointer-events-none opacity-70"
-            )}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+          <button
+            type="button"
+            onClick={() => void loadGridRows()}
+            disabled={isGridLoading}
+            className="btn-secondary inline-flex h-10 items-center gap-2 px-4 text-sm"
           >
-            {isParsing ? (
-              <Loader2 className="mb-2 h-8 w-8 animate-spin text-corporate-brand" aria-hidden />
-            ) : (
-              <Upload className="mb-2 h-8 w-8 text-corporate-muted" aria-hidden />
-            )}
-            <p className="text-sm font-medium text-corporate-text">
-              {isDragging ? "Drop file to upload" : "Drag and drop or select a file"}
-            </p>
-            <p className="mt-1 text-xs text-corporate-muted">Supported: .xlsx, .xls, .pdf, .csv</p>
-            <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-corporate-brand px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
-              <Upload className="h-4 w-4" aria-hidden />
-              Choose File
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls,.pdf,.csv"
-                className="sr-only"
-                disabled={uploadBusy}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  if (file) void handleFileSelect(file);
-                }}
-              />
-            </label>
-          </div>
+            <RefreshCw
+              className={cn("h-4 w-4", isGridLoading && "animate-spin")}
+              aria-hidden
+            />
+            Refresh
+          </button>
+        </div>
 
-          {importPreview && (
-            <div className="mt-5 space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-3">
-                <div>
-                  <p className="text-sm font-bold text-corporate-brand">
-                    Ready to import: {importPreview.bulkRows.length} row(s)
-                  </p>
-                  <p className="text-xs text-corporate-muted">
-                    {importPreview.fileName} —{" "}
-                    {importPreview.pendingNewEmployees.length} new employee(s) detected
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void processBulkImport()}
-                  disabled={isProcessing}
-                  className="btn-primary inline-flex h-11 min-h-[44px] items-center gap-2 px-5 text-sm"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Save className="h-4 w-4" aria-hidden />
-                  )}
-                  {isProcessing ? "Processing..." : "Process & Save"}
-                </button>
-              </div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <label
+            htmlFor="attendance-filter-date"
+            className="flex min-w-[180px] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-corporate-muted"
+          >
+            Attendance Date
+            <input
+              id="attendance-filter-date"
+              type="date"
+              value={filterDate}
+              onChange={(event) => setFilterDate(event.target.value)}
+              className="h-11 rounded-lg border border-corporate-border bg-white px-3 text-sm font-normal normal-case text-corporate-text shadow-sm"
+            />
+          </label>
 
-              {importPreview.alignmentInfo && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
-                  <p className="font-semibold">Column alignment</p>
-                  <p className="mt-1">{importPreview.alignmentInfo}</p>
-                </div>
-              )}
-
-              <AttendanceBulkImportPreviewGrid
-                rows={importPreview.bulkRows}
-                selectedRowIndex={selectedBulkRowIndex}
-                onSelectedRowIndexChange={handleBulkRowIndexChange}
-                onRowsChange={handleBulkRowsChange}
-              />
-            </div>
-          )}
-
-          {importMessage && (
-            <p className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              {importMessage}
-            </p>
-          )}
-          {importError && (
-            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              {importError}
-            </p>
-          )}
-        </section>
-
-        <section className="flex min-w-0 flex-col gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5 text-corporate-brand" aria-hidden />
-              <div>
-                <h3 className="text-sm font-bold text-corporate-text">Live Attendance Grid</h3>
-                <p className="text-xs text-corporate-muted">
-                  {gridRows.length} record(s) — legacy and biometric attendance merged
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => void loadGridRows()}
-              disabled={isGridLoading}
-              className="btn-secondary inline-flex h-10 items-center gap-2 px-4 text-sm"
-            >
-              <RefreshCw
-                className={cn("h-4 w-4", isGridLoading && "animate-spin")}
-                aria-hidden
-              />
-              Refresh
-            </button>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-corporate-border bg-corporate-surface px-4 py-3">
-            <label className="flex items-center gap-2 text-sm text-corporate-muted">
-              Date
-              <input
-                type="date"
-                value={filterDate}
-                onChange={(event) => setFilterDate(event.target.value)}
-                className="h-10 rounded-lg border border-corporate-border bg-white px-3 text-sm text-corporate-text"
-              />
-            </label>
-            <div className="relative min-w-[200px] flex-1">
+          <label
+            htmlFor="attendance-filter-search"
+            className="flex min-w-[240px] flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-corporate-muted"
+          >
+            Text Search
+            <div className="relative">
               <Search
                 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-corporate-muted"
                 aria-hidden
               />
               <input
+                id="attendance-filter-search"
                 type="search"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search by Employee Name or Pay Code"
-                className="h-10 w-full rounded-lg border border-corporate-border bg-white pl-9 pr-3 text-sm text-corporate-text"
+                placeholder="Search by Name or Pay Code..."
+                className="h-11 w-full rounded-lg border border-corporate-border bg-white pl-9 pr-3 text-sm font-normal normal-case text-corporate-text shadow-sm"
               />
             </div>
-          </div>
+          </label>
 
-          {gridError && (
-            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              {gridError}
-            </p>
+          {filterDate && (
+            <button
+              type="button"
+              onClick={() => setFilterDate("")}
+              className="h-11 rounded-lg border border-corporate-border bg-white px-4 text-sm font-medium text-corporate-text hover:bg-corporate-bg"
+            >
+              Clear Date
+            </button>
           )}
+        </div>
 
-          <div
-            className={cn(
-              MASTER_LIST_TABLE_WRAPPER_CLASS,
-              "max-h-[calc(100vh-18rem)] min-h-[320px] overflow-auto"
-            )}
-          >
-            <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[2800px]")}>
-              <thead className={MASTER_LIST_HEAD_CLASS}>
-                <tr>
-                  {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => (
-                    <th key={column.key} className={MASTER_LIST_HEADER_CELL_CLASS}>
-                      {column.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-corporate-border">
-                {isGridLoading ? (
-                  <tr>
-                    <td
-                      colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length}
-                      className="px-3 py-8 text-center text-corporate-muted"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                        Loading attendance records...
-                      </span>
-                    </td>
-                  </tr>
-                ) : gridRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length}
-                      className="px-3 py-8 text-center text-corporate-muted"
-                    >
-                      No attendance records found. Upload an Excel file or adjust your filters.
-                    </td>
-                  </tr>
-                ) : (
-                  gridRows.map((row) => (
-                    <tr key={row.id || `${row.source}-${row.payCode}-${row.date}`}>
-                      {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => {
-                        const value = row[column.key] ?? "";
-                        const isSourceColumn = column.key === "source";
-                        return (
-                          <td
-                            key={`${row.id}-${column.key}`}
-                            className={cn(
-                              MASTER_LIST_BODY_CELL_CLASS,
-                              "whitespace-nowrap text-xs",
-                              isSourceColumn &&
-                                "font-semibold uppercase tracking-wide",
-                              isSourceColumn &&
-                                row.source === "legacy" &&
-                                "text-amber-700",
-                              isSourceColumn &&
-                                row.source === "biometric" &&
-                                "text-corporate-brand",
-                              (column.key === "shift" ||
-                                column.key === "status" ||
-                                column.key === "otHours") &&
-                                !isSourceColumn &&
-                                "font-semibold text-corporate-brand"
-                            )}
-                          >
-                            {isSourceColumn
-                              ? row.source === "legacy"
-                                ? "Legacy"
-                                : "Biometric"
-                              : value || "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+        {gridError && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {gridError}
+          </p>
+        )}
+      </section>
+
+      {/* Upload engine */}
+      <section className="rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
+        <div className="flex flex-wrap items-start gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-corporate-brand-light text-corporate-brand">
+            <FileSpreadsheet className="h-5 w-5" aria-hidden />
           </div>
-        </section>
-      </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-sm font-bold text-corporate-text">Excel Upload</h3>
+            <p className="mt-1 text-xs text-corporate-muted">
+              Upload biometric Daily Performance exports (.xls, .xlsx, .csv). Drag and drop or browse
+              to ingest attendance records into the database.
+            </p>
+          </div>
+        </div>
+
+        <div
+          className={cn(
+            "mt-4 flex flex-col items-center justify-center rounded-xl border-2 border-dashed px-4 py-6 text-center transition-colors",
+            isDragging
+              ? "border-corporate-brand bg-corporate-brand-light/50"
+              : "border-corporate-border bg-corporate-bg",
+            uploadBusy && "pointer-events-none opacity-70"
+          )}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isParsing ? (
+            <Loader2 className="mb-2 h-8 w-8 animate-spin text-corporate-brand" aria-hidden />
+          ) : (
+            <Upload className="mb-2 h-8 w-8 text-corporate-muted" aria-hidden />
+          )}
+          <p className="text-sm font-medium text-corporate-text">
+            {isDragging ? "Drop file to upload" : "Drag and drop or select a file"}
+          </p>
+          <p className="mt-1 text-xs text-corporate-muted">Supported: .xlsx, .xls, .pdf, .csv</p>
+          <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-full bg-corporate-brand px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">
+            <Upload className="h-4 w-4" aria-hidden />
+            Choose File
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.pdf,.csv"
+              className="sr-only"
+              disabled={uploadBusy}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void handleFileSelect(file);
+              }}
+            />
+          </label>
+        </div>
+
+        {importPreview && (
+          <div className="mt-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-3">
+              <div>
+                <p className="text-sm font-bold text-corporate-brand">
+                  Ready to import: {importPreview.bulkRows.length} row(s)
+                </p>
+                <p className="text-xs text-corporate-muted">
+                  {importPreview.fileName} — {importPreview.pendingNewEmployees.length} new
+                  employee(s) detected
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void processBulkImport()}
+                disabled={isProcessing}
+                className="btn-primary inline-flex h-11 min-h-[44px] items-center gap-2 px-5 text-sm"
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Save className="h-4 w-4" aria-hidden />
+                )}
+                {isProcessing ? "Processing..." : "Process & Save"}
+              </button>
+            </div>
+
+            {importPreview.alignmentInfo && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
+                <p className="font-semibold">Column alignment</p>
+                <p className="mt-1">{importPreview.alignmentInfo}</p>
+              </div>
+            )}
+
+            <AttendanceBulkImportPreviewGrid
+              rows={importPreview.bulkRows}
+              selectedRowIndex={selectedBulkRowIndex}
+              onSelectedRowIndexChange={handleBulkRowIndexChange}
+              onRowsChange={handleBulkRowsChange}
+            />
+          </div>
+        )}
+
+        {importMessage && (
+          <p className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            {importMessage}
+          </p>
+        )}
+        {importError && (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {importError}
+          </p>
+        )}
+      </section>
+
+      {/* Permanent history grid — always rendered below upload */}
+      <section
+        className="flex min-h-[420px] w-full min-w-0 flex-col gap-3"
+        aria-label="Attendance history grid"
+      >
+        <div className="flex items-center gap-2">
+          <FileSpreadsheet className="h-5 w-5 text-corporate-brand" aria-hidden />
+          <div>
+            <h3 className="text-sm font-bold text-corporate-text">Attendance History Grid</h3>
+            <p className="text-xs text-corporate-muted">
+              23-column transactional view — legacy and biometric records merged
+            </p>
+          </div>
+        </div>
+
+        <div
+          className={cn(
+            MASTER_LIST_TABLE_WRAPPER_CLASS,
+            "workspace-table-scroll min-h-[360px] max-h-[calc(100vh-14rem)] w-full overflow-auto"
+          )}
+        >
+          <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[2600px]")}>
+            <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
+              <tr>
+                {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => (
+                  <th key={column.key} className={MASTER_LIST_HEADER_CELL_CLASS}>
+                    {column.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-corporate-border bg-white">
+              {isGridLoading ? (
+                <tr>
+                  <td
+                    colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length}
+                    className="px-3 py-10 text-center text-corporate-muted"
+                  >
+                    <span className="inline-flex items-center gap-2 text-sm">
+                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      Loading attendance records...
+                    </span>
+                  </td>
+                </tr>
+              ) : gridRows.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={BIOMETRIC_ATTENDANCE_GRID_COLUMNS.length}
+                    className="px-3 py-10 text-center text-sm text-corporate-muted"
+                  >
+                    No attendance records found. Upload an Excel file or adjust your filters.
+                  </td>
+                </tr>
+              ) : (
+                gridRows.map((row) => (
+                  <tr
+                    key={row.id || `${row.source}-${row.payCode}-${row.date}-${row.createdAt}`}
+                    className={cn(
+                      row.source === "legacy" && "bg-amber-50/40",
+                      row.source === "biometric" && "hover:bg-corporate-bg/40"
+                    )}
+                  >
+                    {BIOMETRIC_ATTENDANCE_GRID_COLUMNS.map((column) => {
+                      const value = row[column.key] ?? "";
+                      return (
+                        <td
+                          key={`${row.id}-${column.key}`}
+                          className={cn(
+                            MASTER_LIST_BODY_CELL_CLASS,
+                            "whitespace-nowrap text-xs text-corporate-text",
+                            (column.key === "shift" ||
+                              column.key === "status" ||
+                              column.key === "otHours") &&
+                              "font-semibold text-corporate-brand"
+                          )}
+                        >
+                          {value || "—"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }

@@ -34,7 +34,6 @@ export const BIOMETRIC_ATTENDANCE_GRID_COLUMNS: {
   key: keyof BiometricAttendanceGridRow;
   label: string;
 }[] = [
-  { key: "source", label: "Source" },
   { key: "srlNo", label: "Srl No" },
   { key: "payCode", label: "Pay Code" },
   { key: "cardNo", label: "Card No" },
@@ -60,4 +59,4 @@ export const BIOMETRIC_ATTENDANCE_GRID_COLUMNS: {
   { key: "createdAt", label: "Created At" },
 ];
 
-export const BIOMETRIC_ATTENDANCE_GRID_COLUMN_COUNT = 24;
+export const BIOMETRIC_ATTENDANCE_GRID_COLUMN_COUNT = 23;

@@ -19,16 +19,44 @@ export function writeManagedUsers(users: ManagedUserRecord[]) {
   window.localStorage.setItem(MANAGED_USERS_STORAGE_KEY, JSON.stringify(users));
 }
 
+function commitManagedUsers(users: ManagedUserRecord[]): ManagedUserRecord[] {
+  writeManagedUsers(users);
+  void syncManagedUsersToServer(users);
+  return users;
+}
+
+export async function fetchManagedUsersFromServer(): Promise<ManagedUserRecord[] | null> {
+  if (typeof window === "undefined") return null;
+  try {
+    const response = await fetch("/api/v1/managed-users", { cache: "no-store" });
+    if (!response.ok) return null;
+    const payload = (await response.json()) as { users?: ManagedUserRecord[] };
+    return Array.isArray(payload.users) ? payload.users : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function syncManagedUsersToServer(users: ManagedUserRecord[]): Promise<boolean> {
+  if (typeof window === "undefined") return false;
+  try {
+    const response = await fetch("/api/v1/managed-users", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ users }),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export function upsertManagedUser(user: ManagedUserRecord): ManagedUserRecord[] {
-  const next = [user, ...readManagedUsers().filter((row) => row.id !== user.id)];
-  writeManagedUsers(next);
-  return next;
+  return commitManagedUsers([user, ...readManagedUsers().filter((row) => row.id !== user.id)]);
 }
 
 export function deleteManagedUser(userId: string): ManagedUserRecord[] {
-  const next = readManagedUsers().filter((row) => row.id !== userId);
-  writeManagedUsers(next);
-  return next;
+  return commitManagedUsers(readManagedUsers().filter((row) => row.id !== userId));
 }
 
 export function updateManagedUser(
@@ -37,30 +65,26 @@ export function updateManagedUser(
     Pick<ManagedUserRecord, "otpEnabled" | "password" | "role" | "fullName" | "username" | "pipelineStage">
   >
 ): ManagedUserRecord[] {
-  const next = readManagedUsers().map((row) =>
-    row.id === userId ? { ...row, ...patch } : row
+  return commitManagedUsers(
+    readManagedUsers().map((row) => (row.id === userId ? { ...row, ...patch } : row))
   );
-  writeManagedUsers(next);
-  return next;
 }
 
 export function renameRoleInManagedUsers(oldRole: string, newRole: string): ManagedUserRecord[] {
-  const next = readManagedUsers().map((row) =>
-    row.role === oldRole ? { ...row, role: newRole } : row
+  return commitManagedUsers(
+    readManagedUsers().map((row) => (row.role === oldRole ? { ...row, role: newRole } : row))
   );
-  writeManagedUsers(next);
-  return next;
 }
 
 export function reassignManagedUsersFromRole(
   removedRole: string,
   fallbackRole: string
 ): ManagedUserRecord[] {
-  const next = readManagedUsers().map((row) =>
-    row.role === removedRole ? { ...row, role: fallbackRole } : row
+  return commitManagedUsers(
+    readManagedUsers().map((row) =>
+      row.role === removedRole ? { ...row, role: fallbackRole } : row
+    )
   );
-  writeManagedUsers(next);
-  return next;
 }
 
 export function findManagedUserByUsername(username: string): ManagedUserRecord | undefined {

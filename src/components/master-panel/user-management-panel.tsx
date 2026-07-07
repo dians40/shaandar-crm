@@ -205,7 +205,9 @@ export default function UserManagementPanel() {
   const layer2Users = useMemo(
     () =>
       users
-        .filter((user) => resolveUserPipelineStage(user) === USER_PIPELINE_STAGES.LAYER_2_STAGING)
+        .filter(
+          (user) => resolveUserPipelineStage(user) === USER_PIPELINE_STAGES.LAYER_2_STAGING
+        )
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
     [users]
   );

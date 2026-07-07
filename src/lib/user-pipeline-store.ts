@@ -1,5 +1,6 @@
 import {
   readManagedUsers,
+  syncManagedUsersToServer,
   writeManagedUsers,
 } from "@/lib/managed-users-store";
 import {
@@ -59,7 +60,10 @@ export function transitionUserPipelineStage(input: {
     return { ...user, pipelineStage: input.to };
   });
 
-  if (transitioned > 0) writeManagedUsers(next);
+  if (transitioned > 0) {
+    writeManagedUsers(next);
+    void syncManagedUsersToServer(next);
+  }
   return transitioned;
 }
 
@@ -74,11 +78,11 @@ export function migrateLegacyUsersToSavedStage(): void {
   const users = readManagedUsers();
   const needsMigration = users.some((user) => !user.pipelineStage);
   if (!needsMigration) return;
-  writeManagedUsers(
-    users.map((user) =>
-      user.pipelineStage ? user : { ...user, pipelineStage: DEFAULT_SAVED_USER_STAGE }
-    )
+  const migrated = users.map((user) =>
+    user.pipelineStage ? user : { ...user, pipelineStage: DEFAULT_SAVED_USER_STAGE }
   );
+  writeManagedUsers(migrated);
+  void syncManagedUsersToServer(migrated);
 }
 
 export function parseUserPipelineStage(value: string): UserPipelineStage | null {

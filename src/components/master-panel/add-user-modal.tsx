@@ -8,12 +8,13 @@ import { isUsernameTaken } from "@/lib/managed-users-store";
 import {
   EMPTY_MANAGED_USER_FORM,
   generateRandomPassword,
+  LAYER_2_USER_ROLE,
   validateManagedUserForm,
   type ManagedUserFormState,
   type ManagedUserRecord,
 } from "@/types/managed-user";
 import type { UserRoleName } from "@/types/user-permissions";
-import type { UserPipelineStage } from "@/types/user-pipeline";
+import { USER_PIPELINE_STAGES, type UserPipelineStage } from "@/types/user-pipeline";
 
 type AddUserModalProps = {
   open: boolean;
@@ -35,6 +36,7 @@ export default function AddUserModal({
   editingUser = null,
 }: AddUserModalProps) {
   const isEditMode = Boolean(editingUser);
+  const isLayer2Intake = targetStage === USER_PIPELINE_STAGES.LAYER_2_STAGING;
   const [form, setForm] = useState<ManagedUserFormState>(EMPTY_MANAGED_USER_FORM);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,10 +51,13 @@ export default function AddUserModal({
         otpEnabled: editingUser.otpEnabled,
       });
     } else {
-      setForm(EMPTY_MANAGED_USER_FORM);
+      setForm({
+        ...EMPTY_MANAGED_USER_FORM,
+        role: isLayer2Intake ? LAYER_2_USER_ROLE : "",
+      });
     }
     setError(null);
-  }, [open, editingUser]);
+  }, [open, editingUser, isLayer2Intake]);
 
   if (!open) return null;
 
@@ -87,7 +92,7 @@ export default function AddUserModal({
       fullName: form.fullName.trim(),
       username: form.username.trim(),
       password: form.password,
-      role: form.role as UserRoleName,
+      role: (isLayer2Intake ? LAYER_2_USER_ROLE : form.role) as UserRoleName,
       otpEnabled: form.otpEnabled,
       createdAt: new Date().toISOString(),
       pipelineStage: targetStage,
@@ -144,19 +149,30 @@ export default function AddUserModal({
             }
           />
 
-          <SelectInput
-            label="Role / Permission"
-            required
-            value={form.role}
-            placeholder="Select role"
-            options={roles.map((role) => ({ value: role, label: role }))}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                role: event.target.value as UserRoleName,
-              }))
-            }
-          />
+          {isLayer2Intake ? (
+            <div>
+              <p className="mb-1.5 text-sm font-medium text-corporate-text">
+                Role / Permission
+              </p>
+              <p className="rounded-lg border border-corporate-border bg-corporate-bg px-3 py-2 text-sm font-semibold text-corporate-brand">
+                {LAYER_2_USER_ROLE} — Attendance Layer 2 Staging Review
+              </p>
+            </div>
+          ) : (
+            <SelectInput
+              label="Role / Permission"
+              required
+              value={form.role}
+              placeholder="Select role"
+              options={roles.map((role) => ({ value: role, label: role }))}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  role: event.target.value as UserRoleName,
+                }))
+              }
+            />
+          )}
 
           <TextInput
             label="Username"

@@ -5,15 +5,14 @@ import { useRouter } from "next/navigation";
 import { Building2, Lock, ShieldCheck, User } from "lucide-react";
 import {
   authenticateAdminAction,
+  authenticateManagedUserAction,
   establishManagedUserSessionAction,
 } from "./actions";
 import { getPostLoginRedirect } from "@/lib/auth-navigation";
 import {
   createPendingOtpSession,
-  findManagedUserByUsername,
   verifyPendingOtp,
 } from "@/lib/managed-users-store";
-import { resolveUserPipelineStage } from "@/types/managed-user";
 import type { AuthSessionPayload } from "@/types/auth-session";
 
 type LoginStep = "credentials" | "otp";
@@ -67,22 +66,19 @@ export default function LoginForm() {
         return;
       }
 
-      const managedUser = findManagedUserByUsername(trimmedUsername);
-      if (!managedUser || managedUser.password !== trimmedPassword) {
-        setError("Invalid username or password. Please try again.");
+      const managedResult = await authenticateManagedUserAction(
+        trimmedUsername,
+        trimmedPassword
+      );
+      if (!managedResult.success || !managedResult.session) {
+        setError(managedResult.error ?? "Invalid username or password. Please try again.");
         return;
       }
 
-      const managedSession: AuthSessionPayload = {
-        username: managedUser.username,
-        fullName: managedUser.fullName,
-        role: managedUser.role,
-        pipelineStage: resolveUserPipelineStage(managedUser),
-        isAdmin: false,
-      };
+      const managedSession = managedResult.session;
 
-      if (managedUser.otpEnabled) {
-        const session = createPendingOtpSession(managedUser.username, 6);
+      if (managedResult.otpRequired) {
+        const session = createPendingOtpSession(managedSession.username, 6);
         setSimulatedOtp(session.code);
         setPendingManagedSession(managedSession);
         setStep("otp");

@@ -1,6 +1,14 @@
+import type { AuthSessionPayload } from "@/types/auth-session";
 import type { UserRoleName } from "@/types/user-permissions";
 import type { UserPipelineStage } from "@/types/user-pipeline";
-import { DEFAULT_SAVED_USER_STAGE } from "@/types/user-pipeline";
+import { DEFAULT_SAVED_USER_STAGE, USER_PIPELINE_STAGES } from "@/types/user-pipeline";
+
+/** Role assigned to User Management Layer 2 intake accounts. */
+export const LAYER_2_USER_ROLE = "LAYER_2" as const;
+
+export function isLayer2UserRole(role: string): boolean {
+  return role.trim().toUpperCase() === LAYER_2_USER_ROLE;
+}
 
 export type ManagedUserRecord = {
   id: string;
@@ -14,7 +22,20 @@ export type ManagedUserRecord = {
 };
 
 export function resolveUserPipelineStage(user: ManagedUserRecord): UserPipelineStage {
+  if (isLayer2UserRole(user.role)) {
+    return USER_PIPELINE_STAGES.LAYER_2_STAGING;
+  }
   return user.pipelineStage ?? DEFAULT_SAVED_USER_STAGE;
+}
+
+export function buildManagedUserAuthSession(user: ManagedUserRecord): AuthSessionPayload {
+  return {
+    username: user.username,
+    fullName: user.fullName,
+    role: user.role,
+    pipelineStage: resolveUserPipelineStage(user),
+    isAdmin: false,
+  };
 }
 
 export type ManagedUserFormState = {

@@ -1,3 +1,4 @@
+import { isLayer2UserRole } from "@/types/managed-user";
 import { USER_PIPELINE_STAGES, type UserPipelineStage } from "@/types/user-pipeline";
 import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
 
@@ -36,7 +37,10 @@ export const LAYER2_STAGING_PIPELINE_STAGE = PIPELINE_STAGES.LAYER_2_STAGING;
 
 export function isLayer2StagingUser(session: AuthSessionPayload | null | undefined): boolean {
   if (!session || session.isAdmin) return false;
-  return session.pipelineStage === USER_PIPELINE_STAGES.LAYER_2_STAGING;
+  return (
+    session.pipelineStage === USER_PIPELINE_STAGES.LAYER_2_STAGING ||
+    isLayer2UserRole(session.role)
+  );
 }
 
 export function isFullAccessUser(session: AuthSessionPayload | null | undefined): boolean {

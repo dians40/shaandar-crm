@@ -7,6 +7,15 @@ import {
   encodeAuthSession,
   resolveAdminSession,
 } from "@/lib/auth";
+import { getPostLoginRedirect } from "@/lib/auth-navigation";
+import {
+  findManagedUserByUsernameServer,
+  writeManagedUsersServer,
+} from "@/lib/managed-users-server-store";
+import {
+  buildManagedUserAuthSession,
+  type ManagedUserRecord,
+} from "@/types/managed-user";
 import type { AuthSessionPayload } from "@/types/auth-session";
 
 export type LoginState = {
@@ -41,7 +50,43 @@ export async function authenticateAdminAction(
   }
 
   await setSessionCookie(adminSession);
-  return { success: true, redirectTo: "/dashboard" };
+  return { success: true, redirectTo: getPostLoginRedirect(adminSession) };
+}
+
+export type ManagedUserAuthResult = LoginState & {
+  session?: AuthSessionPayload;
+  otpRequired?: boolean;
+};
+
+export async function authenticateManagedUserAction(
+  username: string,
+  password: string
+): Promise<ManagedUserAuthResult> {
+  if (!username.trim() || !password) {
+    return { error: "Please enter both username and password." };
+  }
+
+  const managedUser = await findManagedUserByUsernameServer(username);
+  if (!managedUser || managedUser.password !== password) {
+    return { error: "Invalid username or password. Please try again." };
+  }
+
+  const session = buildManagedUserAuthSession(managedUser);
+  return {
+    success: true,
+    session,
+    otpRequired: managedUser.otpEnabled,
+    redirectTo: getPostLoginRedirect(session),
+  };
+}
+
+export async function persistManagedUsersAction(users: ManagedUserRecord[]): Promise<LoginState> {
+  try {
+    await writeManagedUsersServer(users);
+    return { success: true };
+  } catch {
+    return { error: "Failed to persist managed users to server store." };
+  }
 }
 
 export async function establishManagedUserSessionAction(
@@ -51,15 +96,17 @@ export async function establishManagedUserSessionAction(
     return { error: "Invalid session payload." };
   }
 
-  await setSessionCookie({
+  const normalizedSession = {
     username: session.username,
     fullName: session.fullName,
     role: session.role,
     pipelineStage: session.pipelineStage,
-    isAdmin: false,
-  });
+    isAdmin: false as const,
+  };
 
-  return { success: true };
+  await setSessionCookie(normalizedSession);
+
+  return { success: true, redirectTo: getPostLoginRedirect(normalizedSession) };
 }
 
 /** @deprecated Use authenticateAdminAction or establishManagedUserSessionAction */

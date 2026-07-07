@@ -48,13 +48,9 @@ import AttendanceUploadRecordModule from "./attendance-upload-record-module";
 import AttendanceStagingWorkflowPanel from "./attendance-staging-workflow-panel";
 import AttendanceSystemPanel from "./attendance-system-panel";
 import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
-import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
 import { useEmployees } from "@/hooks/use-employees";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
-import {
-  mergeAttendanceGridRows,
-} from "@/lib/legacy-attendance-grid-fusion";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
@@ -150,7 +146,6 @@ function mapApiGridRow(raw: Record<string, unknown>): BiometricAttendanceGridRow
 
 export default function AttendanceControlCenter() {
   const { employees, prependEmployee } = useEmployees();
-  const { syncFromApi } = useAttendanceWorkflow();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gridSectionRef = useRef<HTMLElement>(null);
   const stagingSectionRef = useRef<HTMLDivElement>(null);
@@ -266,8 +261,6 @@ export default function AttendanceControlCenter() {
     setIsGridLoading(true);
     setGridError(null);
     try {
-      await syncFromApi();
-
       const activeDate = dateOverride ?? filterDate;
       const params = new URLSearchParams({
         limit: "300",
@@ -292,21 +285,18 @@ export default function AttendanceControlCenter() {
       }
 
       const apiRows = Array.isArray(body.rows) ? body.rows.map(mapApiGridRow) : [];
+      const savedRows = apiRows.filter((row) => row.source === "biometric");
 
-      const biometricApiRows = apiRows.filter((row) => row.source === "biometric");
-      const legacyApiRows = apiRows.filter((row) => row.source === "legacy");
-      const mergedRows = mergeAttendanceGridRows(biometricApiRows, legacyApiRows);
-
-      setGridRows(mergedRows);
+      setGridRows(savedRows);
       if (Array.isArray(body.availableDates)) {
         setAvailableDates(body.availableDates);
       }
       setGridMeta({
-        biometricCount: body.meta?.biometricCount ?? biometricApiRows.length,
-        legacyCount: body.meta?.legacyCount ?? legacyApiRows.length,
-        mergedCount: mergedRows.length,
+        biometricCount: body.meta?.biometricCount ?? savedRows.length,
+        legacyCount: 0,
+        mergedCount: savedRows.length,
       });
-      if (mergedRows.length > 0) {
+      if (savedRows.length > 0) {
         setSchemaStatus("ready");
         setSchemaMessage(null);
       }
@@ -321,7 +311,7 @@ export default function AttendanceControlCenter() {
     } finally {
       setIsGridLoading(false);
     }
-  }, [filterDate, debouncedSearch, syncFromApi]);
+  }, [filterDate, debouncedSearch]);
 
   useEffect(() => {
     void loadGridRows();
@@ -803,8 +793,7 @@ export default function AttendanceControlCenter() {
             {selectedRows.length} row(s) selected
           </p>
           <p className="mt-1 text-xs text-corporate-muted">
-            Storage: <strong>biometric_attendance</strong> (Excel columns) and{" "}
-            <strong>employee_attendance</strong> (workflow). Selected:{" "}
+            Storage: <strong>biometric_attendance</strong> (committed Layer 4 rows only). Selected:{" "}
             {selectedRows
               .slice(0, 5)
               .map((row) => `${row.employeeName || row.payCode} (${row.date})`)
@@ -1026,7 +1015,7 @@ export default function AttendanceControlCenter() {
             <p className="text-xs text-corporate-muted">
               {isGridLoading
                 ? "Loading attendance history..."
-                : `${gridMeta.mergedCount} record(s) — ${gridMeta.legacyCount} legacy · ${gridMeta.biometricCount} biometric`}
+                : `${gridMeta.mergedCount} saved record(s) in Layer 4`}
             </p>
           </div>
           <button
@@ -1222,9 +1211,8 @@ export default function AttendanceControlCenter() {
           </p>
           <h3 className="text-sm font-bold text-corporate-text">Live Attendance Workflow</h3>
           <p className="text-xs text-corporate-muted">
-            Four-stage verification — allocation, operator verification, supervisor approval, payroll
-            commit. Review uploaded biometric rows by employee, date, punch times, and machine
-            assignment after staging approval.
+            Layer 3 approval queue — only rows approved in Layer 2. Approve each row to save to
+            Layer 4 history.
           </p>
         </div>
         <AttendanceSystemPanel

@@ -238,6 +238,7 @@ export default function AttendanceStagingWorkflowPanel({
           <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
             <tr>
               {[
+                "Actions",
                 "Pay Code",
                 "Employee",
                 "Shift Date",
@@ -249,7 +250,6 @@ export default function AttendanceStagingWorkflowPanel({
                 "OT",
                 "Status",
                 "Anomaly",
-                "Actions",
               ].map((label) => (
                 <th key={label} className={MASTER_LIST_HEADER_CELL_CLASS}>
                   {label}
@@ -279,6 +279,34 @@ export default function AttendanceStagingWorkflowPanel({
                     row.status === "Approved" && "bg-emerald-50/40"
                   )}
                 >
+                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
+                    <div className="flex gap-1">
+                      {!row.isLocked && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={busyId === row.id}
+                            onClick={() => void handleApprove(row)}
+                            className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditRow(row);
+                              setEditIn(row.correctedInTime ?? row.machineInTime ?? "");
+                              setEditOut(row.correctedOutTime ?? row.machineOutTime ?? "");
+                              setEditRemark("");
+                            }}
+                            className="rounded border border-corporate-border px-2 py-1 text-xs"
+                          >
+                            Edit
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.payCode}</td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.employeeName || "—"}</td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.shiftDate}</td>
@@ -298,34 +326,6 @@ export default function AttendanceStagingWorkflowPanel({
                   </td>
                   <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "max-w-[180px] truncate text-xs")}>
                     {row.isAnomaly ? row.anomalyReason : "—"}
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    <div className="flex gap-1">
-                      {!row.isLocked && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditRow(row);
-                              setEditIn(row.correctedInTime ?? row.machineInTime ?? "");
-                              setEditOut(row.correctedOutTime ?? row.machineOutTime ?? "");
-                              setEditRemark("");
-                            }}
-                            className="rounded border border-corporate-border px-2 py-1 text-xs"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busyId === row.id}
-                            onClick={() => void handleApprove(row)}
-                            className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white"
-                          >
-                            Approve
-                          </button>
-                        </>
-                      )}
-                    </div>
                   </td>
                 </tr>
               ))

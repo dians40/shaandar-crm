@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarCheck, Save } from "lucide-react";
 import { FormGrid, SelectInput, TextInput, TextareaInput } from "@/components/forms/form-fields";
 import { cn } from "@/lib/utils";
@@ -35,6 +35,25 @@ type ManualAttendanceLogRow = {
   remarks: string;
 };
 
+const MANUAL_WAGE_LOG_STORAGE_KEY = "shaandar-manual-wage-entry-log";
+
+function readWageLog(): ManualAttendanceLogRow[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(MANUAL_WAGE_LOG_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as ManualAttendanceLogRow[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeWageLog(rows: ManualAttendanceLogRow[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(MANUAL_WAGE_LOG_STORAGE_KEY, JSON.stringify(rows));
+}
+
 function formatRupee(value: number): string {
   return value.toLocaleString("en-IN", {
     minimumFractionDigits: 2,
@@ -44,12 +63,18 @@ function formatRupee(value: number): string {
 
 export default function ManualAttendanceEntryPanel() {
   const { employees, isLoading: employeesLoading } = useEmployees();
-  const { records, ingestManualEntry, isReady } = useAttendanceWorkflow();
+  const { ingestManualEntry, isReady } = useAttendanceWorkflow();
   const [form, setForm] = useState<ManualAttendanceFormState>(EMPTY_MANUAL_ATTENDANCE_FORM);
   const [wageLog, setWageLog] = useState<ManualAttendanceLogRow[]>([]);
+  const [logReady, setLogReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setWageLog(readWageLog());
+    setLogReady(true);
+  }, []);
 
   const employeeOptions = useMemo(
     () =>
@@ -62,29 +87,10 @@ export default function ManualAttendanceEntryPanel() {
 
   const selectedEmployee = employees.find((row) => row.id === form.employeeId);
 
-  const manualRecords = useMemo(
-    () =>
-      records
-        .filter((row) => row.source === "manual")
-        .sort((a, b) => b.attendanceDate.localeCompare(a.attendanceDate)),
-    [records]
+  const displayLog = useMemo(
+    () => [...wageLog].sort((a, b) => b.attendanceDate.localeCompare(a.attendanceDate)),
+    [wageLog]
   );
-
-  const displayLog = useMemo(() => {
-    const wageById = new Map(wageLog.map((row) => [row.id, row]));
-    return manualRecords.map((record) => {
-      const wageRow = wageById.get(record.id);
-      return {
-        id: record.id,
-        employeeName: record.employeeName,
-        attendanceDate: record.attendanceDate,
-        status: wageRow?.status ?? "DY1",
-        overtimeShift: wageRow?.overtimeShift ?? "",
-        dailyWage: wageRow?.dailyWage ?? 0,
-        remarks: wageRow?.remarks ?? record.assignedMachine,
-      };
-    });
-  }, [manualRecords, wageLog]);
 
   const handleSave = async () => {
     setError(null);
@@ -151,7 +157,7 @@ export default function ManualAttendanceEntryPanel() {
         overtimeHours: payload.overtime_hours,
       });
 
-      setWageLog((current) => [
+      const nextLog = [
         {
           id: recordId,
           employeeName: selectedEmployee?.name ?? "",
@@ -161,8 +167,10 @@ export default function ManualAttendanceEntryPanel() {
           dailyWage,
           remarks: form.remarks.trim(),
         },
-        ...current.filter((row) => row.id !== recordId),
-      ]);
+        ...wageLog.filter((row) => row.id !== recordId),
+      ];
+      setWageLog(nextLog);
+      writeWageLog(nextLog);
 
       setSuccess(result.message ?? "Attendance and wage entry saved successfully.");
       setForm({
@@ -317,7 +325,7 @@ export default function ManualAttendanceEntryPanel() {
               </tr>
             </thead>
             <tbody className="divide-y divide-corporate-border">
-              {!isReady ? (
+              {!isReady || !logReady ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-sm text-corporate-muted">
                     Loading attendance log...

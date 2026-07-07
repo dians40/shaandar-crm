@@ -307,18 +307,39 @@ export function finalizeBulkImportRecord(
   return normalizeBiometric23ColumnRecord(partial);
 }
 
-/** Positional mapping — supports 23-col grid rows or 22-col Excel rows (date injected). */
+function trimTrailingEmptyCells(row: unknown[]): unknown[] {
+  const copy = [...row];
+  while (copy.length > 0) {
+    const last = safeCell(copy[copy.length - 1]);
+    if (last && last !== "#") break;
+    if (!last) {
+      copy.pop();
+      continue;
+    }
+    break;
+  }
+  return copy;
+}
+
+function looksLikeDateToken(value: unknown): boolean {
+  const token = safeCell(value);
+  if (!token) return false;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(token)) return true;
+  return /^\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}$/.test(token);
+}
+
+/** Positional mapping — accepts flexible 22–24 columns without strict length validation. */
 export function bulkRecordFromCells(
   cells: unknown,
   defaultDate?: string
 ): Biometric23ColumnRecord {
   try {
-    const row = Array.isArray(cells) ? cells : [];
-    const cell = (index: number) => safeCell(row[index] ?? "");
+    const raw = Array.isArray(cells) ? cells : [];
+    const row = trimTrailingEmptyCells(raw);
     const dateFallback = normalizeDateToken(defaultDate);
-    const is23ColGrid = row.length >= 23;
+    const cell = (index: number) => safeCell(row[index] ?? "");
 
-    if (is23ColGrid) {
+    if (row.length >= 23 && looksLikeDateToken(row[7])) {
       return normalizeBiometric23ColumnRecord(
         {
           serialNumber: cell(0),
@@ -328,7 +349,7 @@ export function bulkRecordFromCells(
           department: cell(4),
           designation: cell(5),
           shift: cell(6),
-          date: cell(7),
+          date: normalizeDateToken(cell(7), dateFallback),
           start: cell(8),
           in: cell(9),
           lunchOut: cell(10),
@@ -349,9 +370,7 @@ export function bulkRecordFromCells(
       );
     }
 
-    const excelRow = row.slice(0, 22);
-    const excelCell = (index: number) => safeCell(excelRow[index] ?? "");
-
+    const excelCell = (index: number) => safeCell(row[index] ?? "");
     return normalizeBiometric23ColumnRecord(
       {
         serialNumber: excelCell(0),

@@ -41,6 +41,7 @@ type ImportPreviewState = {
   pendingNewEmployees: PendingAutoEmployee[];
   skippedRows: number;
   warnings: string[];
+  alignmentInfo?: string;
   reportDate?: string;
 };
 
@@ -124,7 +125,7 @@ export default function AttendanceLoggingWorkspacePanel() {
         return;
       }
 
-      const { rows: parsedRows, bulkRows: parsedBulkRows, skippedRows, warnings, reportDate } =
+      const { rows: parsedRows, bulkRows: parsedBulkRows, skippedRows, warnings, alignmentInfo, reportDate } =
         outcome;
 
       const sanitizedRows = Array.isArray(parsedRows)
@@ -136,13 +137,11 @@ export default function AttendanceLoggingWorkspacePanel() {
           )
         : [];
 
-      if (sanitizedRows.length === 0) {
+      if (sanitizedBulkRows.length === 0) {
         setImportPreview(null);
         setSelectedBulkRowIndex(0);
         setImportError(
-          warnings.length > 0
-            ? warnings.join(" ")
-            : "No valid attendance rows found. Include Employee Code, Employee Name, Attendance Status, and Overtime Shift columns."
+          "No valid attendance rows found in the uploaded file. Check that the sheet contains employee data rows."
         );
         return;
       }
@@ -161,6 +160,7 @@ export default function AttendanceLoggingWorkspacePanel() {
         pendingNewEmployees,
         skippedRows,
         reportDate,
+        alignmentInfo,
         warnings:
           createdCount > 0
             ? [
@@ -487,6 +487,13 @@ export default function AttendanceLoggingWorkspacePanel() {
                     .map((row) => `${row.employeeCode} — ${row.employeeName}`)
                     .join(" · ")}
                 </p>
+              </div>
+            )}
+
+            {importPreview.alignmentInfo && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900">
+                <p className="font-semibold">Column alignment</p>
+                <p className="mt-1">{importPreview.alignmentInfo}</p>
               </div>
             )}
 

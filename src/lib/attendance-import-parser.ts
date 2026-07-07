@@ -21,8 +21,8 @@ import {
 import {
   buildHeaderColumnMap,
   detectBiometricColumnStructure,
-  formatHeaderAlignmentMessage,
-  resolveBulkRecordFromDynamicRow,
+  formatFlexibleAlignmentInfo,
+  resolveFlexibleBulkRecord,
   shouldUseHeaderMapping,
 } from "@/lib/attendance-bulk-dynamic-alignment";
 
@@ -42,6 +42,7 @@ export type AttendanceImportParseOutcome = {
   bulkRows: Biometric22ColumnRecord[];
   skippedRows: number;
   warnings: string[];
+  alignmentInfo?: string;
   reportDate?: string;
   pdfDocumentUploaded?: boolean;
   pdfBufferBytes?: number;
@@ -532,14 +533,16 @@ export function parseAttendanceImportMatrixSafe(
       columnMap,
       dataRows.find((row) => Array.isArray(row) && row.some((cell) => String(cell ?? "").trim()))
     );
+    let alignmentInfo: string | undefined;
     const rows: AttendanceImportRow[] = [];
     const bulkRows: Biometric22ColumnRecord[] = [];
 
     try {
       for (const rawRow of dataRows) {
         try {
-          const bulkRecord = resolveBulkRecordFromDynamicRow(rawRow, {
+          const bulkRecord = resolveFlexibleBulkRecord(rawRow, {
             columnMap,
+            headers,
             reportDate,
             useHeaderMapping,
             structure: columnStructure,
@@ -567,15 +570,19 @@ export function parseAttendanceImportMatrixSafe(
       warnings.push("Row iteration recovered safely.");
     }
 
-    if (rows.length === 0) {
+    if (rows.length === 0 && bulkRows.length === 0) {
       warnings.push("No attendance rows were extracted from the sheet.");
     }
 
-    if (useHeaderMapping) {
-      warnings.push(formatHeaderAlignmentMessage(columnMap, reportDate, columnStructure));
+    if (useHeaderMapping || bulkRows.length > 0) {
+      alignmentInfo = formatFlexibleAlignmentInfo(
+        columnMap,
+        reportDate,
+        dataRows.find((row) => Array.isArray(row) && row.some((cell) => String(cell ?? "").trim()))
+      );
     }
 
-    return { rows, bulkRows, skippedRows, warnings, reportDate };
+    return { rows, bulkRows, skippedRows, warnings, alignmentInfo, reportDate };
   } catch (error) {
     console.error(error);
     return {

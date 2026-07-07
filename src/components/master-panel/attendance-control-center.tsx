@@ -29,7 +29,6 @@ import {
 import {
   atomicFinalizeBulkDbPayload,
   buildBulkDbPayload,
-  safeBulkNumeric,
 } from "@/lib/attendance-bulk-payload-bridge";
 import {
   ATTENDANCE_BULK_IMPORT_COLUMNS,
@@ -55,7 +54,6 @@ import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
 import {
   mergeAttendanceGridRows,
-  mapWorkflowRecordToGridRow,
 } from "@/lib/legacy-attendance-grid-fusion";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
@@ -83,31 +81,6 @@ type ImportResult = {
   createdEmployees: number;
   errors: string[];
 };
-
-function mappedStatusFromRecord(record: {
-  assignedMachine?: string;
-}): import("@/types/manual-attendance-entry").ManualAttendanceStatus {
-  try {
-    const token = record.assignedMachine ?? "";
-    if (token.includes("G11")) return "G11";
-    return "DY1";
-  } catch {
-    return "DY1";
-  }
-}
-
-function safeBulkNumericFromRecord(record: {
-  assignedMachine?: string;
-}): number {
-  try {
-    const token = record.assignedMachine ?? "";
-    const match = token.match(/Overtime Amount:\s*([$0-9.]+)/i);
-    if (match?.[1]) return safeBulkNumeric(match[1]);
-    return 0;
-  } catch {
-    return 0;
-  }
-}
 
 const BULK_SAVE_TIMEOUT_MS = 120_000;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -177,7 +150,7 @@ function mapApiGridRow(raw: Record<string, unknown>): BiometricAttendanceGridRow
 
 export default function AttendanceControlCenter() {
   const { employees, prependEmployee } = useEmployees();
-  const { ingestManualEntry, records: workflowRecords, syncFromApi } = useAttendanceWorkflow();
+  const { syncFromApi } = useAttendanceWorkflow();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const gridSectionRef = useRef<HTMLElement>(null);
   const stagingSectionRef = useRef<HTMLDivElement>(null);
@@ -206,6 +179,7 @@ export default function AttendanceControlCenter() {
   const [schemaMessage, setSchemaMessage] = useState<string | null>(null);
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [stagingRefreshToken, setStagingRefreshToken] = useState(0);
+  const [workflowRefreshToken, setWorkflowRefreshToken] = useState(0);
 
   const resetPanelState = useCallback(() => {
     setImportPreview(null);
@@ -318,39 +292,18 @@ export default function AttendanceControlCenter() {
       }
 
       const apiRows = Array.isArray(body.rows) ? body.rows.map(mapApiGridRow) : [];
-      const normalizedFilterDate = activeDate.trim()
-        ? normalizeAttendanceDateIso(activeDate.trim())
-        : "";
-      const searchToken = debouncedSearch.toLowerCase();
-
-      const localLegacyRows = workflowRecords
-        .filter((record) => {
-          const recordDate = normalizeAttendanceDateIso(record.attendanceDate);
-          if (normalizedFilterDate && recordDate !== normalizedFilterDate) return false;
-          if (!searchToken) return true;
-          return (
-            record.employeeName.toLowerCase().includes(searchToken) ||
-            record.employeeId.toLowerCase().includes(searchToken)
-          );
-        })
-        .map(mapWorkflowRecordToGridRow);
 
       const biometricApiRows = apiRows.filter((row) => row.source === "biometric");
       const legacyApiRows = apiRows.filter((row) => row.source === "legacy");
-      const mergedRows = mergeAttendanceGridRows(biometricApiRows, [
-        ...legacyApiRows,
-        ...localLegacyRows,
-      ]);
+      const mergedRows = mergeAttendanceGridRows(biometricApiRows, legacyApiRows);
 
       setGridRows(mergedRows);
       if (Array.isArray(body.availableDates)) {
         setAvailableDates(body.availableDates);
       }
       setGridMeta({
-        biometricCount: body.meta?.biometricCount ?? apiRows.filter((r) => r.source === "biometric").length,
-        legacyCount:
-          (body.meta?.legacyCount ?? apiRows.filter((r) => r.source === "legacy").length) +
-          localLegacyRows.length,
+        biometricCount: body.meta?.biometricCount ?? biometricApiRows.length,
+        legacyCount: body.meta?.legacyCount ?? legacyApiRows.length,
         mergedCount: mergedRows.length,
       });
       if (mergedRows.length > 0) {
@@ -368,7 +321,7 @@ export default function AttendanceControlCenter() {
     } finally {
       setIsGridLoading(false);
     }
-  }, [filterDate, debouncedSearch, syncFromApi, workflowRecords]);
+  }, [filterDate, debouncedSearch, syncFromApi]);
 
   useEffect(() => {
     void loadGridRows();
@@ -678,25 +631,6 @@ export default function AttendanceControlCenter() {
         result.errors.push(...body.errors);
       }
 
-      for (const record of body.records ?? []) {
-        try {
-          if (!record?.id || !record.employeeId) continue;
-          ingestManualEntry({
-            id: record.id,
-            employeeId: record.employeeId,
-            employeeName: record.employeeName,
-            attendanceDate: record.attendanceDate,
-            punchIn: record.punchIn,
-            punchOut: record.punchOut ?? "",
-            remarks: record.assignedMachine ?? "",
-            status: mappedStatusFromRecord(record),
-            overtimeHours: safeBulkNumericFromRecord(record),
-          });
-        } catch (entryError) {
-          console.error(entryError);
-        }
-      }
-
       const savedDate = normalizeAttendanceDateIso(
         body.savedReportDate ||
           importPreview.reportDate ||
@@ -716,20 +650,20 @@ export default function AttendanceControlCenter() {
 
       setImportMessage(
         savedLocallyOnly
-          ? `Saved ${biometricSaved} row(s) in browser session for ${savedDate}. Staging cleared.`
-          : `Saved ${biometricSaved} row(s) to server for ${savedDate}. Staging cleared — view Saved Upload Records below.`
+          ? `Saved ${biometricSaved} row(s) in browser session for ${savedDate}. Layer 1 cleared — review in Layer 2.`
+          : `Saved ${biometricSaved} row(s) to Layer 2 staging for ${savedDate}. Layer 1 cleared — approve in Layer 2 below.`
       );
 
       setImportPreview(null);
       setSelectedBulkRowIndex(0);
       setSaveStatus("idle");
+      if (fileInputRef.current) fileInputRef.current.value = "";
 
       if (result.errors.length > 0) {
         setImportError(result.errors.map(toUserFacingAttendanceError).slice(0, 1).join(" · "));
       }
 
-      await syncFromApi();
-      await loadGridRows(savedDate);
+      setFilterDate(savedDate);
       setStagingRefreshToken((token) => token + 1);
       stagingSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
@@ -741,7 +675,7 @@ export default function AttendanceControlCenter() {
     } finally {
       setIsProcessing(false);
     }
-  }, [employees, importPreview, ingestManualEntry, loadGridRows, prependEmployee, syncFromApi, ensureAttendanceSchema]);
+  }, [employees, importPreview, prependEmployee, ensureAttendanceSchema]);
 
   useEffect(() => {
     if (schemaStatus !== "ready" || !pendingSaveAfterSchemaRef.current || !importPreview) {
@@ -1170,11 +1104,9 @@ export default function AttendanceControlCenter() {
               <strong>{lastSaveSummary.savedDate}</strong>
             </p>
             <p className="mt-1 text-xs">
-              Saved to <strong>public.biometric_attendance</strong> (
-              {lastSaveSummary.biometricSaved} rows) and{" "}
-              <strong>public.employee_attendance</strong> workflow (
-              {lastSaveSummary.workflowSaved} rows). Use the date chip below or the date picker to
-              view them in the grid.
+              Saved to <strong>public.biometric_attendance</strong> at Layer 2 staging (
+              {lastSaveSummary.biometricSaved} rows). Approve in Layer 2, then complete Layer 3
+              workflow — committed rows appear in Layer 4.
             </p>
           </div>
         )}
@@ -1274,6 +1206,7 @@ export default function AttendanceControlCenter() {
           filterDate={filterDate}
           refreshToken={stagingRefreshToken}
           schemaReady={schemaStatus === "ready" || gridMeta.mergedCount > 0}
+          onApproved={() => setWorkflowRefreshToken((token) => token + 1)}
         />
       </div>
 
@@ -1294,7 +1227,10 @@ export default function AttendanceControlCenter() {
             assignment after staging approval.
           </p>
         </div>
-        <AttendanceSystemPanel />
+        <AttendanceSystemPanel
+          refreshToken={workflowRefreshToken}
+          onCommitted={() => void loadGridRows()}
+        />
       </section>
 
       {/* Layer 4 — Saved / merged server records */}

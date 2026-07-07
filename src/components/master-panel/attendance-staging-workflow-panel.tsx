@@ -23,6 +23,7 @@ type AttendanceStagingWorkflowPanelProps = {
   filterDate?: string;
   refreshToken?: number;
   schemaReady?: boolean;
+  onApproved?: () => void;
 };
 
 function formatTime(iso: string | null): string {
@@ -41,6 +42,7 @@ export default function AttendanceStagingWorkflowPanel({
   filterDate = "",
   refreshToken = 0,
   schemaReady = true,
+  onApproved,
 }: AttendanceStagingWorkflowPanelProps) {
   const [rows, setRows] = useState<AttendanceStagingRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -110,6 +112,7 @@ export default function AttendanceStagingWorkflowPanel({
       await postPipelineAction({ action: "approve-staging", ids: [row.id] });
       setMessage(`Approved ${row.employeeName || row.payCode} — moved to Live Workflow (Layer 3).`);
       await loadRows();
+      onApproved?.();
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : "Approve failed.");
     } finally {
@@ -132,6 +135,7 @@ export default function AttendanceStagingWorkflowPanel({
       const body = await postPipelineAction({ action: "approve-all-staging", ids: pendingIds });
       setMessage(`Moved ${body.transitioned ?? 0} row(s) to Live Workflow (Layer 3).`);
       await loadRows();
+      onApproved?.();
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : "Bulk approve failed.");
     }

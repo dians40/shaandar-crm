@@ -77,8 +77,7 @@ export async function fetchRowsByPipelineStage(
   if (isSupabaseServerConfigured()) {
     await ensureAttendanceTablesSchema();
     try {
-      const sqlRows = await fetchRowsByPipelineStageSupabase(stage, options);
-      if (sqlRows.length > 0) return sqlRows;
+      return await fetchRowsByPipelineStageSupabase(stage, options);
     } catch (error) {
       console.warn("[pipeline] supabase fetch failed:", error);
     }

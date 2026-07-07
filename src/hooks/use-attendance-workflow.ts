@@ -78,12 +78,8 @@ export function useAttendanceWorkflow() {
       const normalized = payload.records.map((row) =>
         normalizeAttendanceWorkflowRecord(row)
       );
-      const local = readRecords();
-      const merged = new Map<string, AttendanceWorkflowRecord>();
-      for (const row of [...local, ...normalized]) {
-        merged.set(row.id, row);
-      }
-      persist(Array.from(merged.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      // API is authoritative for Layer 3 — replace local cache to avoid cross-layer leakage.
+      persist(normalized.sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
     } catch {
       // localStorage remains source of truth when API unavailable
     }

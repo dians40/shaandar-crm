@@ -43,6 +43,7 @@ async function fetchDateCatalogSupabase(): Promise<AttendanceDateCatalogEntry[]>
   const { data: biometricRows, error: biometricError } = await supabase
     .from("biometric_attendance")
     .select("date, attendance_date")
+    .eq("pipeline_stage", "LAYER_4_SAVED")
     .limit(2000);
 
   if (biometricError) {
@@ -81,7 +82,9 @@ async function fetchDateCatalogPrisma(): Promise<AttendanceDateCatalogEntry[]> {
   const catalog = new Map<string, AttendanceDateCatalogEntry>();
 
   const biometricRows = await prisma.$queryRaw<Array<{ date: string | null; attendance_date: Date | null }>>`
-    SELECT date, attendance_date FROM public.biometric_attendance LIMIT 2000
+    SELECT date, attendance_date FROM public.biometric_attendance
+    WHERE pipeline_stage = 'LAYER_4_SAVED'
+    LIMIT 2000
   `;
 
   for (const row of biometricRows) {

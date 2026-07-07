@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarCheck, RefreshCw } from "lucide-react";
 import { SelectInput } from "@/components/forms/form-fields";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
@@ -34,7 +34,15 @@ async function patchAttendanceWorkflow(record: AttendanceWorkflowRecord) {
   }
 }
 
-export default function AttendanceSystemPanel() {
+type AttendanceSystemPanelProps = {
+  refreshToken?: number;
+  onCommitted?: () => void;
+};
+
+export default function AttendanceSystemPanel({
+  refreshToken = 0,
+  onCommitted,
+}: AttendanceSystemPanelProps) {
   const { employees } = useEmployees();
   const { machineOptions, isReady: settingsReady } = useGeneralSettings();
   const {
@@ -60,6 +68,10 @@ export default function AttendanceSystemPanel() {
   }, []);
 
   useMasterPanelBlockReset("transaction", resetPanelState);
+
+  useEffect(() => {
+    void syncFromApi();
+  }, [refreshToken, syncFromApi]);
 
   const stageCounts = useMemo(() => {
     const counts: Partial<Record<VerificationStage, number>> = {};
@@ -131,7 +143,9 @@ export default function AttendanceSystemPanel() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "commit-workflow", ids: [record.id] }),
-    }).catch(() => undefined);
+    })
+      .then(() => onCommitted?.())
+      .catch(() => undefined);
   };
 
   if (!isReady || !settingsReady) {

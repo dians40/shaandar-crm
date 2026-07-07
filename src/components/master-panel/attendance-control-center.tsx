@@ -47,6 +47,10 @@ import {
   type BiometricAttendanceGridRow,
 } from "@/types/biometric-attendance-grid";
 import {
+  mergeAttendanceGridRows,
+  mapWorkflowRecordToGridRow,
+} from "@/lib/legacy-attendance-grid-fusion";
+import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
   MASTER_LIST_HEADER_CELL_CLASS,
@@ -134,7 +138,7 @@ function mapApiGridRow(raw: Record<string, unknown>): BiometricAttendanceGridRow
 
 export default function AttendanceControlCenter() {
   const { employees, prependEmployee } = useEmployees();
-  const { ingestManualEntry } = useAttendanceWorkflow();
+  const { ingestManualEntry, records: workflowRecords, syncFromApi } = useAttendanceWorkflow();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [importPreview, setImportPreview] = useState<ImportPreviewState | null>(null);
@@ -182,6 +186,8 @@ export default function AttendanceControlCenter() {
     setIsGridLoading(true);
     setGridError(null);
     try {
+      await syncFromApi();
+
       const params = new URLSearchParams({ limit: "300" });
       if (filterDate.trim()) {
         params.set("date", normalizeAttendanceDateIso(filterDate.trim()));
@@ -198,13 +204,39 @@ export default function AttendanceControlCenter() {
       if (!response.ok) {
         throw new Error(body.error ?? "Failed to load attendance records.");
       }
-      setGridRows(
-        Array.isArray(body.rows) ? body.rows.map(mapApiGridRow) : []
-      );
+
+      const apiRows = Array.isArray(body.rows) ? body.rows.map(mapApiGridRow) : [];
+      const normalizedFilterDate = filterDate.trim()
+        ? normalizeAttendanceDateIso(filterDate.trim())
+        : "";
+      const searchToken = debouncedSearch.toLowerCase();
+
+      const localLegacyRows = workflowRecords
+        .filter((record) => {
+          const recordDate = normalizeAttendanceDateIso(record.attendanceDate);
+          if (normalizedFilterDate && recordDate !== normalizedFilterDate) return false;
+          if (!searchToken) return true;
+          return (
+            record.employeeName.toLowerCase().includes(searchToken) ||
+            record.employeeId.toLowerCase().includes(searchToken)
+          );
+        })
+        .map(mapWorkflowRecordToGridRow);
+
+      const biometricApiRows = apiRows.filter((row) => row.source === "biometric");
+      const legacyApiRows = apiRows.filter((row) => row.source === "legacy");
+      const mergedRows = mergeAttendanceGridRows(biometricApiRows, [
+        ...legacyApiRows,
+        ...localLegacyRows,
+      ]);
+
+      setGridRows(mergedRows);
       setGridMeta({
-        biometricCount: body.meta?.biometricCount ?? 0,
-        legacyCount: body.meta?.legacyCount ?? 0,
-        mergedCount: body.meta?.mergedCount ?? (body.rows?.length ?? 0),
+        biometricCount: body.meta?.biometricCount ?? apiRows.filter((r) => r.source === "biometric").length,
+        legacyCount:
+          (body.meta?.legacyCount ?? apiRows.filter((r) => r.source === "legacy").length) +
+          localLegacyRows.length,
+        mergedCount: mergedRows.length,
       });
     } catch (loadError) {
       console.error(loadError);
@@ -217,7 +249,7 @@ export default function AttendanceControlCenter() {
     } finally {
       setIsGridLoading(false);
     }
-  }, [filterDate, debouncedSearch]);
+  }, [filterDate, debouncedSearch, syncFromApi, workflowRecords]);
 
   useEffect(() => {
     void loadGridRows();

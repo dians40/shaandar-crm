@@ -2,6 +2,7 @@ import { mapBiometricAttendanceGridRow } from "@/lib/biometric-attendance-db-map
 import {
   parseAttendanceWorkflowNotes,
   type AttendanceWorkflowNotesPayload,
+  type AttendanceWorkflowRecord,
 } from "@/types/attendance-workflow";
 import type {
   AttendanceGridSource,
@@ -109,11 +110,81 @@ function buildLegacyShift(notes: AttendanceWorkflowNotesPayload | null): string 
   return "";
 }
 
+function parseLegacyNotesLoose(
+  notes: string | null | undefined
+): AttendanceWorkflowNotesPayload | null {
+  const strict = parseAttendanceWorkflowNotes(notes);
+  if (strict) return strict;
+  if (!notes?.trim()) return null;
+  try {
+    const parsed = JSON.parse(notes) as Partial<AttendanceWorkflowNotesPayload>;
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      source: parsed.source ?? "manual",
+      workflowStage: parsed.workflowStage ?? "pending_allocation",
+      punchIn: safeString(parsed.punchIn),
+      punchOut: safeString(parsed.punchOut),
+      assignedMachine: safeString(parsed.assignedMachine),
+      attachmentPhotos: Array.isArray(parsed.attachmentPhotos)
+        ? parsed.attachmentPhotos
+        : [],
+      operatorVerifiedAt: parsed.operatorVerifiedAt ?? null,
+      operatorVerifiedBy: parsed.operatorVerifiedBy ?? null,
+      supervisorApprovedAt: parsed.supervisorApprovedAt ?? null,
+      supervisorApprovedBy: parsed.supervisorApprovedBy ?? null,
+      employeeName: safeString(parsed.employeeName),
+      manualStatus: safeString(parsed.manualStatus),
+      overtimeHours:
+        parsed.overtimeHours != null && Number.isFinite(Number(parsed.overtimeHours))
+          ? Number(parsed.overtimeHours)
+          : undefined,
+      overtimeShift: parsed.overtimeShift ?? null,
+      shiftRemarks: safeString(parsed.shiftRemarks),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Map client workflow / localStorage attendance record → unified grid row. */
+export function mapWorkflowRecordToGridRow(
+  record: AttendanceWorkflowRecord
+): BiometricAttendanceGridRow {
+  const attendanceDate = normalizeAttendanceDateIso(record.attendanceDate);
+  return {
+    id: record.id || `workflow-${record.employeeId}-${attendanceDate}`,
+    source: "legacy",
+    srlNo: "",
+    payCode: record.employeeId,
+    cardNo: "",
+    employeeName: record.employeeName || "Unknown Employee",
+    department: "",
+    designation: "",
+    shift: "",
+    date: attendanceDate,
+    status: "Present",
+    inTime: formatPunchTime(record.punchIn),
+    outTime: formatPunchTime(record.punchOut),
+    duration: "",
+    earlyIn: "",
+    lateIn: "",
+    earlyOut: "",
+    lateOut: "",
+    otHours: "",
+    shortHours: "",
+    grossHours: "",
+    netHours: "",
+    workCode: "",
+    remark: record.assignedMachine || "Manual workflow record",
+    createdAt: formatCreatedAt(record.createdAt),
+  };
+}
+
 /** Map public.employee_attendance row → canonical 23-column grid shape. */
 export function mapLegacyEmployeeAttendanceToGridRow(
   row: LegacyEmployeeAttendanceDbRow
 ): BiometricAttendanceGridRow {
-  const notes = parseAttendanceWorkflowNotes(row.notes);
+  const notes = parseLegacyNotesLoose(row.notes);
   const employee = resolveEmployeeRelation(row.employees);
   const shiftRemarks = safeString(notes?.shiftRemarks ?? notes?.assignedMachine);
   const attendanceDate = normalizeAttendanceDateIso(safeString(row.attendance_date));

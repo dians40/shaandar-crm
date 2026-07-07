@@ -1,4 +1,3 @@
-import type { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { mapBiometricAttendanceGridRow } from "@/lib/biometric-attendance-db-mapper";
 import { fetchLegacyAttendanceGridRows } from "@/lib/legacy-attendance-fetch";
@@ -12,28 +11,74 @@ import { createAdminClient } from "@/lib/supabase/admin";
 const BIOMETRIC_TABLE = "biometric_attendance";
 const MAX_MERGED_ROWS = 500;
 
-function buildPrismaWhere(
+function normalizeDateFilter(date?: string): string | undefined {
+  return date ? normalizeAttendanceDateIso(date) : undefined;
+}
+
+/** Supabase raw select — reads legacy + canonical biometric columns from the same table. */
+async function fetchBiometricGridRowsSupabase(
+  limit: number,
   date?: string,
   search?: string
-): Prisma.BiometricAttendanceWhereInput | undefined {
-  const normalizedDate = date ? normalizeAttendanceDateIso(date) : undefined;
+): Promise<BiometricAttendanceGridRow[]> {
+  const supabase = createAdminClient();
+  const normalizedDate = normalizeDateFilter(date);
   const searchToken = search?.trim();
 
-  if (!normalizedDate && !searchToken) return undefined;
+  let query = supabase
+    .from(BIOMETRIC_TABLE)
+    .select("*")
+    .order("date", { ascending: false, nullsFirst: false })
+    .limit(limit);
 
-  const clauses: Prisma.BiometricAttendanceWhereInput[] = [];
-  if (normalizedDate) clauses.push({ date: normalizedDate });
-  if (searchToken) {
-    clauses.push({
-      OR: [
-        { employeeName: { contains: searchToken, mode: "insensitive" } },
-        { payCode: { contains: searchToken, mode: "insensitive" } },
-      ],
-    });
+  if (normalizedDate) {
+    query = query.or(
+      `date.eq.${normalizedDate},attendance_date.eq.${normalizedDate}`
+    );
   }
 
-  if (clauses.length === 1) return clauses[0];
-  return { AND: clauses };
+  if (searchToken) {
+    const pattern = `%${searchToken}%`;
+    query = query.or(`employee_name.ilike.${pattern},pay_code.ilike.${pattern}`);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) =>
+    mapBiometricAttendanceGridRow(row as Record<string, unknown>)
+  );
+}
+
+/** Prisma fallback — raw SQL to include legacy column names not in the Prisma model. */
+async function fetchBiometricGridRowsPrismaRaw(
+  limit: number,
+  date?: string,
+  search?: string
+): Promise<BiometricAttendanceGridRow[]> {
+  if (!prisma) return [];
+
+  const normalizedDate = normalizeDateFilter(date);
+  const searchToken = search?.trim();
+  const searchPattern = searchToken ? `%${searchToken}%` : null;
+
+  const rows = await prisma.$queryRaw<Array<Record<string, unknown>>>`
+    SELECT *
+    FROM public.biometric_attendance
+    WHERE
+      (${normalizedDate ?? null}::text IS NULL OR date = ${normalizedDate ?? ""} OR attendance_date::text = ${normalizedDate ?? ""})
+      AND (
+        ${searchPattern}::text IS NULL
+        OR employee_name ILIKE ${searchPattern}
+        OR pay_code ILIKE ${searchPattern}
+      )
+    ORDER BY COALESCE(NULLIF(date, ''), attendance_date::text, '') DESC
+    LIMIT ${limit}
+  `;
+
+  return rows.map((row) => mapBiometricAttendanceGridRow(row));
 }
 
 async function fetchBiometricGridRows(
@@ -41,69 +86,20 @@ async function fetchBiometricGridRows(
   date?: string,
   search?: string
 ): Promise<BiometricAttendanceGridRow[]> {
-  if (isPrismaConfigured() && prisma) {
-    const rows = await prisma.biometricAttendance.findMany({
-      where: buildPrismaWhere(date, search),
-      orderBy: [{ date: "desc" }, { payCode: "asc" }],
-      take: limit,
-    });
-
-    return rows.map((row) =>
-      mapBiometricAttendanceGridRow({
-        id: row.id,
-        srl_no: row.srlNo,
-        pay_code: row.payCode,
-        card_no: row.cardNo,
-        employee_name: row.employeeName,
-        department: row.department,
-        designation: row.designation,
-        shift: row.shift,
-        date: row.date,
-        status: row.status,
-        in_time: row.inTime,
-        out_time: row.outTime,
-        duration: row.duration,
-        early_in: row.earlyIn,
-        late_in: row.lateIn,
-        early_out: row.earlyOut,
-        late_out: row.lateOut,
-        ot_hours: row.otHours,
-        short_hours: row.shortHours,
-        gross_hours: row.grossHours,
-        net_hours: row.netHours,
-        work_code: row.workCode,
-        remark: row.remark,
-        created_at: row.createdAt,
-      })
-    );
+  if (isSupabaseServerConfigured()) {
+    try {
+      return await fetchBiometricGridRowsSupabase(limit, date, search);
+    } catch (error) {
+      console.error("[attendance/biometric] supabase biometric fetch failed:", error);
+    }
   }
 
-  if (isSupabaseServerConfigured()) {
-    const supabase = createAdminClient();
-    let query = supabase
-      .from(BIOMETRIC_TABLE)
-      .select("*")
-      .order("date", { ascending: false })
-      .limit(limit);
-
-    if (date) {
-      const normalizedDate = normalizeAttendanceDateIso(date);
-      query = query.eq("date", normalizedDate);
+  if (isPrismaConfigured()) {
+    try {
+      return await fetchBiometricGridRowsPrismaRaw(limit, date, search);
+    } catch (error) {
+      console.error("[attendance/biometric] prisma raw biometric fetch failed:", error);
     }
-
-    if (search) {
-      const pattern = `%${search}%`;
-      query = query.or(`employee_name.ilike.${pattern},pay_code.ilike.${pattern}`);
-    }
-
-    const { data, error } = await query;
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    return (data ?? []).map((row) =>
-      mapBiometricAttendanceGridRow(row as Record<string, unknown>)
-    );
   }
 
   return [];
@@ -121,10 +117,7 @@ export async function GET(request: Request) {
       fetchLegacyAttendanceGridRows({ date, search, limit }),
     ]);
 
-    const rows = mergeAttendanceGridRows(biometricRows, legacyRows).slice(
-      0,
-      Math.min(MAX_MERGED_ROWS, limit * 2)
-    );
+    const rows = mergeAttendanceGridRows(biometricRows, legacyRows).slice(0, MAX_MERGED_ROWS);
 
     return NextResponse.json({
       rows,

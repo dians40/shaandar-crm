@@ -210,10 +210,11 @@ function formatCreatedAt(value: unknown): string {
 export function mapBiometricAttendanceGridRow(
   row: Record<string, unknown>
 ): import("@/types/biometric-attendance-grid").BiometricAttendanceGridRow {
-  const date =
+  const date = normalizeAttendanceDateIso(
     safeString(row.date) ||
-    safeString(row.attendance_date ?? row.attendanceDate) ||
-    "";
+      safeString(row.attendance_date ?? row.attendanceDate) ||
+      ""
+  );
 
   return {
     id: safeString(row.id) ?? "",

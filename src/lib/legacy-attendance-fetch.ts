@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   mapLegacyEmployeeAttendanceToGridRow,
+  mergeAttendanceGridRows,
   type LegacyEmployeeAttendanceDbRow,
 } from "@/lib/legacy-attendance-grid-fusion";
 import { isPrismaConfigured, prisma } from "@/lib/prisma";
@@ -33,6 +34,23 @@ function toAttendanceDateIso(value: Date | string): string {
     return value.toISOString().slice(0, 10);
   }
   return normalizeAttendanceDateIso(String(value));
+}
+
+function applyLegacyFilters(
+  rows: BiometricAttendanceGridRow[],
+  searchToken: string
+): BiometricAttendanceGridRow[] {
+  if (!searchToken) return rows;
+  return rows.filter((row) => matchesLegacySearch(row, searchToken));
+}
+
+function dedupeLegacyRows(rows: BiometricAttendanceGridRow[]): BiometricAttendanceGridRow[] {
+  const merged = new Map<string, BiometricAttendanceGridRow>();
+  for (const row of rows) {
+    const key = row.id ? `legacy|${row.id}` : `legacy|${row.payCode}|${row.date}|${row.employeeName}`;
+    merged.set(key, row);
+  }
+  return Array.from(merged.values());
 }
 
 async function enrichLegacyRowsWithEmployees(
@@ -111,13 +129,10 @@ async function fetchLegacyAttendanceGridRowsPrisma(options?: {
     }
   }
 
-  let mapped = legacyRows.map((row) => mapLegacyEmployeeAttendanceToGridRow(row));
-
-  if (searchToken) {
-    mapped = mapped.filter((row) => matchesLegacySearch(row, searchToken));
-  }
-
-  return mapped;
+  return applyLegacyFilters(
+    legacyRows.map((row) => mapLegacyEmployeeAttendanceToGridRow(row)),
+    searchToken
+  );
 }
 
 /** Fetch legacy employee_attendance rows via Supabase admin client. */
@@ -158,48 +173,35 @@ async function fetchLegacyAttendanceGridRowsSupabase(
 
   legacyRows = await enrichLegacyRowsWithEmployees(supabase, legacyRows);
 
-  let mapped = legacyRows.map((row) => mapLegacyEmployeeAttendanceToGridRow(row));
-
-  if (searchToken) {
-    mapped = mapped.filter((row) => matchesLegacySearch(row, searchToken));
-  }
-
-  return mapped;
+  return applyLegacyFilters(
+    legacyRows.map((row) => mapLegacyEmployeeAttendanceToGridRow(row)),
+    searchToken
+  );
 }
 
-/** Dual-path legacy fetch — Prisma first, Supabase fallback; never silently skip. */
+/** Fetch legacy rows from every configured backend and merge — nothing is dropped. */
 export async function fetchLegacyAttendanceGridRows(
-  supabaseOrOptions?: SupabaseClient | { date?: string; search?: string; limit?: number },
-  maybeOptions?: { date?: string; search?: string; limit?: number }
+  options?: { date?: string; search?: string; limit?: number }
 ): Promise<BiometricAttendanceGridRow[]> {
-  const options =
-    supabaseOrOptions &&
-    typeof supabaseOrOptions === "object" &&
-    "from" in supabaseOrOptions
-      ? maybeOptions
-      : (supabaseOrOptions as { date?: string; search?: string; limit?: number } | undefined);
-
-  const supabaseClient =
-    supabaseOrOptions &&
-    typeof supabaseOrOptions === "object" &&
-    "from" in supabaseOrOptions
-      ? supabaseOrOptions
-      : isSupabaseServerConfigured()
-        ? createAdminClient()
-        : null;
+  const collected: BiometricAttendanceGridRow[] = [];
 
   if (isPrismaConfigured()) {
     try {
-      const prismaRows = await fetchLegacyAttendanceGridRowsPrisma(options);
-      if (prismaRows.length > 0) return prismaRows;
+      collected.push(...(await fetchLegacyAttendanceGridRowsPrisma(options)));
     } catch (error) {
       console.error("[legacy-attendance] prisma fetch failed:", error);
     }
   }
 
-  if (supabaseClient) {
-    return fetchLegacyAttendanceGridRowsSupabase(supabaseClient, options);
+  if (isSupabaseServerConfigured()) {
+    try {
+      collected.push(
+        ...(await fetchLegacyAttendanceGridRowsSupabase(createAdminClient(), options))
+      );
+    } catch (error) {
+      console.error("[legacy-attendance] supabase fetch failed:", error);
+    }
   }
 
-  return [];
+  return dedupeLegacyRows(collected);
 }

@@ -248,6 +248,68 @@ export async function POST(request: Request) {
 
   try {
     return await withBulkSaveTimeout(async () => {
+  const supabaseConfigured = isSupabaseServerConfigured();
+  const prismaConfigured = isPrismaConfigured();
+  const supabase = supabaseConfigured ? createAdminClient() : null;
+  let sqlTablesReady = true;
+
+  if (supabase) {
+    const schemaProbe = await checkAttendanceSchemaReady();
+    if (!schemaProbe.ready) {
+      const ensure = await ensureAttendanceTablesSchema();
+      sqlTablesReady = ensure.ok;
+      console.log(
+        "[bulk-import] attendance schema ensure:",
+        ensure.ok ? "ok" : ensure.message
+      );
+    }
+  }
+
+  /** Fast path — skip slow employee DB lookups when SQL tables are missing. */
+  if (supabase && !sqlTablesReady) {
+    const storageRows = normalizedRows.map((row) => {
+      const rowDate = normalizeAttendanceDateIso(
+        safeString(row.date) || safeString(row.attendance_date) || todayIsoDate()
+      );
+      const employeeId =
+        safeString(row.employee_id) || safeString(row.pay_code) || null;
+      return mapToBiometricAttendanceRow(row, employeeId, rowDate);
+    });
+
+    const reportDate = normalizeAttendanceDateIso(
+      safeString(normalizedRows[0]?.date) ||
+        safeString(normalizedRows[0]?.attendance_date) ||
+        todayIsoDate()
+    );
+
+    const storageResult = await saveBulkImportToStorage(supabase, {
+      reportDate,
+      rows: storageRows,
+      workflowCount: 0,
+    });
+
+    console.log(
+      "[bulk-import] fast storage save:",
+      storageResult.storagePath,
+      storageResult.saved,
+      "rows"
+    );
+
+    return NextResponse.json({
+      ok: true,
+      message: `Bulk attendance saved to cloud storage (${storageResult.saved} rows). SQL tables will be used automatically once configured.`,
+      imported: storageResult.saved,
+      skipped: 0,
+      provisionedEmployees: 0,
+      biometricSaved: storageResult.saved,
+      storageFallback: true,
+      storagePath: storageResult.storagePath,
+      savedReportDate: storageResult.reportDate,
+      errors: [],
+      records: [],
+    });
+  }
+
   const records: ReturnType<typeof normalizeAttendanceWorkflowRecord>[] = [];
   const prismaBiometricRows: Prisma.BiometricAttendanceCreateManyInput[] = [];
   const supabaseBiometricRows: Record<string, unknown>[] = [];
@@ -265,19 +327,6 @@ export async function POST(request: Request) {
   let storageFallback = false;
   let storagePath: string | undefined;
   let savedReportDate: string | undefined;
-
-  const supabaseConfigured = isSupabaseServerConfigured();
-  const prismaConfigured = isPrismaConfigured();
-  const supabase = supabaseConfigured ? createAdminClient() : null;
-  let sqlTablesReady = true;
-
-  if (supabase) {
-    const schemaProbe = await checkAttendanceSchemaReady();
-    if (!schemaProbe.ready) {
-      const ensure = await ensureAttendanceTablesSchema();
-      sqlTablesReady = ensure.ok;
-    }
-  }
 
   const employeeCache = new Map<string, string>();
 

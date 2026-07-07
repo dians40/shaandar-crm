@@ -29,6 +29,9 @@ export function normalizeSupabaseUrl(raw: string | undefined): string {
 
   url = url.replace(/\/+$/, "");
 
+  // Common paste mistake: REST endpoint instead of project root URL
+  url = url.replace(/\/rest\/v1\/?$/i, "");
+
   try {
     const parsed = new URL(url);
     const host = parsed.hostname;

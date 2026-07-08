@@ -47,6 +47,20 @@ function resolveAssignedFromGroup(row: {
   );
 }
 
+function resolveAssignedFirmGroup(row: {
+  assigned_firm_group?: string | null;
+  firm_head_profile?: string | null;
+}): string {
+  return (row.assigned_firm_group ?? row.firm_head_profile ?? "").trim();
+}
+
+function resolvePfActiveFirm(row: {
+  pf_active_firm?: string | null;
+  pf_firm?: string | null;
+}): string {
+  return (row.pf_active_firm ?? row.pf_firm ?? "").trim();
+}
+
 export function mapFormToEmployeeInsert(
   formData: EmployeeFormData,
   documentPaths: DocumentPaths = {}
@@ -125,8 +139,8 @@ export function mapFormToEmployeeInsert(
     worked_days: parseAmount(bank.workedDays),
     esi_status: bank.esiStatus || null,
     pf_status: bank.pfStatus || null,
-    firm_head_profile: (bank.firmHeadProfile ?? "").trim() || null,
-    pf_firm: (bank.pfFirm ?? "").trim() || null,
+    assigned_firm_group: (bank.firmHeadProfile ?? "").trim() || null,
+    pf_active_firm: (bank.pfFirm ?? "").trim() || null,
     fooding_allowance: bank.foodingAllowance || null,
     contract_packing: {
       itemName: contractPacking.itemName,
@@ -253,8 +267,8 @@ export function mapEmployeeRowToFormData(row: EmployeeRow): EmployeeFormData {
       workedDays: amountToString(row.worked_days),
       esiStatus: parseStatutoryStatusFromDb(row.esi_status, row.esi_enabled),
       pfStatus: parseStatutoryStatusFromDb(row.pf_status, row.pf_enabled),
-      firmHeadProfile: (row.firm_head_profile ?? "") as EmployeeFormData["bankAndSalary"]["firmHeadProfile"],
-      pfFirm: (row.pf_firm ?? "") as EmployeeFormData["bankAndSalary"]["pfFirm"],
+      firmHeadProfile: resolveAssignedFirmGroup(row) as EmployeeFormData["bankAndSalary"]["firmHeadProfile"],
+      pfFirm: resolvePfActiveFirm(row) as EmployeeFormData["bankAndSalary"]["pfFirm"],
       foodingAllowance: (row.fooding_allowance ?? "") as EmployeeFormData["bankAndSalary"]["foodingAllowance"],
       contractPacking: {
         itemName: row.contract_packing?.itemName ?? "",

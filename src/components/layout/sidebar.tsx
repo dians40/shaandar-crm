@@ -20,21 +20,28 @@ import {
   filterTransactionModulesForSession,
   RESTRICTED_ATTENDANCE_HOME_HREF,
 } from "@/lib/auth-navigation";
+import {
+  buildReportHref,
+  isSalaryWagesReportId,
+  REPORT_CATEGORIES,
+} from "@/constants/reports-navigation";
 import { LAYER2_STAGING_WORKSPACE_MODULE } from "@/types/auth-session";
 
-type ExpandableSectionId = "master-panel" | "transactions";
+type ExpandableSectionId = "master-panel" | "transactions" | "reports";
 
 const EXPANDABLE_SECTIONS: Record<
   ExpandableSectionId,
-  { href: string; groupId: MasterPanelModuleGroupId }
+  { href: string; groupId?: MasterPanelModuleGroupId }
 > = {
   "master-panel": { href: "/master-panel", groupId: "administration" },
   transactions: { href: "/transactions", groupId: "transaction" },
+  reports: { href: "/report-generated" },
 };
 
 function getExpandableSectionForPath(pathname: string): ExpandableSectionId | null {
   if (pathname.startsWith("/master-panel")) return "master-panel";
   if (pathname.startsWith("/transactions")) return "transactions";
+  if (pathname.startsWith("/report-generated")) return "reports";
   return null;
 }
 
@@ -62,6 +69,7 @@ export default function Sidebar({
   >({
     "master-panel": pathSection === "master-panel",
     transactions: pathSection === "transactions",
+    reports: pathSection === "reports",
   });
 
   useEffect(() => {
@@ -86,6 +94,10 @@ export default function Sidebar({
     [pathname, router]
   );
 
+  const activeReportId = isSalaryWagesReportId(searchParams.get("report"))
+    ? searchParams.get("report")
+    : null;
+
   const nestedModules = useMemo(
     () =>
       ({
@@ -94,6 +106,7 @@ export default function Sidebar({
           getGroupById("transaction")?.moduleIds ?? [],
           session
         ),
+        reports: [],
       }) satisfies Record<ExpandableSectionId, MasterPanelModuleId[]>,
     [session]
   );
@@ -158,9 +171,11 @@ export default function Sidebar({
               const isSectionActive = pathname.startsWith(sectionConfig.href);
               const isExpanded = expandedSections[expandableKey];
               const Icon = item.icon;
-              const group = MASTER_PANEL_MODULE_GROUPS.find(
-                (entry) => entry.id === sectionConfig.groupId
-              );
+              const group = sectionConfig.groupId
+                ? MASTER_PANEL_MODULE_GROUPS.find(
+                    (entry) => entry.id === sectionConfig.groupId
+                  )
+                : undefined;
 
               return (
                 <li key={item.href}>
@@ -193,7 +208,49 @@ export default function Sidebar({
                       />
                     </button>
 
-                    {isExpanded && (
+                    {isExpanded && expandableKey === "reports" && (
+                      <ul
+                        id={`sidebar-section-${expandableKey}`}
+                        className="mt-0.5 space-y-2 border-l-2 border-corporate-brand/20 pb-2 pl-3"
+                        aria-label="Reports categories"
+                      >
+                        {REPORT_CATEGORIES.map((category) => (
+                          <li key={category.id}>
+                            <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-corporate-muted">
+                              {category.label}
+                            </p>
+                            <ul className="space-y-0.5" aria-label={category.label}>
+                              {category.reports.map((report) => {
+                                const reportHref = buildReportHref(report.id, category.id);
+                                const isReportActive =
+                                  isSectionActive && activeReportId === report.id;
+                                const ReportIcon = report.icon;
+                                return (
+                                  <li key={report.id}>
+                                    <Link
+                                      href={reportHref}
+                                      onClick={() => onNavigate?.()}
+                                      className={cn(
+                                        "flex min-h-10 items-center gap-2 rounded-full border px-3 py-2 text-left text-sm font-medium transition-all sm:text-xs",
+                                        isReportActive
+                                          ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
+                                          : "border-transparent text-corporate-muted hover:border-corporate-border hover:bg-corporate-bg hover:text-corporate-text"
+                                      )}
+                                      aria-current={isReportActive ? "page" : undefined}
+                                    >
+                                      <ReportIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                                      <span className="truncate">{report.label}</span>
+                                    </Link>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {isExpanded && expandableKey !== "reports" && (
                       <ul
                         id={`sidebar-section-${expandableKey}`}
                         className="mt-0.5 space-y-0.5 border-l-2 border-corporate-brand/20 pb-2 pl-3"

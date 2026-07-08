@@ -12,6 +12,6 @@ export const sidebarNavItems: NavItem[] = [
   { label: "User Management", href: "/user-management", icon: Users },
   { label: "Transactions", href: "/transactions", icon: ArrowLeftRight },
   { label: "Display", href: "/display", icon: Monitor },
-  { label: "Report", href: "/report-generated", icon: FileBarChart },
+  { label: "Reports", href: "/report-generated", icon: FileBarChart },
   { label: "Analyze API", href: "/api-refresh", icon: LineChart },
 ];

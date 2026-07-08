@@ -1,3 +1,4 @@
+import { isCompleteProfileSalaryBasis } from "@/constants/employee-options";
 import type { EmployeeListItem } from "@/types/employee-list";
 
 function isPresent(value: string | null | undefined): boolean {
@@ -25,7 +26,7 @@ export function isEmployeeProfileComplete(employee: EmployeeListItem): boolean {
     isPresent(employee.name) &&
     isPresent(employee.machineAssignment) &&
     isPresent(employee.employeeType) &&
-    employee.salaryBasis.trim() === "Daily" &&
+    isCompleteProfileSalaryBasis(employee.salaryBasis) &&
     basicSalary !== null &&
     basicSalary > 0 &&
     isPresent(employee.assignedFromGroup) &&

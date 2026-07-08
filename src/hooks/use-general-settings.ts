@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_CONTRACTOR_SEEDS,
   DEFAULT_EMPLOYEE_TYPE_SEEDS,
+  DEFAULT_LOCATION_SEEDS,
   DEFAULT_OVERTIME_REASON_SEEDS,
   normalizeGeneralSettingsRecord,
   type GeneralSettingsRecord,
@@ -20,6 +21,7 @@ export const GENERAL_SETTINGS_STORAGE_KEY = "shaandar-crm-general-settings";
 type GeneralSettingsStore = {
   contractors: GeneralSettingsRecord[];
   employeeTypes: GeneralSettingsRecord[];
+  locations: GeneralSettingsRecord[];
   overtimeReasons: GeneralSettingsRecord[];
 };
 
@@ -43,6 +45,7 @@ function defaultStore(): GeneralSettingsStore {
   return {
     contractors: createSeedRecords(DEFAULT_CONTRACTOR_SEEDS, "contractor"),
     employeeTypes: createSeedRecords(DEFAULT_EMPLOYEE_TYPE_SEEDS, "employee-type"),
+    locations: createSeedRecords(DEFAULT_LOCATION_SEEDS, "location"),
     overtimeReasons: createSeedRecords(DEFAULT_OVERTIME_REASON_SEEDS, "overtime-reason"),
   };
 }
@@ -70,6 +73,9 @@ function readStore(): GeneralSettingsStore {
       employeeTypes: normalizeRecordList(parsed.employeeTypes).length
         ? normalizeRecordList(parsed.employeeTypes)
         : defaults.employeeTypes,
+      locations: normalizeRecordList(parsed.locations).length
+        ? normalizeRecordList(parsed.locations)
+        : defaults.locations,
       overtimeReasons: normalizeRecordList(parsed.overtimeReasons).length
         ? normalizeRecordList(parsed.overtimeReasons)
         : defaults.overtimeReasons,
@@ -167,6 +173,16 @@ export function useGeneralSettings() {
     [departments]
   );
 
+  const locationOptions = useMemo(
+    () => toSelectOptions(store.locations),
+    [store.locations]
+  );
+
+  const locationNames = useMemo(
+    () => store.locations.map((row) => row.name),
+    [store.locations]
+  );
+
   const overtimeReasonOptions = useMemo(
     () => toSelectOptions(store.overtimeReasons),
     [store.overtimeReasons]
@@ -258,14 +274,17 @@ export function useGeneralSettings() {
     contractors: store.contractors,
     employeeTypes: store.employeeTypes,
     departments,
+    locations: store.locations,
     overtimeReasons: store.overtimeReasons,
     contractorOptions,
     employeeTypeOptions,
     departmentOptions,
+    locationOptions,
     overtimeReasonOptions,
     contractorNames,
     employeeTypeNames,
     departmentNames,
+    locationNames,
     overtimeReasonNames,
     machines: departments,
     machineOptions: departmentOptions,

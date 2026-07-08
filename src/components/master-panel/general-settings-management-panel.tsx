@@ -66,6 +66,15 @@ export default function GeneralSettingsManagementPanel() {
           updateRecord: (id, name) => settings.updateRecord("departments", id, name),
           removeRecord: (id) => settings.removeRecord("departments", id),
         };
+      case "locations":
+        return {
+          key: "locations",
+          singularLabel: "Location",
+          records: settings.locations,
+          addRecord: (name) => settings.addRecord("locations", name),
+          updateRecord: (id, name) => settings.updateRecord("locations", id, name),
+          removeRecord: (id) => settings.removeRecord("locations", id),
+        };
       case "overtime-reasons":
         return {
           key: "overtime-reasons",

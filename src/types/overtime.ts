@@ -2,8 +2,14 @@ import type {
   PaymentSettlementStatus,
   VerificationStage,
 } from "@/types/verification-workflow";
+import type { PayrollShiftType } from "@/lib/overtime-shift-config";
+import { resolvePayrollTotalHours } from "@/lib/overtime-shift-config";
+import {
+  OVERTIME_PIPELINE_STAGES,
+  type OvertimePipelineStage,
+} from "@/types/overtime-pipeline";
 
-export type OvertimeShiftType = "Half Shift" | "Full Shift";
+export type { PayrollShiftType as OvertimeShiftType };
 
 export type OvertimeRecord = {
   id: string;
@@ -11,9 +17,9 @@ export type OvertimeRecord = {
   workDate: string;
   employeeId: string;
   employeeName: string;
-  /** Contractor or firm from Employee Master assigned-from group */
+  /** Contractor name linked from Employee Master (blank when only firm assigned) */
   assignedFromGroup: string;
-  shiftType: OvertimeShiftType;
+  shiftType: PayrollShiftType | "";
   fromTime: string;
   toTime: string;
   totalHours: number;
@@ -21,14 +27,20 @@ export type OvertimeRecord = {
   amountPaidToday: number;
   /** @deprecated Use amountPaidToday — kept for legacy localStorage rows */
   amountToPay?: number;
+  /** Department assignment — legacy key name retained in storage */
   assignedMachine: string;
   overtimeReason: string;
   /** Legacy free-text — kept for backward compatibility */
   workLocation: string;
-  assignedManager: string;
+  /** Person substituted for (search-selected employee name) */
   workLocationAssignment: string;
-  approvedBy: string;
+  /** @deprecated Removed from UI — legacy rows only */
+  assignedManager?: string;
+  /** @deprecated Removed from UI — legacy rows only */
+  approvedBy?: string;
   narration: string;
+  pipelineStage: OvertimePipelineStage;
+  /** @deprecated Legacy verification stage — mapped to pipelineStage on read */
   workflowStage: VerificationStage;
   paymentStatus: PaymentSettlementStatus;
   operatorVerifiedAt: string | null;
@@ -48,17 +60,16 @@ export const EMPTY_OVERTIME_FORM: Omit<
   employeeId: "",
   employeeName: "",
   assignedFromGroup: "",
-  shiftType: "Half Shift",
+  shiftType: "",
   fromTime: "",
   toTime: "",
   amountPaidToday: 0,
   assignedMachine: "",
   overtimeReason: "",
   workLocation: "",
-  assignedManager: "",
   workLocationAssignment: "",
-  approvedBy: "",
   narration: "",
+  pipelineStage: OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING,
   workflowStage: "pending_allocation",
   paymentStatus: "due",
   operatorVerifiedAt: null,
@@ -91,11 +102,49 @@ export function calculateOvertimePayout(
   return Math.round(totalHours * hourlyRate * 100) / 100;
 }
 
+function mapLegacyShiftType(value: string | undefined): PayrollShiftType | "" {
+  const token = String(value ?? "").trim();
+  if (token === "DY1" || token === "G11" || token === "Half Shift") return token;
+  if (token === "Full Shift") return "DY1";
+  if (token.toLowerCase().includes("half")) return "Half Shift";
+  return "";
+}
+
+function mapLegacyWorkflowToPipeline(
+  workflowStage: VerificationStage | undefined,
+  paymentStatus: PaymentSettlementStatus | undefined
+): OvertimePipelineStage {
+  if (workflowStage === "operator_verification") {
+    return OVERTIME_PIPELINE_STAGES.LAYER_3_WORKFLOW;
+  }
+  if (workflowStage === "supervisor_approval") {
+    return OVERTIME_PIPELINE_STAGES.LAYER_3_WORKFLOW;
+  }
+  if (workflowStage === "finalized") {
+    return OVERTIME_PIPELINE_STAGES.LAYER_4_SAVED;
+  }
+  if (paymentStatus === "paid") {
+    return OVERTIME_PIPELINE_STAGES.LAYER_4_SAVED;
+  }
+  return OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING;
+}
+
 export function normalizeOvertimeRecord(
   row: Partial<OvertimeRecord> & Pick<OvertimeRecord, "id">
 ): OvertimeRecord {
-  const amountPaidToday =
-    row.amountPaidToday ?? row.amountToPay ?? 0;
+  const amountPaidToday = row.amountPaidToday ?? row.amountToPay ?? 0;
+  const shiftType = mapLegacyShiftType(row.shiftType);
+  const workflowStage = row.workflowStage ?? "pending_allocation";
+  const pipelineStage =
+    row.pipelineStage ?? mapLegacyWorkflowToPipeline(workflowStage, row.paymentStatus);
+
+  const totalHours =
+    row.totalHours ??
+    resolvePayrollTotalHours({
+      shiftType,
+      fromTime: row.fromTime ?? "",
+      toTime: row.toTime ?? "",
+    });
 
   return {
     id: row.id,
@@ -103,20 +152,20 @@ export function normalizeOvertimeRecord(
     employeeId: row.employeeId ?? "",
     employeeName: row.employeeName ?? "",
     assignedFromGroup: row.assignedFromGroup ?? "",
-    shiftType: row.shiftType ?? "Half Shift",
+    shiftType,
     fromTime: row.fromTime ?? "",
     toTime: row.toTime ?? "",
-    totalHours: row.totalHours ?? calculateOvertimeHours(row.fromTime ?? "", row.toTime ?? ""),
+    totalHours,
     amountPaidToday,
     assignedMachine: row.assignedMachine ?? "",
     overtimeReason: row.overtimeReason ?? "",
-    workLocation: row.workLocation ?? "",
-    assignedManager: row.assignedManager ?? "",
-    workLocationAssignment:
-      row.workLocationAssignment ?? row.workLocation ?? "",
-    approvedBy: row.approvedBy ?? "",
+    workLocation: row.workLocation ?? row.workLocationAssignment ?? "",
+    workLocationAssignment: row.workLocationAssignment ?? row.workLocation ?? "",
+    assignedManager: row.assignedManager,
+    approvedBy: row.approvedBy,
     narration: row.narration ?? "",
-    workflowStage: row.workflowStage ?? "finalized",
+    pipelineStage,
+    workflowStage,
     paymentStatus: row.paymentStatus ?? "due",
     operatorVerifiedAt: row.operatorVerifiedAt ?? null,
     operatorVerifiedBy: row.operatorVerifiedBy ?? null,
@@ -127,3 +176,5 @@ export function normalizeOvertimeRecord(
     updatedAt: row.updatedAt ?? new Date().toISOString(),
   };
 }
+
+export { resolvePayrollTotalHours };

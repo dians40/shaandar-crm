@@ -46,8 +46,12 @@ export default function DailyOtPayslip({ record, onMarkPaid, onBack }: Props) {
             <dd className="text-sm font-medium">{record.assignedFromGroup || "—"}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase text-corporate-muted">Machine</dt>
+            <dt className="text-xs uppercase text-corporate-muted">Assigned Department</dt>
             <dd className="text-sm font-medium">{record.assignedMachine || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase text-corporate-muted">Substitute For</dt>
+            <dd className="text-sm font-medium">{record.workLocationAssignment || "—"}</dd>
           </div>
           <div>
             <dt className="text-xs uppercase text-corporate-muted">Duration</dt>
@@ -62,7 +66,7 @@ export default function DailyOtPayslip({ record, onMarkPaid, onBack }: Props) {
             </dd>
           </div>
           <div>
-            <dt className="text-xs uppercase text-corporate-muted">Supervisor</dt>
+            <dt className="text-xs uppercase text-corporate-muted">Layer 4 Approved By</dt>
             <dd className="text-sm font-medium">{record.supervisorApprovedBy || "—"}</dd>
           </div>
           <div>

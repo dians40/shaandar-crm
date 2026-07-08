@@ -45,6 +45,7 @@ export type GeneralSettingsSubMaster =
   | "contractors"
   | "employee-types"
   | "departments"
+  | "locations"
   | "overtime-reasons";
 
 export const GENERAL_SETTINGS_SUB_TABS: Array<{
@@ -66,6 +67,11 @@ export const GENERAL_SETTINGS_SUB_TABS: Array<{
     id: "departments",
     label: "Department",
     description: "Dynamic department registry auto-synced from attendance labour import — add or remove entries manually.",
+  },
+  {
+    id: "locations",
+    label: "Location Master",
+    description: "Corporate work locations used for overtime substitution and floor assignment references.",
   },
   {
     id: "overtime-reasons",
@@ -93,4 +99,11 @@ export const DEFAULT_OVERTIME_REASON_SEEDS = [
   "Extra Power",
   "Short of Employee",
   "Other Reasons",
+];
+
+export const DEFAULT_LOCATION_SEEDS = [
+  "Main Production Floor",
+  "Packaging Unit",
+  "Warehouse Bay",
+  "Admin Block",
 ];

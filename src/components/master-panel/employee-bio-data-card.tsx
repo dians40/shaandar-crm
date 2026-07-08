@@ -219,7 +219,7 @@ export default function EmployeeBioDataCard({
             <DetailRow label="ESI Status" value={employee.bankAndSalary.esiStatus} />
             <DetailRow label="PF Status" value={employee.bankAndSalary.pfStatus} />
             <DetailRow
-              label="Machine Assignment"
+              label="Assigned Department"
               value={employee.workAssignment.machineAssignment}
             />
           </dl>

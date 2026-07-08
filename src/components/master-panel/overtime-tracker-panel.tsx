@@ -3,15 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
 import { SelectInput, TextInput, TextareaInput } from "@/components/forms/form-fields";
-import {
-  OVERTIME_LOCATION_PRESETS,
-  OVERTIME_SUPERVISOR_PRESETS,
-} from "@/constants/overtime-options";
+import SearchableSelectInput from "@/components/forms/searchable-select-input";
 import { useEmployees } from "@/hooks/use-employees";
 import { useGeneralSettings } from "@/hooks/use-general-settings";
-import { useGodowns } from "@/hooks/use-godowns";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import { useOvertimeRecords } from "@/hooks/use-overtime";
+import { splitAssignedFromGroup } from "@/lib/employee-assigned-from";
 import {
   LIST_SEARCH_EMPTY_MESSAGE,
   matchesUniversalNameSearch,
@@ -21,22 +18,31 @@ import {
   readMasterPanelSelection,
 } from "@/lib/master-panel-entity-bridge";
 import {
-  calculateOvertimeHours,
+  LAYER_2_APPROVAL_OPTIONS,
+  LAYER_3_APPROVAL_OPTIONS,
+  LAYER_4_APPROVAL_OPTIONS,
+  type PipelineApprovalAction,
+} from "@/lib/attendance-pipeline-approval-ui";
+import {
+  PAYROLL_SHIFT_OPTIONS,
+  validatePayrollShiftOrTime,
+} from "@/lib/overtime-shift-config";
+import {
   calculateOvertimePayout,
   EMPTY_OVERTIME_FORM,
+  resolvePayrollTotalHours,
   type OvertimeRecord,
-  type OvertimeShiftType,
 } from "@/types/overtime";
+import {
+  OVERTIME_PIPELINE_STAGES,
+  OVERTIME_PIPELINE_STAGE_LABELS,
+  type OvertimePipelineStage,
+} from "@/types/overtime-pipeline";
+import { cn } from "@/lib/utils";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import ModuleListActionGroup from "./module-list-action-group";
 import DailyOtPayslip from "./shared/daily-ot-payslip";
-import MultiPhotoUploader from "./shared/multi-photo-uploader";
-import VerificationStagePills from "./shared/verification-stage-pills";
 import UniversalRecordProfile from "./universal-record-profile";
-import {
-  VERIFICATION_STAGE_LABELS,
-  type VerificationStage,
-} from "@/types/verification-workflow";
 import {
   MASTER_LIST_HEAD_CLASS,
   MASTER_LIST_HEADER_CELL_CLASS,
@@ -46,26 +52,51 @@ import {
   useMasterListFilters,
 } from "./universal-master-list";
 
-const MACHINE_CUSTOM_VALUE = "__custom_machine__";
+const DEPARTMENT_CUSTOM_VALUE = "__custom_department__";
+
+const OVERTIME_LAYER_TABS: OvertimePipelineStage[] = [
+  OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING,
+  OVERTIME_PIPELINE_STAGES.LAYER_3_WORKFLOW,
+  OVERTIME_PIPELINE_STAGES.LAYER_4_SAVED,
+];
 
 type ViewMode = "list" | "add" | "edit" | "detail";
 
+function resolveContractorFromEmployee(assignedFromGroup: string): string {
+  return splitAssignedFromGroup(assignedFromGroup).assignedContractor ?? "";
+}
+
 export default function OvertimeTrackerPanel() {
   const { employees, isLoading: employeesLoading } = useEmployees();
-  const { godowns, isReady: godownsReady } = useGodowns();
-  const { machineOptions: machineMasterOptions, overtimeReasonOptions, isReady: machinesReady } =
-    useGeneralSettings();
-  const { records, isReady, addRecord, updateRecord, patchRecord, markAsPaid } =
-    useOvertimeRecords();
+  const {
+    departmentOptions,
+    overtimeReasonOptions,
+    isReady: settingsReady,
+  } = useGeneralSettings();
+  const {
+    records,
+    isReady,
+    addRecord,
+    updateRecord,
+    approveLayer2ToLayer3,
+    approveLayer3ToLayer4,
+    rejectPipelineRow,
+    commitToLedger,
+    markAsPaid,
+  } = useOvertimeRecords();
   const [view, setView] = useState<ViewMode>("list");
-  const [activeStage, setActiveStage] = useState<VerificationStage>("pending_allocation");
-  const [machineDrafts, setMachineDrafts] = useState<Record<string, string>>({});
-  const [photoDrafts, setPhotoDrafts] = useState<Record<string, string[]>>({});
+  const [activeLayer, setActiveLayer] = useState<OvertimePipelineStage>(
+    OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING
+  );
+  const [departmentDrafts, setDepartmentDrafts] = useState<Record<string, string>>({});
+  const [approvalSelections, setApprovalSelections] = useState<
+    Record<string, PipelineApprovalAction>
+  >({});
   const [payslipId, setPayslipId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_OVERTIME_FORM);
-  const [machineSelect, setMachineSelect] = useState("");
-  const [customMachine, setCustomMachine] = useState("");
+  const [departmentSelect, setDepartmentSelect] = useState("");
+  const [customDepartment, setCustomDepartment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewingId, setViewingId] = useState<string | null>(null);
@@ -75,11 +106,13 @@ export default function OvertimeTrackerPanel() {
     [records, viewingId]
   );
 
-  const stageCounts = useMemo(() => {
-    const counts: Partial<Record<VerificationStage, number>> = {};
+  const layerCounts = useMemo(() => {
+    const counts: Partial<Record<OvertimePipelineStage, number>> = {};
     for (const row of records) {
-      if (row.workflowStage === "finalized" && row.paymentStatus === "paid") continue;
-      counts[row.workflowStage] = (counts[row.workflowStage] ?? 0) + 1;
+      if (row.pipelineStage === OVERTIME_PIPELINE_STAGES.LAYER_4_SAVED && row.paymentStatus === "paid") {
+        continue;
+      }
+      counts[row.pipelineStage] = (counts[row.pipelineStage] ?? 0) + 1;
     }
     return counts;
   }, [records]);
@@ -89,32 +122,14 @@ export default function OvertimeTrackerPanel() {
     [records, payslipId]
   );
 
-  const applySelectedEmployee = (employeeId: string, employeeName: string) => {
-    const employee = employees.find((row) => row.id === employeeId);
-    setForm((prev) => {
-      const hours = calculateOvertimeHours(prev.fromTime, prev.toTime);
-      const hourlyRate = employee?.overtimeHourlyRate ?? 0;
-      return {
-        ...prev,
-        employeeId,
-        employeeName,
-        assignedFromGroup: employee?.assignedFromGroup ?? "",
-        amountPaidToday:
-          hourlyRate > 0 && hours > 0 ? calculateOvertimePayout(hours, hourlyRate) : prev.amountPaidToday,
-      };
-    });
-  };
-
-  const consumePendingEmployeeSelection = () => {
-    const selection = readMasterPanelSelection();
-    if (selection?.entityType === "employee" && selection.entityId) {
-      applySelectedEmployee(selection.entityId, selection.entityName);
-    }
-  };
-
   const totalHours = useMemo(
-    () => calculateOvertimeHours(form.fromTime, form.toTime),
-    [form.fromTime, form.toTime]
+    () =>
+      resolvePayrollTotalHours({
+        shiftType: form.shiftType,
+        fromTime: form.fromTime,
+        toTime: form.toTime,
+      }),
+    [form.shiftType, form.fromTime, form.toTime]
   );
 
   const selectedEmployeeRate = useMemo(
@@ -127,14 +142,6 @@ export default function OvertimeTrackerPanel() {
     [totalHours, selectedEmployeeRate]
   );
 
-  useEffect(() => {
-    if (!form.employeeId || selectedEmployeeRate <= 0 || totalHours <= 0) return;
-    setForm((prev) => ({
-      ...prev,
-      amountPaidToday: calculateOvertimePayout(totalHours, selectedEmployeeRate),
-    }));
-  }, [form.employeeId, selectedEmployeeRate, totalHours]);
-
   const employeeOptions = useMemo(
     () =>
       employees.map((employee) => ({
@@ -144,73 +151,86 @@ export default function OvertimeTrackerPanel() {
     [employees]
   );
 
-  const machineOptions = useMemo(() => {
-    const masterLabels = machineMasterOptions.map((option) => option.label);
+  const substituteOptions = useMemo(
+    () =>
+      employees.map((employee) => ({
+        value: employee.name,
+        label: employee.name,
+      })),
+    [employees]
+  );
+
+  const departmentSelectOptions = useMemo(() => {
+    const masterLabels = departmentOptions.map((option) => option.label);
     return [
       ...masterLabels.map((label) => ({ value: label, label })),
-      { value: MACHINE_CUSTOM_VALUE, label: "Other / type manually" },
+      { value: DEPARTMENT_CUSTOM_VALUE, label: "Other / type manually" },
     ];
-  }, [machineMasterOptions]);
+  }, [departmentOptions]);
 
-  const managerOptions = useMemo(() => {
-    const fromEmployees = employees.map((employee) => employee.name);
-    const fromGodowns = godowns
-      .map((godown) => godown.managerName?.trim())
-      .filter((value): value is string => Boolean(value));
-    const unique = Array.from(
-      new Set([...OVERTIME_SUPERVISOR_PRESETS, ...fromEmployees, ...fromGodowns])
-    );
-    return unique.map((label) => ({ value: label, label }));
-  }, [employees, godowns]);
+  const applySelectedEmployee = (employeeId: string, employeeName: string) => {
+    const employee = employees.find((row) => row.id === employeeId);
+    const contractor = resolveContractorFromEmployee(employee?.assignedFromGroup ?? "");
+    const hourlyRate = employee?.overtimeHourlyRate ?? 0;
+    setForm((prev) => {
+      const hours = resolvePayrollTotalHours({
+        shiftType: prev.shiftType,
+        fromTime: prev.fromTime,
+        toTime: prev.toTime,
+      });
+      return {
+        ...prev,
+        employeeId,
+        employeeName,
+        assignedFromGroup: contractor,
+        amountPaidToday:
+          hourlyRate > 0
+            ? hours > 0
+              ? calculateOvertimePayout(hours, hourlyRate)
+              : hourlyRate
+            : prev.amountPaidToday,
+      };
+    });
+  };
 
-  const supervisorOptions = useMemo(() => {
-    const fromEmployees = employees.map((employee) => employee.name);
-    const fromGodowns = godowns
-      .map((godown) => godown.managerName?.trim())
-      .filter((value): value is string => Boolean(value));
-    const unique = Array.from(
-      new Set([...OVERTIME_SUPERVISOR_PRESETS, ...fromEmployees, ...fromGodowns])
-    );
-    return unique.map((label) => ({ value: label, label }));
-  }, [employees, godowns]);
+  const consumePendingEmployeeSelection = () => {
+    const selection = readMasterPanelSelection();
+    if (selection?.entityType === "employee" && selection.entityId) {
+      applySelectedEmployee(selection.entityId, selection.entityName);
+    }
+  };
 
-  const workLocationOptions = useMemo(() => {
-    const godownLocations = godowns.map(
-      (godown) => `Godown: ${godown.name}${godown.code ? ` (${godown.code})` : ""}`
-    );
-    const substitutionOptions = employees.map(
-      (employee) => `Substituting for: ${employee.name}`
-    );
-    const unique = Array.from(
-      new Set([
-        ...OVERTIME_LOCATION_PRESETS,
-        ...godownLocations,
-        ...substitutionOptions,
-      ])
-    );
-    return unique.map((label) => ({ value: label, label }));
-  }, [employees, godowns]);
+  useEffect(() => {
+    if (!form.employeeId || selectedEmployeeRate <= 0) return;
+    setForm((prev) => ({
+      ...prev,
+      amountPaidToday:
+        totalHours > 0
+          ? calculateOvertimePayout(totalHours, selectedEmployeeRate)
+          : selectedEmployeeRate,
+    }));
+  }, [form.employeeId, selectedEmployeeRate, totalHours]);
 
-  const syncMachineFields = (assignedMachine: string) => {
-    const knownValues = machineOptions.map((option) => option.value);
+  const syncDepartmentFields = (assignedMachine: string) => {
+    const knownValues = departmentSelectOptions.map((option) => option.value);
     if (!assignedMachine) {
-      setMachineSelect("");
-      setCustomMachine("");
+      setDepartmentSelect("");
+      setCustomDepartment("");
       return;
     }
     if (knownValues.includes(assignedMachine)) {
-      setMachineSelect(assignedMachine);
-      setCustomMachine("");
+      setDepartmentSelect(assignedMachine);
+      setCustomDepartment("");
       return;
     }
-    setMachineSelect(MACHINE_CUSTOM_VALUE);
-    setCustomMachine(assignedMachine);
+    setDepartmentSelect(DEPARTMENT_CUSTOM_VALUE);
+    setCustomDepartment(assignedMachine);
   };
 
   const resetForm = () => {
     setForm(EMPTY_OVERTIME_FORM);
-    setMachineSelect("");
-    setCustomMachine("");
+    setDepartmentSelect("");
+    setCustomDepartment("");
     setEditingId(null);
     setError(null);
   };
@@ -220,9 +240,9 @@ export default function OvertimeTrackerPanel() {
     setView("list");
     setSearchQuery("");
     setViewingId(null);
-    setActiveStage("pending_allocation");
-    setMachineDrafts({});
-    setPhotoDrafts({});
+    setActiveLayer(OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING);
+    setDepartmentDrafts({});
+    setApprovalSelections({});
     setPayslipId(null);
   }, []);
 
@@ -240,7 +260,7 @@ export default function OvertimeTrackerPanel() {
       workDate: record.workDate,
       employeeId: record.employeeId,
       employeeName: record.employeeName,
-      assignedFromGroup: record.assignedFromGroup,
+      assignedFromGroup: resolveContractorFromEmployee(record.assignedFromGroup),
       shiftType: record.shiftType,
       fromTime: record.fromTime,
       toTime: record.toTime,
@@ -248,10 +268,9 @@ export default function OvertimeTrackerPanel() {
       assignedMachine: record.assignedMachine,
       overtimeReason: record.overtimeReason,
       workLocation: record.workLocation,
-      assignedManager: record.assignedManager,
       workLocationAssignment: record.workLocationAssignment,
-      approvedBy: record.approvedBy,
       narration: record.narration,
+      pipelineStage: record.pipelineStage,
       workflowStage: record.workflowStage,
       paymentStatus: record.paymentStatus,
       operatorVerifiedAt: record.operatorVerifiedAt,
@@ -260,62 +279,61 @@ export default function OvertimeTrackerPanel() {
       supervisorApprovedBy: record.supervisorApprovedBy,
       attachmentPhotos: record.attachmentPhotos,
     });
-    syncMachineFields(record.assignedMachine);
+    syncDepartmentFields(record.assignedMachine);
     setView("edit");
   };
 
   const handleEmployeeChange = (employeeId: string) => {
     const employee = employees.find((row) => row.id === employeeId);
-    const hours = calculateOvertimeHours(form.fromTime, form.toTime);
-    const hourlyRate = employee?.overtimeHourlyRate ?? 0;
-    setForm((prev) => ({
-      ...prev,
-      employeeId,
-      employeeName: employee?.name ?? "",
-      assignedFromGroup: employee?.assignedFromGroup ?? "",
-      amountPaidToday:
-        hourlyRate > 0 && hours > 0 ? calculateOvertimePayout(hours, hourlyRate) : prev.amountPaidToday,
-    }));
+    applySelectedEmployee(employeeId, employee?.name ?? "");
   };
 
-  const handleMachineSelectChange = (value: string) => {
-    setMachineSelect(value);
-    if (value === MACHINE_CUSTOM_VALUE) {
-      setForm((prev) => ({ ...prev, assignedMachine: customMachine }));
+  const handleDepartmentSelectChange = (value: string) => {
+    setDepartmentSelect(value);
+    if (value === DEPARTMENT_CUSTOM_VALUE) {
+      setForm((prev) => ({ ...prev, assignedMachine: customDepartment }));
       return;
     }
-    setCustomMachine("");
+    setCustomDepartment("");
     setForm((prev) => ({ ...prev, assignedMachine: value }));
   };
 
   const handleSave = () => {
-    const resolvedMachine =
-      machineSelect === MACHINE_CUSTOM_VALUE
-        ? customMachine.trim()
+    const resolvedDepartment =
+      departmentSelect === DEPARTMENT_CUSTOM_VALUE
+        ? customDepartment.trim()
         : form.assignedMachine.trim();
+
+    const shiftTimeError = validatePayrollShiftOrTime({
+      shiftType: form.shiftType,
+      fromTime: form.fromTime,
+      toTime: form.toTime,
+    });
 
     if (
       !form.employeeId ||
       !form.workDate ||
-      !form.fromTime ||
-      !form.toTime ||
       !form.overtimeReason.trim() ||
-      !form.approvedBy.trim() ||
       !form.workLocationAssignment.trim() ||
-      !form.assignedManager.trim()
+      shiftTimeError
     ) {
       setError(
-        "Work date, employee, time range, overtime reason, work location assignment, assigned manager, and Approved By are required."
+        shiftTimeError ??
+          "Work date, employee, overtime reason, and Substitute For are required."
       );
       return;
     }
 
     const payload = {
       ...form,
-      assignedMachine: resolvedMachine,
+      assignedFromGroup: resolveContractorFromEmployee(
+        employees.find((row) => row.id === form.employeeId)?.assignedFromGroup ?? form.assignedFromGroup
+      ),
+      assignedMachine: resolvedDepartment,
       workLocation: form.workLocationAssignment,
       amountPaidToday: Number(form.amountPaidToday) || 0,
-      workflowStage: "pending_allocation" as VerificationStage,
+      pipelineStage: OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING,
+      workflowStage: "pending_allocation" as const,
       paymentStatus: "due" as const,
       operatorVerifiedAt: null,
       operatorVerifiedBy: null,
@@ -328,6 +346,7 @@ export default function OvertimeTrackerPanel() {
       const existing = records.find((row) => row.id === editingId);
       updateRecord(editingId, {
         ...payload,
+        pipelineStage: existing?.pipelineStage ?? OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING,
         workflowStage: existing?.workflowStage ?? "pending_allocation",
         paymentStatus: existing?.paymentStatus ?? "due",
         operatorVerifiedAt: existing?.operatorVerifiedAt ?? null,
@@ -342,37 +361,36 @@ export default function OvertimeTrackerPanel() {
 
     resetForm();
     setView("list");
-    setActiveStage("pending_allocation");
+    setActiveLayer(OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING);
   };
 
-  const handleAssignMachine = (record: OvertimeRecord) => {
-    const machine = (machineDrafts[record.id] ?? record.assignedMachine).trim();
-    if (!machine) return;
-    patchRecord(record.id, {
-      assignedMachine: machine,
-      workflowStage: "operator_verification",
-    });
-  };
-
-  const handleOperatorVerify = (record: OvertimeRecord) => {
-    patchRecord(record.id, {
-      workflowStage: "supervisor_approval",
-      operatorVerifiedAt: new Date().toISOString(),
-      operatorVerifiedBy: "Machine Operator",
-    });
-  };
-
-  const handleSupervisorApprove = (record: OvertimeRecord) => {
-    const photos = photoDrafts[record.id] ?? [];
-    if (photos.length === 0) return;
-    patchRecord(record.id, {
-      attachmentPhotos: photos,
-      workflowStage: "finalized",
-      paymentStatus: "due",
-      supervisorApprovedAt: new Date().toISOString(),
-      supervisorApprovedBy: record.assignedManager || "Supervisor",
-    });
-    setActiveStage("finalized");
+  const handleLayerApproval = (record: OvertimeRecord, action: PipelineApprovalAction) => {
+    if (!action) return;
+    if (action === "reject") {
+      rejectPipelineRow(record.id);
+      return;
+    }
+    if (
+      record.pipelineStage === OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING &&
+      action === "approve_layer_3"
+    ) {
+      approveLayer2ToLayer3(record.id);
+      return;
+    }
+    if (
+      record.pipelineStage === OVERTIME_PIPELINE_STAGES.LAYER_3_WORKFLOW &&
+      action === "approve_layer_4"
+    ) {
+      approveLayer3ToLayer4(record.id);
+      return;
+    }
+    if (
+      record.pipelineStage === OVERTIME_PIPELINE_STAGES.LAYER_4_SAVED &&
+      action === "save_archive"
+    ) {
+      commitToLedger(record.id);
+    }
+    setApprovalSelections((prev) => ({ ...prev, [record.id]: "" }));
   };
 
   useEffect(() => {
@@ -389,7 +407,7 @@ export default function OvertimeTrackerPanel() {
     return () => window.removeEventListener(MASTER_PANEL_ENTITY_SELECTED_EVENT, handler);
   }, []);
 
-  if (!isReady || !godownsReady || !machinesReady) {
+  if (!isReady || !settingsReady) {
     return (
       <div className="rounded-xl border border-corporate-border bg-corporate-surface p-8 text-center text-sm text-corporate-muted">
         Loading overtime records...
@@ -428,21 +446,19 @@ export default function OvertimeTrackerPanel() {
         subtitle={`${viewingRecord.workDate} · ${viewingRecord.overtimeReason || viewingRecord.shiftType}`}
         fields={[
           { label: "Work Date", value: viewingRecord.workDate },
-          { label: "Assigned From / Contractor", value: viewingRecord.assignedFromGroup || "—" },
+          { label: "Contractor", value: viewingRecord.assignedFromGroup || "—" },
           { label: "Overtime Reason", value: viewingRecord.overtimeReason || "—" },
-          { label: "Shift Type", value: viewingRecord.shiftType },
-          { label: "From Time", value: viewingRecord.fromTime },
-          { label: "To Time", value: viewingRecord.toTime },
+          { label: "Shift Type", value: viewingRecord.shiftType || "—" },
+          { label: "From Time", value: viewingRecord.fromTime || "—" },
+          { label: "To Time", value: viewingRecord.toTime || "—" },
           { label: "Total Hours", value: viewingRecord.totalHours },
           {
             label: "Amount Paid Today",
             value: `₹${viewingRecord.amountPaidToday.toLocaleString("en-IN")}`,
           },
-          { label: "Assigned Machine", value: viewingRecord.assignedMachine },
-          { label: "Work Location", value: viewingRecord.workLocation },
-          { label: "Work Assignment", value: viewingRecord.workLocationAssignment },
-          { label: "Assigned Manager", value: viewingRecord.assignedManager },
-          { label: "Approved By", value: viewingRecord.approvedBy },
+          { label: "Assigned Department", value: viewingRecord.assignedMachine || "—" },
+          { label: "Substitute For", value: viewingRecord.workLocationAssignment || "—" },
+          { label: "Pipeline Stage", value: OVERTIME_PIPELINE_STAGE_LABELS[viewingRecord.pipelineStage] },
           { label: "Narration", value: viewingRecord.narration },
         ]}
         onBack={() => {
@@ -467,195 +483,182 @@ export default function OvertimeTrackerPanel() {
           onAdd={openAdd}
         />
         <div className="space-y-5 rounded-xl border border-corporate-border bg-corporate-surface p-5 shadow-card">
-        <div>
-          <h2 className="text-lg font-semibold text-corporate-text">
-            {view === "add" ? "Add Overtime" : "Edit Overtime"}
-          </h2>
-          <p className="text-sm text-corporate-muted">
-            Independent day-by-day overtime logging with immediate cash payout — not linked to monthly salary.
-          </p>
-        </div>
+          <div>
+            <h2 className="text-lg font-semibold text-corporate-text">
+              {view === "add" ? "Add Overtime" : "Edit Overtime"}
+            </h2>
+            <p className="text-sm text-corporate-muted">
+              Independent day-by-day overtime logging with immediate cash payout — not linked to monthly salary.
+            </p>
+          </div>
 
-        {error && (
-          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </p>
-        )}
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextInput
-            label="Work Date"
-            type="date"
-            required
-            value={form.workDate}
-            onChange={(e) => setForm((prev) => ({ ...prev, workDate: e.target.value }))}
-          />
-          <SelectInput
-            label="Employee Name"
-            required
-            disabled={employeesLoading}
-            value={form.employeeId}
-            placeholder="Select employee"
-            onChange={(e) => handleEmployeeChange(e.target.value)}
-            options={employeeOptions}
-          />
-          <TextInput
-            label="Contractor / Assigned From"
-            readOnly
-            value={form.assignedFromGroup || "—"}
-            className="bg-corporate-bg"
-            hint="Auto-filled from Employee Master assigned-from group"
-          />
-          <SelectInput
-            label="Overtime Reason"
-            required
-            value={form.overtimeReason}
-            placeholder="Select overtime reason"
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, overtimeReason: e.target.value }))
-            }
-            options={overtimeReasonOptions}
-          />
-          <SelectInput
-            label="Shift Type / Operation"
-            required
-            value={form.shiftType}
-            onChange={(e) =>
-              setForm((prev) => ({
-                ...prev,
-                shiftType: e.target.value as OvertimeShiftType,
-              }))
-            }
-            options={[
-              { value: "Half Shift", label: "Half Shift" },
-              { value: "Full Shift", label: "Full Shift" },
-            ]}
-          />
-          <TextInput
-            label="From Time (HH:MM)"
-            required
-            placeholder="18:00"
-            value={form.fromTime}
-            onChange={(e) => setForm((prev) => ({ ...prev, fromTime: e.target.value }))}
-          />
-          <TextInput
-            label="To Time (HH:MM)"
-            required
-            placeholder="22:00"
-            value={form.toTime}
-            onChange={(e) => setForm((prev) => ({ ...prev, toTime: e.target.value }))}
-          />
-          <TextInput
-            label="Total Hours"
-            readOnly
-            value={String(totalHours)}
-            className="bg-corporate-bg"
-            hint="Auto-calculated from From/To time"
-          />
-          <TextInput
-            label="Amount Paid Today (Day-by-Day Cash System)"
-            type="number"
-            min="0"
-            step="0.01"
-            required
-            readOnly={selectedEmployeeRate > 0 && totalHours > 0}
-            value={String(
-              selectedEmployeeRate > 0 && totalHours > 0 ? autoOvertimePayout : form.amountPaidToday
-            )}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, amountPaidToday: Number(e.target.value) }))
-            }
-            hint={
-              selectedEmployeeRate > 0
-                ? `Auto-calculated from fixed OT rate ₹${selectedEmployeeRate}/hr × ${totalHours} hr`
-                : "Set Overtime Hourly Rate in Employee Master or enter amount manually"
-            }
-          />
-          <SelectInput
-            label="Assigned Machine"
-            value={machineSelect}
-            placeholder="Select from Department"
-            onChange={(e) => handleMachineSelectChange(e.target.value)}
-            options={machineOptions}
-            hint="Live options from General Settings → Department"
-          />
-          {machineSelect === MACHINE_CUSTOM_VALUE && (
-            <TextInput
-              label="Machine name (manual entry)"
-              value={customMachine}
-              onChange={(e) => {
-                const value = e.target.value;
-                setCustomMachine(value);
-                setForm((prev) => ({ ...prev, assignedMachine: value }));
-              }}
-            />
+          {error && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {error}
+            </p>
           )}
-          <SelectInput
-            label="Work Location & Assignment"
-            required
-            value={form.workLocationAssignment}
-            placeholder="Select work location or substitution"
-            onChange={(e) =>
-              setForm((prev) => ({
-                ...prev,
-                workLocationAssignment: e.target.value,
-              }))
-            }
-            options={workLocationOptions}
-            hint="Assign godown, floor duty, or who the labor is substituting for"
-          />
-          <SelectInput
-            label="Assigned Manager / Supervisor"
-            required
-            value={form.assignedManager}
-            placeholder="Select manager or supervisor"
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, assignedManager: e.target.value }))
-            }
-            options={managerOptions}
-            hint="Who oversees this overtime assignment"
-          />
-          <SelectInput
-            label="Approved By"
-            required
-            value={form.approvedBy}
-            placeholder="Select authorizing supervisor"
-            onChange={(e) => setForm((prev) => ({ ...prev, approvedBy: e.target.value }))}
-            options={supervisorOptions}
-          />
-          <div className="sm:col-span-2">
-            <TextareaInput
-              label="Narration"
-              hint="Optional remarks, edge cases, or unexpected events during this overtime"
-              value={form.narration}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, narration: e.target.value }))
-              }
-              rows={4}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <TextInput
+              label="Work Date"
+              type="date"
+              required
+              value={form.workDate}
+              onChange={(e) => setForm((prev) => ({ ...prev, workDate: e.target.value }))}
             />
+            <SearchableSelectInput
+              id="overtime-employee"
+              label="Employee Name"
+              required
+              disabled={employeesLoading}
+              value={form.employeeId}
+              placeholder="Search employee name..."
+              onChange={handleEmployeeChange}
+              options={employeeOptions}
+              hint="Searchable filter for large labor volumes"
+            />
+            <TextInput
+              label="Contractor"
+              readOnly
+              value={form.assignedFromGroup || ""}
+              placeholder="Auto-linked when employee has contractor assignment"
+              className="bg-corporate-bg"
+              hint="Auto-populated from Employee Master contractor link; blank when firm-only"
+            />
+            <SelectInput
+              label="Overtime Reason"
+              required
+              value={form.overtimeReason}
+              placeholder="Select overtime reason"
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, overtimeReason: e.target.value }))
+              }
+              options={overtimeReasonOptions}
+            />
+            <SelectInput
+              label="Shift Type"
+              value={form.shiftType}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  shiftType: e.target.value as typeof form.shiftType,
+                }))
+              }
+              options={PAYROLL_SHIFT_OPTIONS}
+              hint="Optional when From/To time is provided"
+            />
+            <TextInput
+              label="From Time (HH:MM)"
+              placeholder="18:00"
+              value={form.fromTime}
+              onChange={(e) => setForm((prev) => ({ ...prev, fromTime: e.target.value }))}
+              hint="Optional when Shift Type is selected"
+            />
+            <TextInput
+              label="To Time (HH:MM)"
+              placeholder="22:00"
+              value={form.toTime}
+              onChange={(e) => setForm((prev) => ({ ...prev, toTime: e.target.value }))}
+              hint="Optional when Shift Type is selected"
+            />
+            <TextInput
+              label="Total Hours"
+              readOnly
+              value={String(totalHours)}
+              className="bg-corporate-bg"
+              hint="12 hr for DY1/G11, 6 hr for Half Shift, or calculated from time range"
+            />
+            <TextInput
+              label="Amount Paid Today (Day-by-Day Cash System)"
+              type="number"
+              min="0"
+              step="0.01"
+              required
+              readOnly={selectedEmployeeRate > 0 && totalHours > 0}
+              value={String(
+                selectedEmployeeRate > 0 && totalHours > 0
+                  ? autoOvertimePayout
+                  : form.amountPaidToday
+              )}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, amountPaidToday: Number(e.target.value) }))
+              }
+              hint={
+                selectedEmployeeRate > 0
+                  ? `Default from Employee Master OT rate ₹${selectedEmployeeRate}/hr${
+                      totalHours > 0 ? ` × ${totalHours} hr` : ""
+                    }`
+                  : "Set Overtime Hourly Rate in Employee Master or enter amount manually"
+              }
+            />
+            <SelectInput
+              label="Assigned Department"
+              value={departmentSelect}
+              placeholder="Select department"
+              onChange={(e) => handleDepartmentSelectChange(e.target.value)}
+              options={departmentSelectOptions}
+              hint="Dynamic options from General Settings — Department master"
+            />
+            {departmentSelect === DEPARTMENT_CUSTOM_VALUE && (
+              <TextInput
+                label="Department name (manual entry)"
+                value={customDepartment}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setCustomDepartment(value);
+                  setForm((prev) => ({ ...prev, assignedMachine: value }));
+                }}
+              />
+            )}
+            <SearchableSelectInput
+              id="overtime-substitute"
+              label="Substitute For"
+              required
+              value={form.workLocationAssignment}
+              placeholder="Search person name..."
+              onChange={(value) =>
+                setForm((prev) => ({
+                  ...prev,
+                  workLocationAssignment: value,
+                  workLocation: value,
+                }))
+              }
+              options={substituteOptions}
+              hint="Search and select the specific person being substituted"
+            />
+            <div className="sm:col-span-2">
+              <TextareaInput
+                label="Narration"
+                hint="Optional remarks, edge cases, or unexpected events during this overtime"
+                value={form.narration}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, narration: e.target.value }))
+                }
+                rows={4}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="rounded-lg bg-corporate-brand px-4 py-2 text-sm font-medium text-white"
+            >
+              Save Overtime
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                resetForm();
+                setView("list");
+              }}
+              className="rounded-lg border border-corporate-border px-4 py-2 text-sm"
+            >
+              Cancel
+            </button>
           </div>
         </div>
-
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={handleSave}
-            className="rounded-lg bg-corporate-brand px-4 py-2 text-sm font-medium text-white"
-          >
-            Save Overtime
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              resetForm();
-              setView("list");
-            }}
-            className="rounded-lg border border-corporate-border px-4 py-2 text-sm"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
       </>
     );
   }
@@ -673,22 +676,35 @@ export default function OvertimeTrackerPanel() {
       />
 
       <div className="workspace-panel-stack">
-        <aside>
-          <VerificationStagePills
-            activeStage={activeStage}
-            onChange={setActiveStage}
-            counts={stageCounts}
-          />
+        <aside className="space-y-2">
+          {OVERTIME_LAYER_TABS.map((layer) => (
+            <button
+              key={layer}
+              type="button"
+              onClick={() => setActiveLayer(layer)}
+              className={cn(
+                "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition",
+                activeLayer === layer
+                  ? "border-corporate-brand bg-corporate-brand/10 font-semibold text-corporate-brand"
+                  : "border-corporate-border bg-corporate-surface text-corporate-text hover:bg-corporate-bg"
+              )}
+            >
+              <span>{OVERTIME_PIPELINE_STAGE_LABELS[layer]}</span>
+              <span className="rounded-full bg-corporate-bg px-2 py-0.5 text-xs font-bold">
+                {layerCounts[layer] ?? 0}
+              </span>
+            </button>
+          ))}
         </aside>
 
         <div className="space-y-5">
           <div className="rounded-xl border border-corporate-border bg-corporate-surface p-4 shadow-card">
             <h2 className="text-lg font-semibold text-corporate-text">
-              {VERIFICATION_STAGE_LABELS[activeStage]}
+              {OVERTIME_PIPELINE_STAGE_LABELS[activeLayer]}
             </h2>
             <p className="text-sm text-corporate-muted">
-              Independent day-by-day OT ledger — finalized entries with Status DUE appear in Stage 4
-              until marked paid.
+              Overtime entries sequence through Layer 2 review, Layer 3 verification, and Layer 4
+              ledger commit before settlement.
             </p>
           </div>
 
@@ -703,7 +719,7 @@ export default function OvertimeTrackerPanel() {
                   <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee</th>
                   <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
                   <th className={MASTER_LIST_HEADER_CELL_CLASS}>Reason</th>
-                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Machine</th>
+                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Department</th>
                   <th className={MASTER_LIST_HEADER_CELL_CLASS}>Paid Today</th>
                   <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Actions</th>
                 </tr>
@@ -711,21 +727,19 @@ export default function OvertimeTrackerPanel() {
               <tbody className="divide-y divide-corporate-border">
                 <OvertimeListBody
                   records={records}
-                  activeStage={activeStage}
-                  machineDrafts={machineDrafts}
-                  machineOptions={machineOptions}
-                  photoDrafts={photoDrafts}
-                  onAssignMachine={handleAssignMachine}
-                  onOperatorVerify={handleOperatorVerify}
-                  onSupervisorApprove={handleSupervisorApprove}
+                  activeLayer={activeLayer}
+                  departmentDrafts={departmentDrafts}
+                  departmentOptions={departmentSelectOptions}
+                  approvalSelections={approvalSelections}
+                  onLayerApproval={handleLayerApproval}
                   onSetPayslipId={setPayslipId}
                   onMarkAsPaid={markAsPaid}
                   onEdit={openEdit}
-                  onMachineDraftChange={(id, value) =>
-                    setMachineDrafts((prev) => ({ ...prev, [id]: value }))
+                  onDepartmentDraftChange={(id, value) =>
+                    setDepartmentDrafts((prev) => ({ ...prev, [id]: value }))
                   }
-                  onPhotoDraftChange={(id, photos) =>
-                    setPhotoDrafts((prev) => ({ ...prev, [id]: photos }))
+                  onApprovalSelectionChange={(id, action) =>
+                    setApprovalSelections((prev) => ({ ...prev, [id]: action }))
                   }
                 />
               </tbody>
@@ -739,42 +753,39 @@ export default function OvertimeTrackerPanel() {
 
 type OvertimeListBodyProps = {
   records: OvertimeRecord[];
-  activeStage: VerificationStage;
-  machineDrafts: Record<string, string>;
-  machineOptions: { value: string; label: string }[];
-  photoDrafts: Record<string, string[]>;
-  onAssignMachine: (record: OvertimeRecord) => void;
-  onOperatorVerify: (record: OvertimeRecord) => void;
-  onSupervisorApprove: (record: OvertimeRecord) => void;
+  activeLayer: OvertimePipelineStage;
+  departmentDrafts: Record<string, string>;
+  departmentOptions: { value: string; label: string }[];
+  approvalSelections: Record<string, PipelineApprovalAction>;
+  onLayerApproval: (record: OvertimeRecord, action: PipelineApprovalAction) => void;
   onSetPayslipId: (id: string) => void;
   onMarkAsPaid: (id: string) => void;
   onEdit: (record: OvertimeRecord) => void;
-  onMachineDraftChange: (id: string, value: string) => void;
-  onPhotoDraftChange: (id: string, photos: string[]) => void;
+  onDepartmentDraftChange: (id: string, value: string) => void;
+  onApprovalSelectionChange: (id: string, action: PipelineApprovalAction) => void;
 };
 
 function OvertimeListBody({
   records,
-  activeStage,
-  machineDrafts,
-  machineOptions,
-  photoDrafts,
-  onAssignMachine,
-  onOperatorVerify,
-  onSupervisorApprove,
+  activeLayer,
+  departmentDrafts,
+  departmentOptions,
+  approvalSelections,
+  onLayerApproval,
   onSetPayslipId,
   onMarkAsPaid,
   onEdit,
-  onMachineDraftChange,
-  onPhotoDraftChange,
+  onDepartmentDraftChange,
+  onApprovalSelectionChange,
 }: OvertimeListBodyProps) {
   const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
   const filteredRecords = useMemo(
     () =>
       records.filter(
         (row) =>
-          row.workflowStage === activeStage &&
-          (activeStage !== "finalized" || row.paymentStatus === "due") &&
+          row.pipelineStage === activeLayer &&
+          (activeLayer !== OVERTIME_PIPELINE_STAGES.LAYER_4_SAVED ||
+            row.paymentStatus === "due") &&
           matchesUniversalNameSearch(
             searchQuery,
             row.employeeName,
@@ -787,9 +798,7 @@ function OvertimeListBody({
               row.toTime,
               row.workLocation,
               row.workLocationAssignment,
-              row.assignedManager,
               row.assignedMachine,
-              row.approvedBy,
               row.narration,
               String(row.amountPaidToday),
               String(row.totalHours),
@@ -802,7 +811,7 @@ function OvertimeListBody({
             }
           )
       ),
-    [records, activeStage, searchQuery, departmentFilter, designationFilter]
+    [records, activeLayer, searchQuery, departmentFilter, designationFilter]
   );
 
   if (filteredRecords.length === 0) {
@@ -812,11 +821,17 @@ function OvertimeListBody({
           <Clock className="mx-auto mb-2 h-6 w-6 opacity-60" />
           {searchQuery.trim()
             ? LIST_SEARCH_EMPTY_MESSAGE
-            : `No records in ${VERIFICATION_STAGE_LABELS[activeStage]}.`}
+            : `No records in ${OVERTIME_PIPELINE_STAGE_LABELS[activeLayer]}.`}
         </td>
       </tr>
     );
   }
+
+  const approvalOptions = (stage: OvertimePipelineStage) => {
+    if (stage === OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING) return LAYER_2_APPROVAL_OPTIONS;
+    if (stage === OVERTIME_PIPELINE_STAGES.LAYER_3_WORKFLOW) return LAYER_3_APPROVAL_OPTIONS;
+    return LAYER_4_APPROVAL_OPTIONS;
+  };
 
   return (
     <>
@@ -830,77 +845,55 @@ function OvertimeListBody({
             ₹{row.amountPaidToday.toLocaleString("en-IN")}
           </td>
           <td className="px-4 py-3 text-right text-sm">
-            {activeStage === "pending_allocation" && (
-              <div className="inline-flex min-w-[200px] flex-col gap-2 text-left">
+            <div className="inline-flex min-w-[220px] flex-col items-end gap-2">
+              {activeLayer === OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING && !row.assignedMachine && (
                 <SelectInput
                   label=""
-                  value={machineDrafts[row.id] ?? row.assignedMachine}
-                  placeholder="Select machine"
-                  options={machineOptions}
-                  onChange={(e) => onMachineDraftChange(row.id, e.target.value)}
+                  value={departmentDrafts[row.id] ?? row.assignedMachine}
+                  placeholder="Select department"
+                  options={departmentOptions}
+                  onChange={(e) => onDepartmentDraftChange(row.id, e.target.value)}
                 />
-                <button
-                  type="button"
-                  onClick={() => onAssignMachine(row)}
-                  className="rounded-full bg-corporate-brand px-4 py-1.5 text-xs font-semibold text-white"
-                >
-                  Assign Machine & Forward
-                </button>
-              </div>
-            )}
-            {activeStage === "operator_verification" && (
-              <button
-                type="button"
-                onClick={() => onOperatorVerify(row)}
-                className="rounded-full bg-corporate-brand px-4 py-2 text-xs font-semibold text-white"
-              >
-                Verify & Approve Operator Shift
-              </button>
-            )}
-            {activeStage === "supervisor_approval" && (
-              <div className="inline-block min-w-[260px] space-y-2 text-left">
-                <MultiPhotoUploader
-                  photos={photoDrafts[row.id] ?? []}
-                  onChange={(photos) => onPhotoDraftChange(row.id, photos)}
-                />
-                <button
-                  type="button"
-                  onClick={() => onSupervisorApprove(row)}
-                  disabled={(photoDrafts[row.id] ?? []).length === 0}
-                  className="rounded-full bg-corporate-brand px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
-                >
-                  Grant Final Approval
-                </button>
-              </div>
-            )}
-            {activeStage === "finalized" && (
-              <div className="inline-flex flex-col items-end gap-2">
-                <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase text-amber-800 ring-2 ring-amber-300">
-                  Status: DUE
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onSetPayslipId(row.id)}
-                  className="rounded-full border border-corporate-border px-3 py-1 text-xs font-medium"
-                >
-                  View Daily Payslip
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onMarkAsPaid(row.id)}
-                  className="rounded-full bg-corporate-brand px-4 py-1.5 text-xs font-semibold text-white"
-                >
-                  Mark as Paid / Clear Settlement
-                </button>
-              </div>
-            )}
-            {activeStage !== "finalized" && (
-              <ModuleListActionGroup
-                showView={false}
-                onEdit={() => onEdit(row)}
-                editLabel="Edit Draft"
+              )}
+              <SelectInput
+                label=""
+                value={approvalSelections[row.id] ?? ""}
+                options={approvalOptions(row.pipelineStage)}
+                onChange={(e) => {
+                  const action = e.target.value as PipelineApprovalAction;
+                  onApprovalSelectionChange(row.id, action);
+                  if (action) onLayerApproval(row, action);
+                }}
               />
-            )}
+              {activeLayer === OVERTIME_PIPELINE_STAGES.LAYER_4_SAVED && (
+                <>
+                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold uppercase text-amber-800 ring-2 ring-amber-300">
+                    Status: DUE
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onSetPayslipId(row.id)}
+                    className="rounded-full border border-corporate-border px-3 py-1 text-xs font-medium"
+                  >
+                    View Daily Payslip
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onMarkAsPaid(row.id)}
+                    className="rounded-full bg-corporate-brand px-4 py-1.5 text-xs font-semibold text-white"
+                  >
+                    Mark as Paid / Clear Settlement
+                  </button>
+                </>
+              )}
+              {activeLayer !== OVERTIME_PIPELINE_STAGES.LAYER_4_SAVED && (
+                <ModuleListActionGroup
+                  showView={false}
+                  onEdit={() => onEdit(row)}
+                  editLabel="Edit Draft"
+                />
+              )}
+            </div>
           </td>
         </tr>
       ))}

@@ -241,7 +241,12 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Pipeline action failed.";
     if (isPipelineMigrationError(message)) {
-      return pipelineMigrationRequiredResponse();
+      try {
+        return await pipelineMigrationRequiredResponse();
+      } catch (migrationError) {
+        console.warn("[pipeline] migration response failed:", migrationError);
+        return NextResponse.json({ error: message }, { status: 503 });
+      }
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }

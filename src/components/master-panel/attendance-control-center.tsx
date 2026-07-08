@@ -19,6 +19,7 @@ import {
   PIPELINE_STAGE_UPGRADE_HINT,
   PIPELINE_STAGE_UPGRADE_MESSAGE,
 } from "@/lib/attendance-setup-messages";
+import { readJsonResponse } from "@/lib/read-json-response";
 import { cn } from "@/lib/utils";
 import {
   createAutoProvisionedEmployee,
@@ -261,7 +262,7 @@ export default function AttendanceControlCenter({
       const response = await fetch("/api/v1/attendance/schema/ensure", {
         method: "POST",
       });
-      const body = (await response.json()) as {
+      const body = await readJsonResponse<{
         ok?: boolean;
         ready?: boolean;
         pipelineStageReady?: boolean;
@@ -269,7 +270,7 @@ export default function AttendanceControlCenter({
         message?: string;
         hint?: string;
         error?: string;
-      };
+      }>(response);
 
       if (response.ok && body.ready) {
         setSchemaStatus("ready");
@@ -294,8 +295,8 @@ export default function AttendanceControlCenter({
 
   useEffect(() => {
     fetch("/api/health/supabase")
-      .then((response) => response.json())
-      .then((health: { ok?: boolean }) => setDbConnected(Boolean(health.ok)))
+      .then(async (response) => readJsonResponse<{ ok?: boolean }>(response))
+      .then((health) => setDbConnected(Boolean(health.ok)))
       .catch(() => setDbConnected(false));
   }, []);
 
@@ -340,12 +341,12 @@ export default function AttendanceControlCenter({
         params.set("designation", designationFilter);
       }
       const response = await fetch(`/api/v1/attendance/biometric?${params.toString()}`);
-      const body = (await response.json()) as {
+      const body = await readJsonResponse<{
         rows?: Record<string, unknown>[];
         error?: string;
         meta?: { biometricCount?: number; legacyCount?: number; mergedCount?: number };
         availableDates?: AttendanceDateCatalogEntry[];
-      };
+      }>(response);
       if (!response.ok) {
         throw new Error(body.error ?? "Failed to load attendance records.");
       }
@@ -639,7 +640,7 @@ export default function AttendanceControlCenter({
         window.clearTimeout(timeoutId);
       }
 
-      const body = (await response.json()) as {
+      const body = await readJsonResponse<{
         error?: string;
         ok?: boolean;
         message?: string;
@@ -661,7 +662,7 @@ export default function AttendanceControlCenter({
           punchOut: string;
           assignedMachine: string;
         }>;
-      };
+      }>(response);
 
       if (!response.ok) {
         const detail = body.debug?.cause ? ` ${body.debug.cause}` : "";
@@ -848,7 +849,7 @@ export default function AttendanceControlCenter({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "persist-saved-row", ids: [row.id] }),
       });
-      const body = (await response.json()) as { error?: string; ok?: boolean; archived?: boolean };
+      const body = await readJsonResponse<{ error?: string; ok?: boolean; archived?: boolean }>(response);
       if (!response.ok) throw new Error(body.error ?? "Failed to save row to server.");
       setGridRows((current) => current.filter((entry) => entry.id !== row.id));
       deselectRow(rowSelectionKey(row));
@@ -877,7 +878,7 @@ export default function AttendanceControlCenter({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "persist-saved-row", ids: [row.id] }),
           });
-          const body = (await response.json()) as { error?: string };
+          const body = await readJsonResponse<{ error?: string }>(response);
           if (!response.ok) throw new Error(body.error ?? "Failed to save row to server.");
           setGridRows((current) => current.filter((entry) => entry.id !== row.id));
           deselectRow(rowSelectionKey(row));
@@ -895,7 +896,7 @@ export default function AttendanceControlCenter({
               stage: PIPELINE_STAGES.LAYER_4_SAVED,
             }),
           });
-          const body = (await response.json()) as { error?: string };
+          const body = await readJsonResponse<{ error?: string }>(response);
           if (!response.ok) throw new Error(body.error ?? "Failed to reject row.");
           setGridRows((current) => current.filter((entry) => entry.id !== row.id));
           setLayer4SaveMessage(`Rejected ${row.employeeName || row.payCode} (${row.date}).`);
@@ -929,7 +930,7 @@ export default function AttendanceControlCenter({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ action: "persist-saved-rows", ids }),
           });
-          const body = (await response.json()) as { error?: string; saved?: number };
+          const body = await readJsonResponse<{ error?: string; saved?: number }>(response);
           if (!response.ok) throw new Error(body.error ?? "Bulk save failed.");
           const savedCount = body.saved ?? ids.length;
           const idSet = new Set(ids);
@@ -949,7 +950,7 @@ export default function AttendanceControlCenter({
               stage: PIPELINE_STAGES.LAYER_4_SAVED,
             }),
           });
-          const body = (await response.json()) as { error?: string; rejected?: number };
+          const body = await readJsonResponse<{ error?: string; rejected?: number }>(response);
           if (!response.ok) throw new Error(body.error ?? "Bulk reject failed.");
           const rejectedCount = body.rejected ?? ids.length;
           const idSet = new Set(ids);

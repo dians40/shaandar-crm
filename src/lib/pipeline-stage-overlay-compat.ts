@@ -32,6 +32,8 @@ type OverlayManifest = Record<
   }
 >;
 
+export type { OverlayManifest };
+
 function workflowStageForPipelineStage(stage: PipelineStage): string | undefined {
   if (stage === PIPELINE_STAGES.LAYER_3_WORKFLOW) return "pending_allocation";
   if (stage === PIPELINE_STAGES.LAYER_4_SAVED) return "finalized";

@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { CalendarCheck, FileSpreadsheet, Save, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   createAutoProvisionedEmployee,
   detectPendingAutoEmployees,
@@ -301,7 +302,7 @@ export default function AttendanceLoggingWorkspacePanel() {
         window.clearTimeout(timeoutId);
       }
 
-      const body = (await response.json()) as {
+      const body = await readJsonResponse<{
         error?: string;
         ok?: boolean;
         imported?: number;
@@ -318,7 +319,7 @@ export default function AttendanceLoggingWorkspacePanel() {
           punchOut: string;
           assignedMachine: string;
         }>;
-      };
+      }>(response);
 
       if (!response.ok) {
         const detail = body.debug?.cause ? ` ${body.debug.cause}` : "";

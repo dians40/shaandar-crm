@@ -27,10 +27,16 @@ import {
 import {
   loadPipelineStageOverlayManifest,
   removeOverlayPipelineStages,
-  rowMatchesPipelineStage,
   syncOverlayManifestToSql,
   transitionOverlayPipelineStage,
 } from "@/lib/pipeline-stage-overlay-compat";
+import {
+  filterRowsByCompatPipelineStage,
+  syncRemarkStagesToSql,
+  transitionRemarkPipelineStage,
+  encodeRemarkPipelineStage,
+  parseRemarkPipelineStage,
+} from "@/lib/pipeline-stage-remark-compat";
 import {
   fetchStorageGridRows,
   transitionStoragePipelineStage,
@@ -100,9 +106,9 @@ async function fetchRowsByPipelineStageSupabase(
   if (!pipelineColumnReady) {
     try {
       const manifest = await loadPipelineStageOverlayManifest(supabase);
-      return mapped.filter((row) => rowMatchesPipelineStage(manifest, row.id, stage));
+      return filterRowsByCompatPipelineStage(manifest, mapped, stage);
     } catch (error) {
-      console.warn("[pipeline] overlay fetch failed:", error);
+      console.warn("[pipeline] compat fetch failed:", error);
       if (stage === PIPELINE_STAGES.LAYER_2_STAGING) return mapped;
       return [];
     }
@@ -266,18 +272,33 @@ export async function transitionPipelineStage(input: {
   if (!isSupabaseServerConfigured()) {
     throw new Error("Database not configured for pipeline transitions.");
   }
-  await ensureAttendanceTablesSchema();
+
+  try {
+    await ensureAttendanceTablesSchema();
+  } catch (error) {
+    console.warn("[pipeline] ensureAttendanceTablesSchema failed:", error);
+  }
 
   resetPipelineStageColumnCache();
-  if (!(await isPipelineStageColumnAvailable())) {
-    await ensurePipelineStageColumn();
-    await reloadPostgrestSchemaCache();
+  try {
+    if (!(await isPipelineStageColumnAvailable())) {
+      await ensurePipelineStageColumn();
+      await reloadPostgrestSchemaCache();
+      resetPipelineStageColumnCache();
+    }
+  } catch (error) {
+    console.warn("[pipeline] pipeline_stage ensure during transition failed:", error);
     resetPipelineStageColumnCache();
   }
 
   const pipelineColumnReady = await isPipelineStageColumnAvailable();
   if (pipelineColumnReady) {
-    await syncOverlayManifestToSql(createAdminClient());
+    try {
+      await syncOverlayManifestToSql(createAdminClient());
+      await syncRemarkStagesToSql(createAdminClient());
+    } catch (error) {
+      console.warn("[pipeline] compat stage sync failed:", error);
+    }
     await backfillMissingPipelineStages();
   }
 
@@ -301,6 +322,20 @@ export async function transitionPipelineStage(input: {
       );
     } catch (error) {
       console.warn("[pipeline] overlay transition failed:", error);
+    }
+  }
+
+  if (transitioned === 0 && !pipelineColumnReady) {
+    try {
+      const supabase = createAdminClient();
+      transitioned = await transitionRemarkPipelineStage(
+        supabase,
+        input.ids,
+        input.from,
+        input.to
+      );
+    } catch (error) {
+      console.warn("[pipeline] remark transition failed:", error);
     }
   }
 
@@ -444,10 +479,6 @@ export async function updatePipelineStagingEdit(input: {
   const remark = input.remark.trim();
   if (!remark) throw new Error("Edit remark is required.");
 
-  const updatePayload: Record<string, unknown> = { remark };
-  if (input.inTime !== undefined) updatePayload.in_time = input.inTime || null;
-  if (input.outTime !== undefined) updatePayload.out_time = input.outTime || null;
-
   let updated = 0;
   if (isSupabaseServerConfigured()) {
     const pipelineColumnReady = await isPipelineStageColumnAvailable();
@@ -456,6 +487,23 @@ export async function updatePipelineStagingEdit(input: {
     }
     try {
       const supabase = createAdminClient();
+      let remarkToSave = remark;
+      if (!pipelineColumnReady) {
+        const { data: existing } = await supabase
+          .from(BIOMETRIC_TABLE)
+          .select("remark")
+          .eq("id", id)
+          .maybeSingle();
+        const stage =
+          parseRemarkPipelineStage(String(existing?.remark ?? "")) ??
+          PIPELINE_STAGES.LAYER_2_STAGING;
+        remarkToSave = encodeRemarkPipelineStage(stage, remark);
+      }
+
+      const updatePayload: Record<string, unknown> = { remark: remarkToSave };
+      if (input.inTime !== undefined) updatePayload.in_time = input.inTime || null;
+      if (input.outTime !== undefined) updatePayload.out_time = input.outTime || null;
+
       let updateQuery = supabase
         .from(BIOMETRIC_TABLE)
         .update(updatePayload)

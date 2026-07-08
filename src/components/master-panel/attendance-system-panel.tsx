@@ -21,6 +21,7 @@ import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
 import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
 import { readJsonResponse } from "@/lib/read-json-response";
+import LayerFilterControls from "./layer-filter-controls";
 import {
   PipelineBulkActionBar,
   PipelineSelectAllCheckbox,

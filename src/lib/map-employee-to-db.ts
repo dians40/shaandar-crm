@@ -15,8 +15,11 @@ import {
 } from "@/lib/statutory-calculations";
 
 function parseAmount(value: string): number | null {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const cleaned = trimmed.replace(/[₹,\s]/g, "");
+  if (!cleaned) return null;
+  const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : null;
 }
 

@@ -111,6 +111,7 @@ export function normalizeEmployeeFormData(
     basicInformation: {
       ...INITIAL_EMPLOYEE_FORM.basicInformation,
       ...(source.basicInformation ?? {}),
+      assignedFromGroup: source.basicInformation?.assignedFromGroup ?? "",
     },
     workAssignment: {
       ...INITIAL_EMPLOYEE_FORM.workAssignment,
@@ -129,6 +130,7 @@ export function normalizeEmployeeFormData(
       ...(source.bankAndSalary ?? {}),
       firmHeadProfile: source.bankAndSalary?.firmHeadProfile ?? "",
       pfFirm: source.bankAndSalary?.pfFirm ?? "",
+      overtimeHourlyRate: source.bankAndSalary?.overtimeHourlyRate ?? "",
       contractPacking: {
         ...INITIAL_CONTRACT_PACKING,
         ...(source.bankAndSalary?.contractPacking ?? {}),

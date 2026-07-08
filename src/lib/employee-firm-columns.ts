@@ -38,7 +38,7 @@ export function parseMissingEmployeeColumn(message: string): string | null {
 export function employeeSchemaHint(): string {
   return (
     " Run supabase/migrations/017_employee_schema_cache_sync.sql in the Supabase SQL Editor " +
-    "(adds assigned_from_group, esi_status, pf_status, assigned_firm_group, pf_active_firm and reloads PostgREST), " +
+    "(adds assigned_from_group, esi_status, pf_status, assigned_firm_group, pf_active_firm, overtime_hourly_rate and reloads PostgREST), " +
     "or POST /api/admin/sync-employee-schema when DATABASE_URL is configured."
   );
 }
@@ -119,18 +119,15 @@ async function writeEmployeePayloadResilient(
     }
 
     const missingColumn = parseMissingEmployeeColumn(message);
-    if (missingColumn && missingColumn in current) {
-      delete current[missingColumn];
-      continue;
-    }
 
+    // Map to legacy columns before dropping values (prevents losing assigned_from_group).
     if (!legacyMapped) {
       current = applyLegacyEmployeeColumnMappings(current);
       legacyMapped = true;
       continue;
     }
 
-    if (missingColumn && OPTIONAL_EMPLOYEE_COLUMNS.has(missingColumn)) {
+    if (missingColumn && missingColumn in current && OPTIONAL_EMPLOYEE_COLUMNS.has(missingColumn)) {
       delete current[missingColumn];
       continue;
     }

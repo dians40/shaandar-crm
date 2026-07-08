@@ -11,7 +11,8 @@ ALTER TABLE public.employees
   ADD COLUMN IF NOT EXISTS esi_status TEXT,
   ADD COLUMN IF NOT EXISTS pf_status TEXT,
   ADD COLUMN IF NOT EXISTS assigned_firm_group TEXT,
-  ADD COLUMN IF NOT EXISTS pf_active_firm TEXT;
+  ADD COLUMN IF NOT EXISTS pf_active_firm TEXT,
+  ADD COLUMN IF NOT EXISTS overtime_hourly_rate NUMERIC(12, 2);
 
 DO $$
 BEGIN
@@ -44,5 +45,8 @@ COMMENT ON COLUMN public.employees.assigned_firm_group IS
 
 COMMENT ON COLUMN public.employees.pf_active_firm IS
   'PF active firm: Krishna Food Products | Mehak Industries';
+
+COMMENT ON COLUMN public.employees.overtime_hourly_rate IS
+  'Fixed overtime day-by-day payout amount (₹) used by Overtime Tracker';
 
 NOTIFY pgrst, 'reload schema';

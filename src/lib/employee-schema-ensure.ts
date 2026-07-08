@@ -8,6 +8,7 @@ import {
 } from "@/lib/employee-firm-columns";
 
 const MIGRATION_FILES = [
+  "004_employee_overtime_hourly_rate.sql",
   "006_employee_unified_assignment_status.sql",
   "016_employee_firm_head_pf_firm.sql",
   "017_employee_schema_cache_sync.sql",
@@ -33,7 +34,7 @@ export async function checkEmployeeFirmColumnsReady(): Promise<{
     const { error } = await supabase
       .from("employees")
       .select(
-        "assigned_from_group, esi_status, pf_status, assigned_firm_group, pf_active_firm"
+        "assigned_from_group, esi_status, pf_status, assigned_firm_group, pf_active_firm, overtime_hourly_rate"
       )
       .limit(1);
 
@@ -82,7 +83,7 @@ async function applyMigrationViaPostgres(
     return {
       ok: true,
       message:
-        "Employee schema migrations applied (assigned_from_group, statutory status, firm columns) and PostgREST cache reloaded.",
+        "Employee schema migrations applied (assigned_from_group, statutory status, firm columns, overtime_hourly_rate) and PostgREST cache reloaded.",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Employee schema ensure failed.";

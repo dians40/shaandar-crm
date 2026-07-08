@@ -1187,7 +1187,10 @@ export default function AttendanceControlCenter({
             refreshToken={stagingRefreshToken}
             schemaReady={schemaStatus === "ready" || gridMeta.mergedCount > 0}
             pipelineStageReady={pipelineStageReady}
-            onApproved={() => setWorkflowRefreshToken((token) => token + 1)}
+            onApproved={() => {
+              setWorkflowRefreshToken((token) => token + 1);
+              dispatchAttendancePipelineRefresh();
+            }}
           />
         </div>
       </div>
@@ -1616,7 +1619,10 @@ export default function AttendanceControlCenter({
           refreshToken={stagingRefreshToken}
           schemaReady={schemaStatus === "ready" || gridMeta.mergedCount > 0}
           pipelineStageReady={pipelineStageReady}
-          onApproved={() => setWorkflowRefreshToken((token) => token + 1)}
+          onApproved={() => {
+            setWorkflowRefreshToken((token) => token + 1);
+            dispatchAttendancePipelineRefresh();
+          }}
         />
       </div>
 

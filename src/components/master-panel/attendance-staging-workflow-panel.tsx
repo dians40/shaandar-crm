@@ -20,6 +20,7 @@ import {
 import {
   ATTENDANCE_PIPELINE_REFRESH_EVENT,
   LAYER_2_APPROVAL_OPTIONS,
+  dispatchAttendancePipelineRefresh,
   type PipelineApprovalAction,
 } from "@/lib/attendance-pipeline-approval-ui";
 import {
@@ -226,6 +227,7 @@ export default function AttendanceStagingWorkflowPanel({
         action: "update-department",
         ids: [row.id],
         department,
+        stage: PIPELINE_STAGES.LAYER_2_STAGING,
       });
       setRows((current) =>
         current.map((entry) => (entry.id === row.id ? { ...entry, department } : entry))
@@ -265,6 +267,11 @@ export default function AttendanceStagingWorkflowPanel({
     }
   };
 
+  const refreshPipelineLayers = useCallback(() => {
+    dispatchAttendancePipelineRefresh();
+    onApproved?.();
+  }, [onApproved]);
+
   const handleLayer2Approval = async (row: AttendanceStagingRow, action: PipelineApprovalAction) => {
     if (!action) return;
     setBusyId(row.id);
@@ -284,7 +291,7 @@ export default function AttendanceStagingWorkflowPanel({
       }
       setApprovalSelections((current) => ({ ...current, [row.id]: "" }));
       await loadRows();
-      onApproved?.();
+      refreshPipelineLayers();
     } catch (approvalError) {
       handlePipelineActionError(approvalError);
       setApprovalSelections((current) => ({ ...current, [row.id]: "" }));
@@ -300,7 +307,7 @@ export default function AttendanceStagingWorkflowPanel({
       await postPipelineAction({ action: "approve-staging", ids: [row.id] });
       setMessage(`Approved ${row.employeeName || row.payCode} — moved to Live Workflow (Layer 3).`);
       await loadRows();
-      onApproved?.();
+      refreshPipelineLayers();
     } catch (approveError) {
       handlePipelineActionError(approveError);
     } finally {
@@ -340,7 +347,7 @@ export default function AttendanceStagingWorkflowPanel({
       }
       clearSelection();
       await loadRows();
-      onApproved?.();
+      refreshPipelineLayers();
     } catch (bulkError) {
       handlePipelineActionError(bulkError);
     } finally {
@@ -363,7 +370,7 @@ export default function AttendanceStagingWorkflowPanel({
       const body = await postPipelineAction({ action: "approve-all-staging", ids: pendingIds });
       setMessage(`Moved ${body.transitioned ?? 0} row(s) to Live Workflow (Layer 3).`);
       await loadRows();
-      onApproved?.();
+      refreshPipelineLayers();
     } catch (approveError) {
       handlePipelineActionError(approveError);
     }

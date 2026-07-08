@@ -1,3 +1,6 @@
+import {
+  extractUserRemarkFromPipelineRemark,
+} from "@/lib/pipeline-stage-remark-compat";
 import type {
   AttendanceAuditLogEntry,
   AttendanceStagingRow,
@@ -83,7 +86,7 @@ export function mapGridRowToStagingRow(
     status: "Pending",
     isAnomaly: false,
     anomalyReason: "",
-    editRemark: row.remark,
+    editRemark: extractUserRemarkFromPipelineRemark(row.remark) || row.remark,
     department: row.department || "",
     designation: row.designation || "",
     isLocked: false,

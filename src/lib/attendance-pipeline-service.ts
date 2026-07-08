@@ -29,9 +29,10 @@ import {
   removeOverlayPipelineStages,
   syncOverlayManifestToSql,
   transitionOverlayPipelineStage,
+  type OverlayManifest,
 } from "@/lib/pipeline-stage-overlay-compat";
 import {
-  filterRowsByCompatPipelineStage,
+  filterRowsByEffectivePipelineStage,
   syncRemarkStagesToSql,
   transitionRemarkPipelineStage,
   encodeRemarkPipelineStage,
@@ -73,11 +74,7 @@ async function fetchRowsByPipelineStageSupabase(
     .limit(limit);
 
   if (pipelineColumnReady) {
-    if (stage === PIPELINE_STAGES.LAYER_2_STAGING) {
-      query = query.or(`pipeline_stage.eq.${stage},pipeline_stage.is.null`);
-    } else {
-      query = query.eq("pipeline_stage", stage);
-    }
+    query = query.or(`pipeline_stage.eq.${stage},pipeline_stage.is.null`);
   }
 
   if (normalizedDate) query = query.eq("date", normalizedDate);
@@ -101,20 +98,18 @@ async function fetchRowsByPipelineStageSupabase(
     throw new Error(message);
   }
 
-  const mapped = (data ?? []).map((row) => mapBiometricAttendanceGridRow(row as Record<string, unknown>));
+  const rawRows = (data ?? []) as Record<string, unknown>[];
+  const mapped = rawRows.map((row) => mapBiometricAttendanceGridRow(row));
+  const pairs = rawRows.map((raw, index) => ({ raw, row: mapped[index] }));
 
-  if (!pipelineColumnReady) {
-    try {
-      const manifest = await loadPipelineStageOverlayManifest(supabase);
-      return filterRowsByCompatPipelineStage(manifest, mapped, stage);
-    } catch (error) {
-      console.warn("[pipeline] compat fetch failed:", error);
-      if (stage === PIPELINE_STAGES.LAYER_2_STAGING) return mapped;
-      return [];
-    }
+  let manifest: OverlayManifest = {};
+  try {
+    manifest = await loadPipelineStageOverlayManifest(supabase);
+  } catch (error) {
+    console.warn("[pipeline] overlay manifest load failed:", error);
   }
 
-  return mapped;
+  return filterRowsByEffectivePipelineStage(manifest, pairs, stage, pipelineColumnReady);
 }
 
 async function fetchRowsByPipelineStageStorage(

@@ -45,12 +45,40 @@ export function resolveCompatPipelineStage(
   return INITIAL_INGEST_PIPELINE_STAGE;
 }
 
+/** Unified stage: SQL pipeline_stage when present, else overlay/remark compat encoding. */
+export function resolveEffectivePipelineStage(
+  rawRow: Record<string, unknown> | null | undefined,
+  manifest: OverlayManifest,
+  row: Pick<BiometricAttendanceGridRow, "id" | "remark">,
+  pipelineColumnReady: boolean
+): PipelineStage {
+  if (pipelineColumnReady && rawRow) {
+    const sqlToken = String(rawRow.pipeline_stage ?? rawRow.pipelineStage ?? "").trim();
+    if (sqlToken && isPipelineStage(sqlToken)) return sqlToken;
+  }
+  return resolveCompatPipelineStage(manifest, row);
+}
+
 export function filterRowsByCompatPipelineStage(
   manifest: OverlayManifest,
   rows: BiometricAttendanceGridRow[],
   stage: PipelineStage
 ): BiometricAttendanceGridRow[] {
   return rows.filter((row) => resolveCompatPipelineStage(manifest, row) === stage);
+}
+
+export function filterRowsByEffectivePipelineStage(
+  manifest: OverlayManifest,
+  pairs: Array<{ raw: Record<string, unknown>; row: BiometricAttendanceGridRow }>,
+  stage: PipelineStage,
+  pipelineColumnReady: boolean
+): BiometricAttendanceGridRow[] {
+  return pairs
+    .filter(
+      ({ raw, row }) =>
+        resolveEffectivePipelineStage(raw, manifest, row, pipelineColumnReady) === stage
+    )
+    .map(({ row }) => row);
 }
 
 /** Persist layer transitions in remark when pipeline_stage column and storage overlay are unavailable. */

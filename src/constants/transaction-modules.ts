@@ -16,6 +16,9 @@ export const IMPLEMENTED_TRANSACTION_MODULE_IDS = new Set<MasterPanelModuleId>([
   "journal-entry",
   "inventory-transfer",
   "parts-order",
+  "glass-packing",
+  "dining-packing",
+  "steel-furniture",
 ]);
 
 export type TransactionListColumnLabels = {
@@ -51,6 +54,9 @@ export const TRANSACTION_LIST_COLUMN_LABELS: Partial<
     primaryLabel: "Asset / Vehicle",
     secondaryLabel: "Logged At",
   },
+  "glass-packing": { primaryLabel: "Employee Name", secondaryLabel: "Work Date" },
+  "dining-packing": { primaryLabel: "Employee Name", secondaryLabel: "Work Date" },
+  "steel-furniture": { primaryLabel: "Employee Name", secondaryLabel: "Work Date" },
 };
 
 export function getTransactionListColumnLabels(

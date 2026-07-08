@@ -40,7 +40,7 @@ const PARTS_ITEM_OTHER = "__other_part__";
 
 export default function PartsOrderPanel() {
   const { employees, isLoading: employeesLoading } = useEmployees();
-  const { machineOptions, isReady: settingsReady } = useGeneralSettings();
+  const { departmentOptions, isReady: settingsReady } = useGeneralSettings();
   const { items, isReady: itemsReady } = useItems();
   const { godowns, isReady: godownsReady } = useGodowns();
   const { vehicles, isReady: vehiclesReady } = useVehiclesMaster();
@@ -67,7 +67,7 @@ export default function PartsOrderPanel() {
     [employees]
   );
 
-  const machineSelectOptions = machineOptions;
+  const departmentSelectOptions = departmentOptions;
 
   const partsItemOptions = useMemo(
     () => [
@@ -267,13 +267,13 @@ export default function PartsOrderPanel() {
               placeholder="Select operator"
             />
             <SelectInput
-              label="Machine"
+              label="Department"
               value={form.machineName}
               onChange={(event) =>
                 setForm((prev) => ({ ...prev, machineName: event.target.value }))
               }
-              options={machineSelectOptions}
-              placeholder="Select machine"
+              options={departmentSelectOptions}
+              placeholder="Select department"
             />
             <SelectInput
               label="Parts Item Needed"

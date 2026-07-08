@@ -107,3 +107,6 @@ export const DEFAULT_LOCATION_SEEDS = [
   "Warehouse Bay",
   "Admin Block",
 ];
+
+/** Core department names seeded into the Department master on first load. */
+export const DEFAULT_DEPARTMENT_SEEDS = ["glass packing", "Dinning packing"];

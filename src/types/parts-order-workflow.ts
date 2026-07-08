@@ -120,7 +120,7 @@ export function normalizePartsOrderRecord(
 
 export function validateOperatorRequestForm(form: PartsOrderFormState): string | null {
   if (!form.operatorEmployeeId) return "Operator employee is required.";
-  if (!form.machineName.trim()) return "Machine selection is required.";
+  if (!form.machineName.trim()) return "Department selection is required.";
   if (!form.partsItemNeeded.trim()) return "Parts item needed is required.";
   if (!form.partPhoto.trim()) return "Mandatory part photo upload is required.";
   return null;

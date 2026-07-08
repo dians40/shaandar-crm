@@ -35,6 +35,9 @@ const MASTER_PANEL_PERMISSION_MAP: Partial<Record<MasterPanelModuleId, Permissio
   "vehicle-management-transaction": "vehicle-trips",
   "parts-order": "parts-orders",
   "repair-maintenance": "maintenance-alerts",
+  "glass-packing": "manufacturing",
+  "dining-packing": "manufacturing",
+  "steel-furniture": "manufacturing",
 };
 
 export function getPermissionModuleForMasterPanel(

@@ -31,6 +31,8 @@ import {
   Warehouse,
   Wrench,
   Hammer,
+  Sofa,
+  Wine,
 } from "lucide-react";
 
 export type MasterPanelModuleId =
@@ -66,7 +68,10 @@ export type MasterPanelModuleId =
   | "attendance-biometric-log"
   | "overtime-tracker"
   | "vehicle-management-transaction"
-  | "repair-maintenance";
+  | "repair-maintenance"
+  | "glass-packing"
+  | "dining-packing"
+  | "steel-furniture";
 
 export type MasterPanelModule = {
   id: MasterPanelModuleId;
@@ -369,6 +374,33 @@ const TRANSACTION_MODULES: MasterPanelModule[] = [
     subtitle: "Machine and vehicle repair logging with cost tracking",
     icon: Hammer,
     placeholderMessage: "",
+  },
+  {
+    id: "glass-packing",
+    serial: 32,
+    navLabel: "Glass Packing",
+    title: "Glass Packing",
+    subtitle: "Labor time log and glass packing production calculation",
+    icon: Wine,
+    placeholderMessage: "",
+  },
+  {
+    id: "dining-packing",
+    serial: 33,
+    navLabel: "Dining Packing",
+    title: "Dining Packing",
+    subtitle: "Dining packing labor and production tracking",
+    icon: Package,
+    placeholderMessage: "Dining Packing module coming soon",
+  },
+  {
+    id: "steel-furniture",
+    serial: 34,
+    navLabel: "Steel Furniture",
+    title: "Steel Furniture",
+    subtitle: "Steel furniture production and labor logging",
+    icon: Sofa,
+    placeholderMessage: "Steel Furniture module coming soon",
   },
 ];
 

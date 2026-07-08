@@ -8,6 +8,7 @@ import {
   upsertDepartmentInDb,
 } from "@/lib/department-master-db-store";
 import type { GeneralSettingsRecord } from "@/types/general-settings";
+import { DEFAULT_DEPARTMENT_SEEDS } from "@/types/general-settings";
 
 const DATA_DIR = path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "departments.json");
@@ -27,7 +28,14 @@ async function writeJsonFallback(departments: GeneralSettingsRecord[]): Promise<
   await fs.writeFile(DATA_FILE, JSON.stringify(departments, null, 2), "utf-8");
 }
 
+async function ensureDefaultDepartmentSeeds(): Promise<void> {
+  for (const name of DEFAULT_DEPARTMENT_SEEDS) {
+    await upsertDepartmentServer(name);
+  }
+}
+
 export async function readDepartmentsServer(): Promise<GeneralSettingsRecord[]> {
+  await ensureDefaultDepartmentSeeds();
   if (await isDepartmentMasterDbAvailable()) {
     return readDepartmentsFromDb();
   }

@@ -41,6 +41,9 @@ import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 import BiometricAttendanceRecordsPanel from "./biometric-attendance-records-panel";
 import VehicleManagementTransactionPanel from "./vehicle-management-transaction-panel";
 import RepairMaintenancePanel from "./repair-maintenance-panel";
+import GlassPackingPanel from "./glass-packing-panel";
+import DiningPackingPanel from "./dining-packing-panel";
+import SteelFurniturePanel from "./steel-furniture-panel";
 import TransactionPlaceholderPanel from "./transaction-placeholder-panel";
 import UnitConversionManagementPanel from "./unit-conversion-management-panel";
 import UnitsManagementPanel from "./units-management-panel";
@@ -271,6 +274,12 @@ function MasterPanelContent({ scope }: MasterPanelContentProps) {
           return <VehicleManagementTransactionPanel />;
         case "repair-maintenance":
           return <RepairMaintenancePanel />;
+        case "glass-packing":
+          return <GlassPackingPanel />;
+        case "dining-packing":
+          return <DiningPackingPanel />;
+        case "steel-furniture":
+          return <SteelFurniturePanel />;
         case "sales-dispatch":
           return (
             <InventoryVoucherPanel config={INVENTORY_VOUCHER_CONFIGS["sales-dispatch"]} />

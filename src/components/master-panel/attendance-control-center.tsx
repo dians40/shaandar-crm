@@ -207,14 +207,17 @@ export default function AttendanceControlCenter({
     Record<string, PipelineApprovalAction>
   >({});
   const [activeLayer4RowId, setActiveLayer4RowId] = useState<string | null>(null);
-  const { departmentNames } = useGeneralSettings();
+  const { departmentNames, designationNames } = useGeneralSettings();
 
   const filterDepartmentOptions = useMemo(
     () => mergeDepartmentOptions([], departmentNames),
     [departmentNames]
   );
 
-  const filterDesignationOptions = useMemo(() => mergeDesignationOptions([]), []);
+  const filterDesignationOptions = useMemo(
+    () => mergeDesignationOptions([], designationNames),
+    [designationNames]
+  );
 
   const resetPanelState = useCallback(() => {
     setImportPreview(null);

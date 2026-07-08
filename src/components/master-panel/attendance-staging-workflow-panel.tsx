@@ -80,7 +80,7 @@ export default function AttendanceStagingWorkflowPanel({
   const [bulkBusy, setBulkBusy] = useState(false);
   const [approvalSelections, setApprovalSelections] = useState<Record<string, PipelineApprovalAction>>({});
   const [manualLogRefresh, setManualLogRefresh] = useState(0);
-  const { departmentNames } = useGeneralSettings();
+  const { departmentNames, designationNames } = useGeneralSettings();
 
   const filterResetKey = `${fromDate}|${toDate}|${searchQuery}|${departmentFilter}|${designationFilter}|${refreshToken}`;
   const { selectedRowIds, toggleRow, clearSelection, getSelectionState } =
@@ -128,7 +128,10 @@ export default function AttendanceStagingWorkflowPanel({
     [departmentNames]
   );
 
-  const filterDesignationOptions = useMemo(() => mergeDesignationOptions([]), []);
+  const filterDesignationOptions = useMemo(
+    () => mergeDesignationOptions([], designationNames),
+    [designationNames]
+  );
 
   useEffect(() => {
     void loadRows();
@@ -157,9 +160,9 @@ export default function AttendanceStagingWorkflowPanel({
   const designationOptions = useMemo(() => {
     void manualLogRefresh;
     return mergeManualEntryNamesIntoOptions(
-      mergeDesignationOptions(rows.map((row) => row.designation))
+      mergeDesignationOptions(rows.map((row) => row.designation), designationNames)
     );
-  }, [rows, manualLogRefresh]);
+  }, [rows, manualLogRefresh, designationNames]);
 
   const postPipelineAction = async (payload: Record<string, unknown>) => {
     const response = await fetch("/api/v1/attendance/pipeline", {

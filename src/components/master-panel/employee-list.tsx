@@ -59,14 +59,17 @@ export default function EmployeeList({
   const [actionError, setActionError] = useState<string | null>(null);
   const { checkUsedInTransactions } = useMasterDeletionGuard();
 
-  const { departmentNames } = useGeneralSettings();
+  const { departmentNames, designationNames } = useGeneralSettings();
 
   const departmentOptions = useMemo(
     () => mergeDepartmentOptions([], departmentNames),
     [departmentNames]
   );
 
-  const designationOptions = useMemo(() => mergeDesignationOptions([]), []);
+  const designationOptions = useMemo(
+    () => mergeDesignationOptions([], designationNames),
+    [designationNames]
+  );
 
   const filteredEmployees = useMemo(
     () =>

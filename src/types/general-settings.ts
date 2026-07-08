@@ -45,6 +45,7 @@ export type GeneralSettingsSubMaster =
   | "contractors"
   | "employee-types"
   | "departments"
+  | "designations"
   | "locations"
   | "overtime-reasons";
 
@@ -67,6 +68,11 @@ export const GENERAL_SETTINGS_SUB_TABS: Array<{
     id: "departments",
     label: "Department",
     description: "Dynamic department registry auto-synced from attendance labour import — add or remove entries manually.",
+  },
+  {
+    id: "designations",
+    label: "Designation",
+    description: "Manage job designations used in attendance, employee records, and master list filters.",
   },
   {
     id: "locations",
@@ -109,4 +115,29 @@ export const DEFAULT_LOCATION_SEEDS = [
 ];
 
 /** Core department names seeded into the Department master on first load. */
-export const DEFAULT_DEPARTMENT_SEEDS = ["glass packing", "Dinning packing"];
+export const DEFAULT_DEPARTMENT_SEEDS = [
+  "Production",
+  "Accounts",
+  "HR",
+  "Quality",
+  "Glass Packing",
+  "Dining Packing",
+  "Maintenance",
+  "Admin",
+  "glass packing",
+  "Dinning packing",
+];
+
+/** Core designation names seeded into the Designation master on first load. */
+export const DEFAULT_DESIGNATION_SEEDS = [
+  "Operator",
+  "Supervisor",
+  "Manager",
+  "Helper",
+  "Accountant",
+  "Technician",
+  "HR Executive",
+  "Security Guard",
+  "Driver",
+  "Other",
+];

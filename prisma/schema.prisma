@@ -131,3 +131,14 @@ model CrmDepartment {
   @@index([name], map: "idx_crm_departments_name_lower")
   @@map("crm_departments")
 }
+
+/// Dynamic Designation Master — managed in General Settings.
+model CrmDesignation {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([name], map: "idx_crm_designations_name_lower")
+  @@map("crm_designations")
+}

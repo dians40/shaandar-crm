@@ -114,7 +114,7 @@ export function UniversalMasterListShell({
   headerExtra,
   showDepartmentDesignationFilters = true,
 }: ShellProps) {
-  const { departmentNames } = useGeneralSettings();
+  const { departmentNames, designationNames } = useGeneralSettings();
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [designationFilter, setDesignationFilter] = useState("");
 
@@ -123,7 +123,10 @@ export function UniversalMasterListShell({
     [departmentNames]
   );
 
-  const designationOptions = useMemo(() => mergeDesignationOptions([]), []);
+  const designationOptions = useMemo(
+    () => mergeDesignationOptions([], designationNames),
+    [designationNames]
+  );
 
   const filterContext = useMemo<MasterListFilterState>(
     () => ({

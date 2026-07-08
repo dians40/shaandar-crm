@@ -66,6 +66,15 @@ export default function GeneralSettingsManagementPanel() {
           updateRecord: (id, name) => settings.updateRecord("departments", id, name),
           removeRecord: (id) => settings.removeRecord("departments", id),
         };
+      case "designations":
+        return {
+          key: "designations",
+          singularLabel: "Designation",
+          records: settings.designations,
+          addRecord: (name) => settings.addRecord("designations", name),
+          updateRecord: (id, name) => settings.updateRecord("designations", id, name),
+          removeRecord: (id) => settings.removeRecord("designations", id),
+        };
       case "locations":
         return {
           key: "locations",
@@ -349,7 +358,7 @@ function GeneralSettingsListBody({
                 }}
                 className={cn(
                   "rounded-full border px-3 py-1 text-xs font-medium",
-                  activeSubMaster === "departments"
+                  activeSubMaster === "departments" || activeSubMaster === "designations"
                     ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
                     : "border-red-200 text-red-600"
                 )}

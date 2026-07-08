@@ -8,6 +8,12 @@ import {
   upsertDepartmentOnServer,
 } from "@/lib/department-master-client";
 import {
+  DESIGNATION_MASTER_REFRESH_EVENT,
+  deleteDesignationOnServer,
+  fetchDesignationsFromServer,
+  upsertDesignationOnServer,
+} from "@/lib/designation-master-client";
+import {
   DEFAULT_CONTRACTOR_SEEDS,
   DEFAULT_EMPLOYEE_TYPE_SEEDS,
   DEFAULT_LOCATION_SEEDS,
@@ -90,7 +96,7 @@ function writeStore(store: GeneralSettingsStore) {
   window.localStorage.setItem(GENERAL_SETTINGS_STORAGE_KEY, JSON.stringify(store));
 }
 
-type SubMasterKey = keyof GeneralSettingsStore | "departments";
+type SubMasterKey = keyof GeneralSettingsStore | "departments" | "designations";
 
 function toSelectOptions(records: GeneralSettingsRecord[]) {
   return records.map((record) => ({ value: record.name, label: record.name }));
@@ -99,12 +105,20 @@ function toSelectOptions(records: GeneralSettingsRecord[]) {
 export function useGeneralSettings() {
   const [store, setStore] = useState<GeneralSettingsStore>(defaultStore());
   const [departments, setDepartments] = useState<GeneralSettingsRecord[]>([]);
+  const [designations, setDesignations] = useState<GeneralSettingsRecord[]>([]);
   const [isReady, setIsReady] = useState(false);
 
   const reloadDepartments = useCallback(async () => {
     const serverDepartments = await fetchDepartmentsFromServer();
     if (serverDepartments !== null) {
       setDepartments(serverDepartments);
+    }
+  }, []);
+
+  const reloadDesignations = useCallback(async () => {
+    const serverDesignations = await fetchDesignationsFromServer();
+    if (serverDesignations !== null) {
+      setDesignations(serverDesignations);
     }
   }, []);
 
@@ -115,7 +129,7 @@ export function useGeneralSettings() {
       if (typeof window !== "undefined" && !window.localStorage.getItem(GENERAL_SETTINGS_STORAGE_KEY)) {
         writeStore(loaded);
       }
-      await reloadDepartments();
+      await Promise.all([reloadDepartments(), reloadDesignations()]);
       setIsReady(true);
     };
 
@@ -129,14 +143,19 @@ export function useGeneralSettings() {
     const onDepartmentRefresh = () => {
       void reloadDepartments();
     };
+    const onDesignationRefresh = () => {
+      void reloadDesignations();
+    };
 
     window.addEventListener("storage", onStorage);
     window.addEventListener(DEPARTMENT_MASTER_REFRESH_EVENT, onDepartmentRefresh);
+    window.addEventListener(DESIGNATION_MASTER_REFRESH_EVENT, onDesignationRefresh);
     return () => {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener(DEPARTMENT_MASTER_REFRESH_EVENT, onDepartmentRefresh);
+      window.removeEventListener(DESIGNATION_MASTER_REFRESH_EVENT, onDesignationRefresh);
     };
-  }, [reloadDepartments]);
+  }, [reloadDepartments, reloadDesignations]);
 
   const persist = useCallback((next: GeneralSettingsStore) => {
     setStore(next);
@@ -158,6 +177,11 @@ export function useGeneralSettings() {
     [departments]
   );
 
+  const designationOptions = useMemo(
+    () => toSelectOptions(designations),
+    [designations]
+  );
+
   const contractorNames = useMemo(
     () => store.contractors.map((row) => row.name),
     [store.contractors]
@@ -171,6 +195,11 @@ export function useGeneralSettings() {
   const departmentNames = useMemo(
     () => departments.map((row) => row.name),
     [departments]
+  );
+
+  const designationNames = useMemo(
+    () => designations.map((row) => row.name),
+    [designations]
   );
 
   const locationOptions = useMemo(
@@ -199,6 +228,14 @@ export function useGeneralSettings() {
         const result = await upsertDepartmentOnServer(name);
         if (result.ok) {
           setDepartments(result.departments);
+        }
+        return;
+      }
+
+      if (key === "designations") {
+        const result = await upsertDesignationOnServer(name);
+        if (result.ok) {
+          setDesignations(result.designations);
         }
         return;
       }
@@ -232,6 +269,17 @@ export function useGeneralSettings() {
         return;
       }
 
+      if (key === "designations") {
+        const existing = designations.find((row) => row.id === id);
+        if (!existing) return;
+        await deleteDesignationOnServer(id);
+        const result = await upsertDesignationOnServer(name);
+        if (result.ok) {
+          setDesignations(result.designations);
+        }
+        return;
+      }
+
       const current = readStore();
       persist({
         ...current,
@@ -248,7 +296,7 @@ export function useGeneralSettings() {
         ),
       });
     },
-    [departments, persist]
+    [departments, designations, persist]
   );
 
   const removeRecord = useCallback(
@@ -257,6 +305,14 @@ export function useGeneralSettings() {
         const result = await deleteDepartmentOnServer(id);
         if (result.ok) {
           setDepartments(result.departments);
+        }
+        return;
+      }
+
+      if (key === "designations") {
+        const result = await deleteDesignationOnServer(id);
+        if (result.ok) {
+          setDesignations(result.designations);
         }
         return;
       }
@@ -274,16 +330,19 @@ export function useGeneralSettings() {
     contractors: store.contractors,
     employeeTypes: store.employeeTypes,
     departments,
+    designations,
     locations: store.locations,
     overtimeReasons: store.overtimeReasons,
     contractorOptions,
     employeeTypeOptions,
     departmentOptions,
+    designationOptions,
     locationOptions,
     overtimeReasonOptions,
     contractorNames,
     employeeTypeNames,
     departmentNames,
+    designationNames,
     locationNames,
     overtimeReasonNames,
     machines: departments,
@@ -294,5 +353,6 @@ export function useGeneralSettings() {
     updateRecord,
     removeRecord,
     reloadDepartments,
+    reloadDesignations,
   };
 }

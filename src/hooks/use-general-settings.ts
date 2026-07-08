@@ -2,8 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  DEPARTMENT_MASTER_REFRESH_EVENT,
+  deleteDepartmentOnServer,
+  fetchDepartmentsFromServer,
+  upsertDepartmentOnServer,
+} from "@/lib/department-master-client";
+import {
   DEFAULT_CONTRACTOR_SEEDS,
-  DEFAULT_DEPARTMENT_SEEDS,
   DEFAULT_EMPLOYEE_TYPE_SEEDS,
   DEFAULT_OVERTIME_REASON_SEEDS,
   normalizeGeneralSettingsRecord,
@@ -15,13 +20,12 @@ export const GENERAL_SETTINGS_STORAGE_KEY = "shaandar-crm-general-settings";
 type GeneralSettingsStore = {
   contractors: GeneralSettingsRecord[];
   employeeTypes: GeneralSettingsRecord[];
-  departments: GeneralSettingsRecord[];
   overtimeReasons: GeneralSettingsRecord[];
 };
 
-type LegacyGeneralSettingsStore = Partial<GeneralSettingsStore> & {
-  machines?: GeneralSettingsRecord[];
-};
+type LegacyGeneralSettingsStore = Partial<
+  GeneralSettingsStore & { departments?: GeneralSettingsRecord[]; machines?: GeneralSettingsRecord[] }
+>;
 
 function createSeedRecords(names: string[], prefix: string): GeneralSettingsRecord[] {
   const now = new Date().toISOString();
@@ -39,7 +43,6 @@ function defaultStore(): GeneralSettingsStore {
   return {
     contractors: createSeedRecords(DEFAULT_CONTRACTOR_SEEDS, "contractor"),
     employeeTypes: createSeedRecords(DEFAULT_EMPLOYEE_TYPE_SEEDS, "employee-type"),
-    departments: createSeedRecords(DEFAULT_DEPARTMENT_SEEDS, "department"),
     overtimeReasons: createSeedRecords(DEFAULT_OVERTIME_REASON_SEEDS, "overtime-reason"),
   };
 }
@@ -60,7 +63,6 @@ function readStore(): GeneralSettingsStore {
     if (!raw) return defaultStore();
     const parsed = JSON.parse(raw) as LegacyGeneralSettingsStore;
     const defaults = defaultStore();
-    const departments = normalizeRecordList(parsed.departments);
     return {
       contractors: normalizeRecordList(parsed.contractors).length
         ? normalizeRecordList(parsed.contractors)
@@ -68,7 +70,6 @@ function readStore(): GeneralSettingsStore {
       employeeTypes: normalizeRecordList(parsed.employeeTypes).length
         ? normalizeRecordList(parsed.employeeTypes)
         : defaults.employeeTypes,
-      departments: departments.length ? departments : defaults.departments,
       overtimeReasons: normalizeRecordList(parsed.overtimeReasons).length
         ? normalizeRecordList(parsed.overtimeReasons)
         : defaults.overtimeReasons,
@@ -83,7 +84,7 @@ function writeStore(store: GeneralSettingsStore) {
   window.localStorage.setItem(GENERAL_SETTINGS_STORAGE_KEY, JSON.stringify(store));
 }
 
-type SubMasterKey = keyof GeneralSettingsStore;
+type SubMasterKey = keyof GeneralSettingsStore | "departments";
 
 function toSelectOptions(records: GeneralSettingsRecord[]) {
   return records.map((record) => ({ value: record.name, label: record.name }));
@@ -91,28 +92,45 @@ function toSelectOptions(records: GeneralSettingsRecord[]) {
 
 export function useGeneralSettings() {
   const [store, setStore] = useState<GeneralSettingsStore>(defaultStore());
+  const [departments, setDepartments] = useState<GeneralSettingsRecord[]>([]);
   const [isReady, setIsReady] = useState(false);
 
+  const reloadDepartments = useCallback(async () => {
+    const serverDepartments = await fetchDepartmentsFromServer();
+    if (serverDepartments !== null) {
+      setDepartments(serverDepartments);
+    }
+  }, []);
+
   useEffect(() => {
-    const load = () => {
+    const load = async () => {
       const loaded = readStore();
       setStore(loaded);
       if (typeof window !== "undefined" && !window.localStorage.getItem(GENERAL_SETTINGS_STORAGE_KEY)) {
         writeStore(loaded);
       }
+      await reloadDepartments();
       setIsReady(true);
     };
 
-    load();
+    void load();
 
     const onStorage = (event: StorageEvent) => {
       if (event.key === GENERAL_SETTINGS_STORAGE_KEY) {
-        load();
+        setStore(readStore());
       }
     };
+    const onDepartmentRefresh = () => {
+      void reloadDepartments();
+    };
+
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+    window.addEventListener(DEPARTMENT_MASTER_REFRESH_EVENT, onDepartmentRefresh);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(DEPARTMENT_MASTER_REFRESH_EVENT, onDepartmentRefresh);
+    };
+  }, [reloadDepartments]);
 
   const persist = useCallback((next: GeneralSettingsStore) => {
     setStore(next);
@@ -130,8 +148,8 @@ export function useGeneralSettings() {
   );
 
   const departmentOptions = useMemo(
-    () => toSelectOptions(store.departments),
-    [store.departments]
+    () => toSelectOptions(departments),
+    [departments]
   );
 
   const contractorNames = useMemo(
@@ -145,8 +163,8 @@ export function useGeneralSettings() {
   );
 
   const departmentNames = useMemo(
-    () => store.departments.map((row) => row.name),
-    [store.departments]
+    () => departments.map((row) => row.name),
+    [departments]
   );
 
   const overtimeReasonOptions = useMemo(
@@ -160,7 +178,15 @@ export function useGeneralSettings() {
   );
 
   const addRecord = useCallback(
-    (key: SubMasterKey, name: string) => {
+    async (key: SubMasterKey, name: string): Promise<void> => {
+      if (key === "departments") {
+        const result = await upsertDepartmentOnServer(name);
+        if (result.ok) {
+          setDepartments(result.departments);
+        }
+        return;
+      }
+
       const now = new Date().toISOString();
       const record = normalizeGeneralSettingsRecord({
         id: `${key}-${Date.now()}`,
@@ -171,19 +197,29 @@ export function useGeneralSettings() {
       const current = readStore();
       persist({
         ...current,
-        [key]: [record, ...current[key]],
+        [key]: [record, ...(current[key as keyof GeneralSettingsStore] ?? [])],
       });
-      return record;
     },
     [persist]
   );
 
   const updateRecord = useCallback(
-    (key: SubMasterKey, id: string, name: string) => {
+    async (key: SubMasterKey, id: string, name: string): Promise<void> => {
+      if (key === "departments") {
+        const existing = departments.find((row) => row.id === id);
+        if (!existing) return;
+        await deleteDepartmentOnServer(id);
+        const result = await upsertDepartmentOnServer(name);
+        if (result.ok) {
+          setDepartments(result.departments);
+        }
+        return;
+      }
+
       const current = readStore();
       persist({
         ...current,
-        [key]: current[key].map((row) =>
+        [key]: current[key as keyof GeneralSettingsStore].map((row) =>
           row.id === id
             ? normalizeGeneralSettingsRecord({
                 ...row,
@@ -196,15 +232,23 @@ export function useGeneralSettings() {
         ),
       });
     },
-    [persist]
+    [departments, persist]
   );
 
   const removeRecord = useCallback(
-    (key: SubMasterKey, id: string) => {
+    async (key: SubMasterKey, id: string): Promise<void> => {
+      if (key === "departments") {
+        const result = await deleteDepartmentOnServer(id);
+        if (result.ok) {
+          setDepartments(result.departments);
+        }
+        return;
+      }
+
       const current = readStore();
       persist({
         ...current,
-        [key]: current[key].filter((row) => row.id !== id),
+        [key]: current[key as keyof GeneralSettingsStore].filter((row) => row.id !== id),
       });
     },
     [persist]
@@ -213,7 +257,7 @@ export function useGeneralSettings() {
   return {
     contractors: store.contractors,
     employeeTypes: store.employeeTypes,
-    departments: store.departments,
+    departments,
     overtimeReasons: store.overtimeReasons,
     contractorOptions,
     employeeTypeOptions,
@@ -223,15 +267,13 @@ export function useGeneralSettings() {
     employeeTypeNames,
     departmentNames,
     overtimeReasonNames,
-    /** @deprecated Use departmentOptions — Machine Master renamed to Department. */
-    machines: store.departments,
-    /** @deprecated Use departmentOptions — Machine Master renamed to Department. */
+    machines: departments,
     machineOptions: departmentOptions,
-    /** @deprecated Use departmentNames — Machine Master renamed to Department. */
     machineNames: departmentNames,
     isReady,
     addRecord,
     updateRecord,
     removeRecord,
+    reloadDepartments,
   };
 }

@@ -19,6 +19,7 @@ import {
   persistSavedRow,
   persistSavedRows,
 } from "@/lib/attendance-pipeline-service";
+import { autoSyncDepartmentName } from "@/lib/department-master-sync";
 import { isPipelineStage, PIPELINE_STAGES } from "@/types/attendance-pipeline";
 
 export async function GET(request: Request) {
@@ -105,6 +106,7 @@ export async function POST(request: Request) {
       const stageParam = String(body.stage ?? PIPELINE_STAGES.LAYER_2_STAGING);
       const stage = isPipelineStage(stageParam) ? stageParam : PIPELINE_STAGES.LAYER_2_STAGING;
       const result = await updatePipelineRowFields({ ids, stage, department });
+      await autoSyncDepartmentName(department);
       return NextResponse.json({ ok: true, ...result });
     }
 
@@ -130,6 +132,9 @@ export async function POST(request: Request) {
         department: body.department ? String(body.department) : undefined,
         designation: body.designation ? String(body.designation) : undefined,
       });
+      if (body.department) {
+        await autoSyncDepartmentName(String(body.department));
+      }
       return NextResponse.json({ ok: true, ...result });
     }
 

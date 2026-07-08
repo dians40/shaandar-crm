@@ -41,8 +41,6 @@ export function validateGeneralSettingsName(
   return null;
 }
 
-import { DEFAULT_DEPARTMENT_OPTIONS } from "@/lib/attendance-department-options";
-
 export type GeneralSettingsSubMaster =
   | "contractors"
   | "employee-types"
@@ -67,7 +65,7 @@ export const GENERAL_SETTINGS_SUB_TABS: Array<{
   {
     id: "departments",
     label: "Department",
-    description: "Manage department labels synced with labour import and attendance workflow dropdowns.",
+    description: "Dynamic department registry auto-synced from attendance labour import — add or remove entries manually.",
   },
   {
     id: "overtime-reasons",
@@ -90,9 +88,6 @@ export const DEFAULT_EMPLOYEE_TYPE_SEEDS = [
   "Contractor",
   "Temporary",
 ];
-
-/** Same defaults as labour import / attendance bulk import department dropdown. */
-export const DEFAULT_DEPARTMENT_SEEDS = [...DEFAULT_DEPARTMENT_OPTIONS];
 
 export const DEFAULT_OVERTIME_REASON_SEEDS = [
   "Extra Power",

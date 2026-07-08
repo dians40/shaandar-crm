@@ -30,9 +30,9 @@ type SubMasterConfig = {
   key: GeneralSettingsSubMaster;
   singularLabel: string;
   records: GeneralSettingsRecord[];
-  addRecord: (name: string) => void;
-  updateRecord: (id: string, name: string) => void;
-  removeRecord: (id: string) => void;
+  addRecord: (name: string) => void | Promise<void>;
+  updateRecord: (id: string, name: string) => void | Promise<void>;
+  removeRecord: (id: string) => void | Promise<void>;
 };
 
 export default function GeneralSettingsManagementPanel() {
@@ -110,7 +110,7 @@ export default function GeneralSettingsManagementPanel() {
     setView("edit");
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const editingName = editingId
       ? subMasterConfig.records.find((row) => row.id === editingId)?.name
       : undefined;
@@ -125,9 +125,9 @@ export default function GeneralSettingsManagementPanel() {
     }
 
     if (view === "edit" && editingId) {
-      subMasterConfig.updateRecord(editingId, form.name);
+      await subMasterConfig.updateRecord(editingId, form.name);
     } else {
-      subMasterConfig.addRecord(form.name);
+      await subMasterConfig.addRecord(form.name);
     }
     resetForm();
     setView("list");
@@ -231,7 +231,7 @@ export default function GeneralSettingsManagementPanel() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={handleSave}
+                onClick={() => void handleSave()}
                 className="rounded-full bg-corporate-brand px-5 py-2 text-sm font-medium text-white"
               >
                 Save

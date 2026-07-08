@@ -24,6 +24,7 @@ import {
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
 import { isPrismaConfigured } from "@/lib/prisma";
+import { autoSyncDepartmentsFromAttendanceRows } from "@/lib/department-master-sync";
 import type { AttendanceBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
 import type { Prisma } from "@prisma/client";
 
@@ -325,6 +326,15 @@ export async function POST(request: Request) {
       ? ` (${mergeInserted} new, ${mergePatched} evening merge${mergeSkipped > 0 ? `, ${mergeSkipped} unchanged` : ""})`
       : "";
 
+  let departmentsSynced = 0;
+  try {
+    departmentsSynced = await autoSyncDepartmentsFromAttendanceRows(
+      normalizedRows as Array<{ department?: unknown }>
+    );
+  } catch (syncError) {
+    console.warn("[bulk-import] department master auto-sync failed:", syncError);
+  }
+
   if (!supabaseConfigured) {
     return NextResponse.json({
       ok: true,
@@ -336,6 +346,7 @@ export async function POST(request: Request) {
       mergeInserted,
       mergePatched,
       mergeSkipped,
+      departmentsSynced,
       errors: rowErrors,
       records,
     });
@@ -358,6 +369,7 @@ export async function POST(request: Request) {
     mergeInserted,
     mergePatched,
     mergeSkipped,
+    departmentsSynced,
     savedReportDate,
     errors: rowErrors.slice(0, 20),
     records,

@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
+import { dispatchDepartmentMasterRefresh } from "@/lib/department-master-client";
 import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
 import { useGeneralSettings } from "@/hooks/use-general-settings";
 import {
@@ -145,6 +146,7 @@ export default function AttendanceStagingWorkflowPanel({
         current.map((entry) => (entry.id === row.id ? { ...entry, department } : entry))
       );
       setMessage(`Department updated for ${row.employeeName || row.payCode}.`);
+      dispatchDepartmentMasterRefresh();
     } catch (departmentError) {
       setError(
         departmentError instanceof Error ? departmentError.message : "Department update failed."

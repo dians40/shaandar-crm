@@ -1,20 +1,12 @@
-export const DEFAULT_DEPARTMENT_OPTIONS = [
-  "Production",
-  "HR",
-  "Administration",
-  "Finance",
-  "Maintenance",
-  "Security",
-  "Logistics",
-  "Quality Control",
-  "Other",
-] as const;
-
 export function mergeDepartmentOptions(
   existing: string[],
-  masterDepartments: readonly string[] = DEFAULT_DEPARTMENT_OPTIONS
+  masterDepartments: readonly string[] = []
 ): string[] {
-  const set = new Set<string>(masterDepartments);
+  const set = new Set<string>();
+  for (const value of masterDepartments) {
+    const token = value.trim();
+    if (token) set.add(token);
+  }
   for (const value of existing) {
     const token = value.trim();
     if (token) set.add(token);

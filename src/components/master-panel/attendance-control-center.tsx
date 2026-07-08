@@ -59,6 +59,7 @@ import {
   MASTER_LIST_TABLE_WRAPPER_CLASS,
 } from "./universal-master-list";
 import { gridRowToUploadRecord } from "@/lib/attendance-upload-record-mapper";
+import { dispatchDepartmentMasterRefresh } from "@/lib/department-master-client";
 import type { RestrictedAttendanceMode } from "@/types/auth-session";
 
 type ImportPreviewState = {
@@ -654,6 +655,7 @@ export default function AttendanceControlCenter({
         savedLocallyOnly,
       });
       setSaveStatus("saved");
+      dispatchDepartmentMasterRefresh();
 
       setImportMessage(
         savedLocallyOnly

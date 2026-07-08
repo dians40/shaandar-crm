@@ -120,3 +120,14 @@ model CrmManagedUser {
   @@index([pipelineStage], map: "idx_crm_managed_users_pipeline_stage")
   @@map("crm_managed_users")
 }
+
+/// Dynamic Department Master — auto-synced from attendance labour import.
+model CrmDepartment {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@index([name], map: "idx_crm_departments_name_lower")
+  @@map("crm_departments")
+}

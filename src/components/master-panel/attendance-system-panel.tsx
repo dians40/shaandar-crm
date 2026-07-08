@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CalendarCheck, CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
+import { dispatchDepartmentMasterRefresh } from "@/lib/department-master-client";
 import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
 import { useGeneralSettings } from "@/hooks/use-general-settings";
 import {
@@ -136,6 +137,9 @@ export default function AttendanceSystemPanel({
         current.map((entry) => (entry.id === row.id ? { ...entry, [field]: value } : entry))
       );
       setMessage(`${field === "department" ? "Department" : "Designation"} updated for ${row.employeeName || row.payCode}.`);
+      if (field === "department") {
+        dispatchDepartmentMasterRefresh();
+      }
     } catch (fieldError) {
       setError(fieldError instanceof Error ? fieldError.message : "Field update failed.");
     } finally {

@@ -217,7 +217,16 @@ export default function EmployeeBioDataCard({
               value={basic.assignedFromGroup}
             />
             <DetailRow label="ESI Status" value={employee.bankAndSalary.esiStatus} />
+            {employee.bankAndSalary.esiStatus === "Active" && (
+              <DetailRow
+                label="Firm / Head Profile"
+                value={employee.bankAndSalary.firmHeadProfile}
+              />
+            )}
             <DetailRow label="PF Status" value={employee.bankAndSalary.pfStatus} />
+            {employee.bankAndSalary.pfStatus === "Active" && (
+              <DetailRow label="PF Active Firm" value={employee.bankAndSalary.pfFirm} />
+            )}
             <DetailRow
               label="Assigned Department"
               value={employee.workAssignment.machineAssignment}

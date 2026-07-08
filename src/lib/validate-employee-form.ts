@@ -1,4 +1,5 @@
 import type { BasicInformation, BankAndSalary } from "@/types/employee-form";
+import { isStatutoryActive } from "@/lib/statutory-status";
 
 export type BasicInformationField =
   | "name"
@@ -8,7 +9,11 @@ export type BasicInformationField =
   | "gender"
   | "assignedFromGroup";
 
-export type BankAndSalaryField = "esiStatus" | "pfStatus";
+export type BankAndSalaryField =
+  | "esiStatus"
+  | "pfStatus"
+  | "firmHeadProfile"
+  | "pfFirm";
 
 export type BasicInformationErrors = Partial<
   Record<BasicInformationField, string>
@@ -60,6 +65,15 @@ export function validateBankAndSalary(data: BankAndSalary): BankAndSalaryErrors 
 
   if (!data.pfStatus) {
     errors.pfStatus = "PF Status is required.";
+  }
+
+  if (isStatutoryActive(data.esiStatus) && !data.firmHeadProfile) {
+    errors.firmHeadProfile =
+      "Firm / Head Profile is required when ESI status is Active.";
+  }
+
+  if (isStatutoryActive(data.pfStatus) && !data.pfFirm) {
+    errors.pfFirm = "PF Firm selection is required when PF status is Active.";
   }
 
   return errors;

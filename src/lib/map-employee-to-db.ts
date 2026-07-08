@@ -119,6 +119,8 @@ export function mapFormToEmployeeInsert(
     worked_days: parseAmount(bank.workedDays),
     esi_status: bank.esiStatus || null,
     pf_status: bank.pfStatus || null,
+    firm_head_profile: bank.firmHeadProfile.trim() || null,
+    pf_firm: bank.pfFirm.trim() || null,
     fooding_allowance: bank.foodingAllowance || null,
     contract_packing: {
       itemName: bank.contractPacking.itemName,
@@ -245,6 +247,8 @@ export function mapEmployeeRowToFormData(row: EmployeeRow): EmployeeFormData {
       workedDays: amountToString(row.worked_days),
       esiStatus: parseStatutoryStatusFromDb(row.esi_status, row.esi_enabled),
       pfStatus: parseStatutoryStatusFromDb(row.pf_status, row.pf_enabled),
+      firmHeadProfile: (row.firm_head_profile ?? "") as EmployeeFormData["bankAndSalary"]["firmHeadProfile"],
+      pfFirm: (row.pf_firm ?? "") as EmployeeFormData["bankAndSalary"]["pfFirm"],
       foodingAllowance: (row.fooding_allowance ?? "") as EmployeeFormData["bankAndSalary"]["foodingAllowance"],
       contractPacking: {
         itemName: row.contract_packing?.itemName ?? "",

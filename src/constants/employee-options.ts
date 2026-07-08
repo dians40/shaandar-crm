@@ -74,6 +74,28 @@ export const ASSIGNED_FIRM_OPTIONS = [
 
 export type AssignedFirm = (typeof ASSIGNED_FIRM_OPTIONS)[number];
 
+export const FIRM_HEAD_PROFILE_OPTIONS = [
+  "Krishna Food Product",
+  "Mehak Industries",
+  "KFP Abhay Mishra",
+  "KFP Dipankar Kalita",
+  "KFP Lalit Lakhotia",
+  "KFP Hazir Ali",
+  "MI Hazir Ali",
+  "MI Lalit Lakhotia",
+  "MI Dipankar Kalita",
+  "MI Abhay Kumar Mishra",
+] as const;
+
+export type FirmHeadProfile = (typeof FIRM_HEAD_PROFILE_OPTIONS)[number];
+
+export const PF_FIRM_OPTIONS = [
+  "Krishna Food Products",
+  "Mehak Industries",
+] as const;
+
+export type PfFirm = (typeof PF_FIRM_OPTIONS)[number];
+
 export const FORM_SECTIONS = [
   { id: "basic" as const, label: "Basic Information", shortLabel: "Basic" },
   { id: "work" as const, label: "Work & Machine", shortLabel: "Work" },

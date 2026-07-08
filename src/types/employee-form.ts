@@ -9,6 +9,20 @@ export type SalaryBasis =
 
 export type AssignedFirm = "Krishna Food Product" | "MAHEK Industries";
 
+export type FirmHeadProfile =
+  | "Krishna Food Product"
+  | "Mehak Industries"
+  | "KFP Abhay Mishra"
+  | "KFP Dipankar Kalita"
+  | "KFP Lalit Lakhotia"
+  | "KFP Hazir Ali"
+  | "MI Hazir Ali"
+  | "MI Lalit Lakhotia"
+  | "MI Dipankar Kalita"
+  | "MI Abhay Kumar Mishra";
+
+export type PfFirm = "Krishna Food Products" | "Mehak Industries";
+
 export type AssignedContractor = string;
 
 export type StatutoryStatus = "Active" | "Non-Active";
@@ -107,6 +121,8 @@ export type BankAndSalary = {
   workedDays: string;
   esiStatus: StatutoryStatus | "";
   pfStatus: StatutoryStatus | "";
+  firmHeadProfile: FirmHeadProfile | "";
+  pfFirm: PfFirm | "";
   foodingAllowance: FoodingAllowance | "";
   contractPacking: ContractPacking;
   bonusLastYear: string;
@@ -198,6 +214,8 @@ export const INITIAL_EMPLOYEE_FORM: EmployeeFormData = {
     workedDays: "",
     esiStatus: "",
     pfStatus: "",
+    firmHeadProfile: "",
+    pfFirm: "",
     foodingAllowance: "",
     contractPacking: { ...INITIAL_CONTRACT_PACKING },
     bonusLastYear: "",

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { SelectInput } from "@/components/forms/form-fields";
 import { useGeneralSettings } from "@/hooks/use-general-settings";
+import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
 import type { WorkAssignment } from "@/types/employee-form";
 
 type Props = {
@@ -11,16 +12,16 @@ type Props = {
 };
 
 export default function WorkAssignmentSection({ data, onChange }: Props) {
-  const { departmentOptions, isReady } = useGeneralSettings();
+  const { departmentNames, isReady } = useGeneralSettings();
 
   const options = useMemo(() => {
     const current = data.machineAssignment.trim();
-    if (!current) return departmentOptions;
-    if (departmentOptions.some((option) => option.value === current)) {
-      return departmentOptions;
-    }
-    return [{ value: current, label: current }, ...departmentOptions];
-  }, [data.machineAssignment, departmentOptions]);
+    const merged = mergeDepartmentOptions(
+      current ? [current] : [],
+      departmentNames
+    );
+    return merged.map((name) => ({ value: name, label: name }));
+  }, [data.machineAssignment, departmentNames]);
 
   return (
     <div className="space-y-6">
@@ -36,7 +37,7 @@ export default function WorkAssignmentSection({ data, onChange }: Props) {
 
       <div className="grid gap-5 sm:grid-cols-2">
         <SelectInput
-          label="Assigned Department"
+          label="Assign Department"
           name="machineAssignment"
           value={data.machineAssignment}
           onChange={(e) =>
@@ -44,7 +45,7 @@ export default function WorkAssignmentSection({ data, onChange }: Props) {
           }
           placeholder={isReady ? "Not assigned yet (optional)" : "Loading departments..."}
           options={options}
-          hint="Dynamic list from General Settings — Department master"
+          hint="Merged list from Department master and attendance upload processing"
         />
       </div>
 

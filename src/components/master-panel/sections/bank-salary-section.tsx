@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   SelectInput,
   TextInput,
@@ -7,17 +8,19 @@ import {
 } from "@/components/forms/form-fields";
 import {
   FOODING_ALLOWANCE_OPTIONS,
+  FIRM_HEAD_PROFILE_OPTIONS,
   MINIMUM_OUTPUT_OPTIONS,
   PACKING_ITEM_OPTIONS,
+  PF_FIRM_OPTIONS,
 } from "@/constants/employee-options";
-import { STATUTORY_STATUS_OPTIONS } from "@/lib/statutory-status";
+import { STATUTORY_STATUS_OPTIONS, isStatutoryActive } from "@/lib/statutory-status";
 import { VARIABLE_SALARY_BASIS } from "@/constants/statutory-rates";
 import {
   calculateAllowances,
   calculateContractTotal,
 } from "@/lib/salary-breakdown";
 import type { BankAndSalaryErrors } from "@/lib/validate-employee-form";
-import type { BankAndSalary, ContractPacking, FoodingAllowance, SalaryBasis, StatutoryStatus } from "@/types/employee-form";
+import type { BankAndSalary, ContractPacking, FoodingAllowance, FirmHeadProfile, PfFirm, SalaryBasis, StatutoryStatus } from "@/types/employee-form";
 import StatutoryCalculationPanel from "./statutory-calculation-panel";
 
 type Props = {
@@ -60,6 +63,37 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
   const showVariableFields =
     data.variableSalaryEnabled ||
     VARIABLE_SALARY_BASIS.includes(salaryBasis as (typeof VARIABLE_SALARY_BASIS)[number]);
+
+  const esiActive = isStatutoryActive(data.esiStatus);
+  const pfActive = isStatutoryActive(data.pfStatus);
+
+  const firmHeadOptions = useMemo(() => {
+    const current = data.firmHeadProfile.trim();
+    const base = FIRM_HEAD_PROFILE_OPTIONS.map((option) => ({
+      value: option,
+      label: option,
+    }));
+    if (!current || base.some((option) => option.value === current)) {
+      return base;
+    }
+    return [{ value: current, label: current }, ...base];
+  }, [data.firmHeadProfile]);
+
+  const handleEsiStatusChange = (value: StatutoryStatus | "") => {
+    onChange({
+      ...data,
+      esiStatus: value,
+      firmHeadProfile: isStatutoryActive(value) ? data.firmHeadProfile : "",
+    });
+  };
+
+  const handlePfStatusChange = (value: StatutoryStatus | "") => {
+    onChange({
+      ...data,
+      pfStatus: value,
+      pfFirm: isStatutoryActive(value) ? data.pfFirm : "",
+    });
+  };
 
   const basicAmount = Number(data.basicSalary) || 0;
   const allowances = calculateAllowances(basicAmount);
@@ -270,7 +304,7 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
             value={data.esiStatus}
             error={errors.esiStatus}
             onChange={(e) =>
-              updateField("esiStatus", e.target.value as StatutoryStatus | "")
+              handleEsiStatusChange(e.target.value as StatutoryStatus | "")
             }
             placeholder="Select ESI status"
             hint="Non-Active sets ESI payroll deduction to 0"
@@ -279,6 +313,21 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
               label: status,
             }))}
           />
+          {esiActive && (
+            <SelectInput
+              label="Firm / Head Profile"
+              name="firmHeadProfile"
+              required
+              value={data.firmHeadProfile}
+              error={errors.firmHeadProfile}
+              onChange={(e) =>
+                updateField("firmHeadProfile", e.target.value as FirmHeadProfile | "")
+              }
+              placeholder="Select firm or head profile"
+              hint="Required when ESI status is Active"
+              options={firmHeadOptions}
+            />
+          )}
           <SelectInput
             label="PF Status"
             name="pfStatus"
@@ -286,7 +335,7 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
             value={data.pfStatus}
             error={errors.pfStatus}
             onChange={(e) =>
-              updateField("pfStatus", e.target.value as StatutoryStatus | "")
+              handlePfStatusChange(e.target.value as StatutoryStatus | "")
             }
             placeholder="Select PF status"
             hint="Non-Active sets PF payroll deduction to 0"
@@ -295,6 +344,22 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
               label: status,
             }))}
           />
+          {pfActive && (
+            <SelectInput
+              label="PF Active Firm"
+              name="pfFirm"
+              required
+              value={data.pfFirm}
+              error={errors.pfFirm}
+              onChange={(e) => updateField("pfFirm", e.target.value as PfFirm | "")}
+              placeholder="Select PF firm"
+              hint="Required to proceed with PF activation"
+              options={PF_FIRM_OPTIONS.map((firm) => ({
+                value: firm,
+                label: firm,
+              }))}
+            />
+          )}
         </div>
         <StatutoryCalculationPanel data={data} salaryBasis={salaryBasis} />
       </section>

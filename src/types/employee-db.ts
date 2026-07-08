@@ -68,6 +68,8 @@ export type EmployeeRow = {
   worked_days: number | null;
   esi_status: string | null;
   pf_status: string | null;
+  firm_head_profile: string | null;
+  pf_firm: string | null;
   /** @deprecated Legacy boolean — kept for backfill reads only */
   esi_enabled?: boolean;
   /** @deprecated Legacy boolean — kept for backfill reads only */

@@ -14,8 +14,9 @@ const MIGRATION_FILES = [
   "013_biometric_attendance_pipeline_stage.sql",
 ];
 
+const PIPELINE_STAGE_MIGRATION_FILE = "013_biometric_attendance_pipeline_stage.sql";
+
 let ensureInFlight: Promise<{ ok: boolean; message: string }> | null = null;
-let ensureSucceeded = false;
 
 export { resolveDatabaseUrl } from "@/lib/database-url";
 
@@ -92,14 +93,82 @@ export async function checkAttendanceSchemaReady(): Promise<{
   }
 }
 
-function readMigrationSql(): string | null {
+export function isPipelineStageColumnError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return (
+    (lower.includes("pipeline_stage") && lower.includes("does not exist")) ||
+    (lower.includes("workflow_stage") && lower.includes("does not exist"))
+  );
+}
+
+/** SQL for migration 013 — safe to paste in Supabase SQL Editor. */
+export function readPipelineStageMigrationSql(): string {
+  const migrationPath = path.join(
+    process.cwd(),
+    "supabase",
+    "migrations",
+    PIPELINE_STAGE_MIGRATION_FILE
+  );
+  if (!fs.existsSync(migrationPath)) {
+    return "-- Migration file 013_biometric_attendance_pipeline_stage.sql not found.";
+  }
+  return fs.readFileSync(migrationPath, "utf8");
+}
+
+function readMigrationSql(files: string[] = MIGRATION_FILES): string | null {
   const parts: string[] = [];
-  for (const file of MIGRATION_FILES) {
+  for (const file of files) {
     const migrationPath = path.join(process.cwd(), "supabase", "migrations", file);
     if (!fs.existsSync(migrationPath)) return null;
     parts.push(fs.readFileSync(migrationPath, "utf8"));
   }
   return parts.join("\n\n");
+}
+
+async function applyMigrationViaPrisma(
+  sql: string
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const { isPrismaConfigured, prisma } = await import("@/lib/prisma");
+    if (!isPrismaConfigured() || !prisma) {
+      return { ok: false, message: "Prisma is not configured." };
+    }
+    await prisma.$executeRawUnsafe(sql);
+    return {
+      ok: true,
+      message: "Pipeline stage columns applied via Prisma and PostgREST cache reloaded.",
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Prisma schema apply failed.";
+    console.error("[attendance-schema] prisma ensure failed:", message);
+    return { ok: false, message };
+  }
+}
+
+async function applyMigrationSql(
+  sql: string,
+  label: string
+): Promise<{ ok: boolean; message: string }> {
+  const databaseUrl = resolveDatabaseUrl();
+  if (databaseUrl) {
+    const postgresResult = await applyMigrationViaPostgres(sql, databaseUrl);
+    if (postgresResult.ok) return postgresResult;
+    console.warn(
+      `[attendance-schema] direct postgres failed for ${label}, trying Prisma:`,
+      postgresResult.message
+    );
+  }
+
+  const prismaResult = await applyMigrationViaPrisma(sql);
+  if (prismaResult.ok) return prismaResult;
+
+  const managementResult = await applyMigrationViaManagementApi(sql);
+  if (managementResult.ok) return managementResult;
+
+  return {
+    ok: false,
+    message: getDatabaseUrlResolutionHint(),
+  };
 }
 
 async function applyMigrationViaPostgres(
@@ -180,21 +249,46 @@ async function applyMigrationViaManagementApi(
 }
 
 /**
- * Apply migration 011 when postgres or Management API credentials are available.
+ * Apply migration 013 only — adds pipeline_stage + workflow_stage columns.
+ */
+export async function ensurePipelineStageColumn(): Promise<{
+  ok: boolean;
+  message: string;
+  migrationSql?: string;
+}> {
+  const check = await checkAttendanceSchemaReady();
+  if (check.ready) {
+    return { ok: true, message: "pipeline_stage column already exists." };
+  }
+
+  const sql = readPipelineStageMigrationSql();
+  const result = await applyMigrationSql(sql, "pipeline_stage");
+
+  if (result.ok) {
+    const verify = await checkAttendanceSchemaReady();
+    if (verify.ready) return result;
+    return {
+      ok: false,
+      message: "Migration ran but pipeline_stage column is still missing. Reload PostgREST schema cache.",
+      migrationSql: sql,
+    };
+  }
+
+  return { ...result, migrationSql: sql };
+}
+
+/**
+ * Apply migrations 011–013 when postgres, Prisma, or Management API credentials are available.
  * Safe to call multiple times — migration SQL is idempotent.
  */
 export async function ensureAttendanceTablesSchema(): Promise<{
   ok: boolean;
   message: string;
+  migrationSql?: string;
 }> {
   const existing = await checkAttendanceSchemaReady();
   if (existing.ready) {
-    ensureSucceeded = true;
     return { ok: true, message: "Attendance tables and pipeline columns already exist." };
-  }
-
-  if (ensureSucceeded) {
-    return { ok: true, message: "Attendance tables already ensured this session." };
   }
 
   if (ensureInFlight) return ensureInFlight;
@@ -202,32 +296,27 @@ export async function ensureAttendanceTablesSchema(): Promise<{
   ensureInFlight = (async () => {
     const sql = readMigrationSql();
     if (!sql) {
-      return { ok: false, message: `Migration files not found: ${MIGRATION_FILES.join(", ")}` };
+      return {
+        ok: false,
+        message: `Migration files not found: ${MIGRATION_FILES.join(", ")}`,
+        migrationSql: readPipelineStageMigrationSql(),
+      };
     }
 
-    const databaseUrl = resolveDatabaseUrl();
-    if (databaseUrl) {
-      const postgresResult = await applyMigrationViaPostgres(sql, databaseUrl);
-      if (postgresResult.ok) {
-        ensureSucceeded = true;
-        return postgresResult;
-      }
-      console.warn(
-        "[attendance-schema] direct postgres failed, trying Management API:",
-        postgresResult.message
-      );
+    const result = await applyMigrationSql(sql, "attendance_tables");
+    if (result.ok) {
+      const verify = await checkAttendanceSchemaReady();
+      if (verify.ready) return result;
+      return {
+        ok: false,
+        message:
+          verify.message ??
+          "Migrations ran but attendance schema is still not ready. Run SQL in Supabase SQL Editor.",
+        migrationSql: readPipelineStageMigrationSql(),
+      };
     }
 
-    const managementResult = await applyMigrationViaManagementApi(sql);
-    if (managementResult.ok) {
-      ensureSucceeded = true;
-      return managementResult;
-    }
-
-    return {
-      ok: false,
-      message: getDatabaseUrlResolutionHint(),
-    };
+    return { ...result, migrationSql: readPipelineStageMigrationSql() };
   })();
 
   try {

@@ -81,6 +81,18 @@ export async function POST(request: Request) {
         "[bulk-import] attendance schema ensure:",
         schemaEnsure.ok ? "ok" : schemaEnsure.message
       );
+      const recheck = await checkAttendanceSchemaReady();
+      if (!recheck.ready) {
+        return NextResponse.json(
+          {
+            error: recheck.message ?? ATTENDANCE_SETUP_MESSAGE,
+            setupRequired: true,
+            migrationSqlUrl: "/api/v1/attendance/schema/migration-sql?file=013",
+            hint: schemaEnsure.message,
+          },
+          { status: 503 }
+        );
+      }
     }
   }
 

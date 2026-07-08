@@ -14,7 +14,9 @@ import { normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
 import type { AttendanceWorkflowRecord } from "@/types/attendance-workflow";
 import {
   ensureAttendanceTablesSchema,
+  ensurePipelineStageColumn,
   isAttendanceSchemaError,
+  isPipelineStageColumnError,
 } from "@/lib/attendance-schema-ensure";
 import { fetchStorageGridRows, transitionStoragePipelineStage, updateStorageRowFields } from "@/lib/attendance-storage-fallback";
 import type { AttendancePipelineFetchOptions } from "@/lib/attendance-pipeline-fetch-options";
@@ -59,8 +61,12 @@ async function fetchRowsByPipelineStageSupabase(
 
   const { data, error } = await query;
   if (error) {
-    if (isAttendanceSchemaError(error.message ?? "")) return [];
-    throw new Error(error.message);
+    const message = error.message ?? "Pipeline fetch failed.";
+    if (isPipelineStageColumnError(message)) {
+      throw new Error(message);
+    }
+    if (isAttendanceSchemaError(message)) return [];
+    throw new Error(message);
   }
 
   return (data ?? []).map((row) => mapBiometricAttendanceGridRow(row as Record<string, unknown>));
@@ -116,10 +122,19 @@ export async function fetchRowsByPipelineStage(
   if (!isPipelineStage(stage)) throw new Error(`Invalid pipeline stage: ${stage}`);
 
   if (isSupabaseServerConfigured()) {
-    await ensureAttendanceTablesSchema();
+    const ensure = await ensurePipelineStageColumn();
+    if (!ensure.ok) {
+      await ensureAttendanceTablesSchema();
+    }
     try {
       return await fetchRowsByPipelineStageSupabase(stage, options);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Pipeline fetch failed.";
+      if (isPipelineStageColumnError(message)) {
+        throw new Error(
+          "Column biometric_attendance.pipeline_stage does not exist. Run migration 013 in Supabase SQL Editor (/api/v1/attendance/schema/migration-sql?file=013)."
+        );
+      }
       console.warn("[pipeline] supabase fetch failed:", error);
     }
   }

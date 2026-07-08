@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { readPipelineStageMigrationSql } from "@/lib/attendance-schema-ensure";
 
 const MIGRATION_FILES = [
   "011_ensure_attendance_tables.sql",
@@ -8,11 +9,23 @@ const MIGRATION_FILES = [
   "013_biometric_attendance_pipeline_stage.sql",
 ];
 
-/** GET — combined attendance migration SQL for Supabase SQL Editor (copy/paste). */
-export async function GET() {
+/** GET — attendance migration SQL for Supabase SQL Editor (copy/paste). ?file=013 for pipeline_stage only. */
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const fileParam = searchParams.get("file")?.trim();
+
+  if (fileParam === "013" || fileParam === "pipeline-stage") {
+    return new NextResponse(readPipelineStageMigrationSql(), {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Disposition": 'inline; filename="013_biometric_attendance_pipeline_stage.sql"',
+      },
+    });
+  }
+
   const parts: string[] = [
     "-- Shaandar CRM — one-time attendance setup (run entire script in Supabase SQL Editor)",
-    "-- Creates: employee_attendance, biometric_attendance, attendance_staging, attendance_audit_log",
+    "-- Creates: employee_attendance, biometric_attendance, attendance_staging, attendance_audit_log, pipeline_stage",
     "",
   ];
 

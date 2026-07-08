@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import {
   checkAttendanceSchemaReady,
   ensureAttendanceTablesSchema,
+  ensurePipelineStageColumn,
+  readPipelineStageMigrationSql,
 } from "@/lib/attendance-schema-ensure";
 import { getDatabaseUrlResolutionHint } from "@/lib/database-url";
+import { getSupabaseSqlEditorUrl } from "@/lib/attendance-setup-messages";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 
 /**
@@ -36,6 +39,8 @@ export async function GET() {
     mode: "none",
     message: check.message ?? "Attendance SQL tables are not ready.",
     hint: getDatabaseUrlResolutionHint(),
+    migrationSqlUrl: "/api/v1/attendance/schema/migration-sql?file=013",
+    sqlEditorUrl: getSupabaseSqlEditorUrl(),
     setupRequired: true,
   });
 }
@@ -61,6 +66,18 @@ export async function POST() {
   }
 
   const result = await ensureAttendanceTablesSchema();
+  if (!result.ok) {
+    const pipelineOnly = await ensurePipelineStageColumn();
+    if (pipelineOnly.ok) {
+      return NextResponse.json({
+        ok: true,
+        ready: true,
+        mode: "sql",
+        message: pipelineOnly.message,
+      });
+    }
+  }
+
   console.log(
     "[attendance-schema] ensure via API:",
     result.ok ? "success" : result.message
@@ -82,6 +99,9 @@ export async function POST() {
       mode: "none",
       error: result.message,
       hint: getDatabaseUrlResolutionHint(),
+      migrationSql: result.migrationSql ?? readPipelineStageMigrationSql(),
+      migrationSqlUrl: "/api/v1/attendance/schema/migration-sql?file=013",
+      sqlEditorUrl: getSupabaseSqlEditorUrl(),
       setupRequired: true,
     },
     { status: 503 }

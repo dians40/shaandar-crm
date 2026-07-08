@@ -11,6 +11,7 @@ import {
   upsertAutoProvisionedEmployee,
   type PendingAutoEmployee,
 } from "@/lib/attendance-auto-provision";
+import { mapBulkRowsToImportEmployeeRows } from "@/lib/excel-import-employee-defaults";
 import {
   atomicFinalizeBulkDbPayload,
   buildBulkDbPayload,
@@ -91,7 +92,7 @@ export default function AttendanceLoggingWorkspacePanel() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const autoProvisionMissingEmployees = (
-    rows: AttendanceImportRow[],
+    rows: Array<{ employeeCode?: string; employeeName?: string; department?: string }>,
     registry: ReturnType<typeof readAutoProvisionedEmployees>
   ) => {
     const pending = detectPendingAutoEmployees(rows, employees, registry);
@@ -101,7 +102,8 @@ export default function AttendanceLoggingWorkspacePanel() {
     for (const pendingEmployee of pending) {
       const created = createAutoProvisionedEmployee(
         pendingEmployee.employeeCode,
-        pendingEmployee.employeeName
+        pendingEmployee.employeeName,
+        pendingEmployee.department
       );
       nextRegistry = upsertAutoProvisionedEmployee(created);
       prependEmployee(created);
@@ -148,7 +150,7 @@ export default function AttendanceLoggingWorkspacePanel() {
 
       const registry = readAutoProvisionedEmployees();
       const { pending: pendingNewEmployees, createdCount } = autoProvisionMissingEmployees(
-        sanitizedRows,
+        mapBulkRowsToImportEmployeeRows(sanitizedBulkRows),
         registry
       );
 
@@ -206,7 +208,8 @@ export default function AttendanceLoggingWorkspacePanel() {
       for (const pending of importPreview.pendingNewEmployees) {
         const created = createAutoProvisionedEmployee(
           pending.employeeCode,
-          pending.employeeName
+          pending.employeeName,
+          pending.department
         );
         registry = upsertAutoProvisionedEmployee(created);
         prependEmployee(created);
@@ -236,7 +239,11 @@ export default function AttendanceLoggingWorkspacePanel() {
           );
 
           if (!employee) {
-            const created = createAutoProvisionedEmployee(employeeCode, employeeName);
+            const created = createAutoProvisionedEmployee(
+              employeeCode,
+              employeeName,
+              safeBulk.department
+            );
             registry = upsertAutoProvisionedEmployee(created);
             prependEmployee(created);
             employee = created;

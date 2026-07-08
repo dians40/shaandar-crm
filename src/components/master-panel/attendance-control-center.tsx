@@ -25,6 +25,7 @@ import {
   upsertAutoProvisionedEmployee,
   type PendingAutoEmployee,
 } from "@/lib/attendance-auto-provision";
+import { mapBulkRowsToImportEmployeeRows } from "@/lib/excel-import-employee-defaults";
 import {
   atomicFinalizeBulkDbPayload,
   buildBulkDbPayload,
@@ -407,7 +408,7 @@ export default function AttendanceControlCenter({
   }, []);
 
   const autoProvisionMissingEmployees = (
-    rows: AttendanceImportRow[],
+    rows: Array<{ employeeCode?: string; employeeName?: string; department?: string }>,
     registry: ReturnType<typeof readAutoProvisionedEmployees>
   ) => {
     const pending = detectPendingAutoEmployees(rows, employees, registry);
@@ -417,7 +418,8 @@ export default function AttendanceControlCenter({
     for (const pendingEmployee of pending) {
       const created = createAutoProvisionedEmployee(
         pendingEmployee.employeeCode,
-        pendingEmployee.employeeName
+        pendingEmployee.employeeName,
+        pendingEmployee.department
       );
       nextRegistry = upsertAutoProvisionedEmployee(created);
       prependEmployee(created);
@@ -472,7 +474,10 @@ export default function AttendanceControlCenter({
 
       const registry = readAutoProvisionedEmployees();
       const { pending: pendingNewEmployees, createdCount } =
-        autoProvisionMissingEmployees(sanitizedRows, registry);
+        autoProvisionMissingEmployees(
+          mapBulkRowsToImportEmployeeRows(sanitizedBulkRows),
+          registry
+        );
 
       setSelectedBulkRowIndex(0);
       setImportPreview({
@@ -529,7 +534,8 @@ export default function AttendanceControlCenter({
       for (const pending of importPreview.pendingNewEmployees) {
         const created = createAutoProvisionedEmployee(
           pending.employeeCode,
-          pending.employeeName
+          pending.employeeName,
+          pending.department
         );
         registry = upsertAutoProvisionedEmployee(created);
         prependEmployee(created);
@@ -559,7 +565,11 @@ export default function AttendanceControlCenter({
           );
 
           if (!employee) {
-            const created = createAutoProvisionedEmployee(employeeCode, employeeName);
+            const created = createAutoProvisionedEmployee(
+              employeeCode,
+              employeeName,
+              safeBulk.department
+            );
             registry = upsertAutoProvisionedEmployee(created);
             prependEmployee(created);
             employee = created;

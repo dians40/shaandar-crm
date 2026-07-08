@@ -1,4 +1,5 @@
 import type { EmployeeListItem } from "@/types/employee-list";
+import { buildExcelImportEmployeeListItem } from "@/lib/excel-import-employee-defaults";
 
 const AUTO_PROVISION_STORAGE_KEY = "shaandar-crm-auto-provisioned-employees";
 
@@ -42,30 +43,18 @@ export function upsertAutoProvisionedEmployee(
 
 export function createAutoProvisionedEmployee(
   employeeCode: string,
-  employeeName: string
+  employeeName: string,
+  department = ""
 ): AutoProvisionedEmployeeRecord {
   const code = normalizeCode(employeeCode);
   const id = `auto-emp-${code.replace(/[^A-Z0-9]/g, "")}-${Date.now()}`;
+  const profile = buildExcelImportEmployeeListItem(id, employeeName, department);
 
   return {
     id,
     employeeCode: code,
-    name: employeeName.trim(),
-    employeeType: "Direct Roll / Employee",
-    mobileNumber: code.replace(/\D/g, "").slice(0, 10) || code || "",
-    machineAssignment: "",
-    basicSalary: null,
-    fixSalaryAmount: null,
-    variableSalaryEnabled: false,
-    dailyRate: null,
-    workedDays: null,
-    effectiveSalary: null,
-    assignedFromGroup: "Excel Auto-Import",
-    esiStatus: "Non-Active",
-    pfStatus: "Non-Active",
-    salaryBasis: "",
+    ...profile,
     hasAttendanceRecords: false,
-    overtimeHourlyRate: null,
   };
 }
 
@@ -121,6 +110,7 @@ export function resolveImportEmployee(
 export type PendingAutoEmployee = {
   employeeCode: string;
   employeeName: string;
+  department: string;
 };
 
 function safeString(value: unknown): string {
@@ -133,7 +123,7 @@ function safeString(value: unknown): string {
 }
 
 export function detectPendingAutoEmployees(
-  rows: Array<{ employeeCode?: string; employeeName?: string }>,
+  rows: Array<{ employeeCode?: string; employeeName?: string; department?: string }>,
   masterEmployees: EmployeeListItem[],
   autoProvisioned: AutoProvisionedEmployeeRecord[]
 ): PendingAutoEmployee[] {
@@ -146,6 +136,7 @@ export function detectPendingAutoEmployees(
       (employeeName
         ? `AUTO-${employeeName.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12)}`
         : "TEMP_CODE");
+    const department = safeString(row?.department);
 
     if (!employeeName && !employeeCode) continue;
 
@@ -156,6 +147,7 @@ export function detectPendingAutoEmployees(
     pending.set(normalizeCode(employeeCode), {
       employeeCode: normalizeCode(employeeCode),
       employeeName: employeeName || employeeCode,
+      department,
     });
   }
 

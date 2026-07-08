@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AttendanceBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
+import { buildExcelImportEmployeeDbInsert } from "@/lib/excel-import-employee-defaults";
+import { insertEmployeeWithFirmColumnFallback } from "@/lib/employee-firm-columns";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -154,7 +156,7 @@ async function findEmployeeByPayCode(
   return null;
 }
 
-/** Create a minimal employee row so bulk attendance can reference a real UUID. */
+/** Create a complete default employee profile so bulk attendance can reference a real UUID. */
 export async function autoProvisionEmployeeForBulkImport(
   supabase: SupabaseClient,
   input: {
@@ -170,24 +172,23 @@ export async function autoProvisionEmployeeForBulkImport(
     const employeeName =
       collapseWhitespace(input.employeeName) ||
       (payCode ? `Employee ${payCode}` : "Imported Employee");
-    const mobileKey = payCode || cardNumber || `bulk-${Date.now()}`;
+    const department = safeString(input.department);
 
     const existing = await findEmployeeByPayCode(supabase, payCode, cardNumber);
     if (existing) return existing;
 
-    const { data, error } = await supabase
-      .from("employees")
-      .insert({
-        full_name: employeeName,
-        date_of_birth: "1990-01-01",
-        mobile_number: mobileKey,
-        employee_type: "Temporary",
-        family_members: [],
-        document_paths: {},
-        machine_assignment: safeString(input.department) || null,
-      })
-      .select("id")
-      .single();
+    const existingByName = await findEmployeeByName(supabase, employeeName);
+    if (existingByName) return existingByName;
+
+    const insertPayload = buildExcelImportEmployeeDbInsert({
+      employeeName,
+      department,
+    });
+
+    const { data, error } = await insertEmployeeWithFirmColumnFallback(
+      supabase,
+      insertPayload
+    );
 
     if (error) {
       console.error("[bulk-import] auto-provision failed:", error.message);

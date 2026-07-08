@@ -143,16 +143,21 @@ export const DEFAULT_DEPARTMENT_SEEDS = [
   "UNLOADING",
 ] as const;
 
-/** Core designation names seeded into the Designation master on first load. */
+/** Core designation names seeded into the Designation master on first load (serial order preserved). */
 export const DEFAULT_DESIGNATION_SEEDS = [
-  "Operator",
-  "Supervisor",
-  "Manager",
-  "Helper",
-  "Accountant",
-  "Technician",
-  "HR Executive",
-  "Security Guard",
-  "Driver",
-  "Other",
-];
+  "ALL ROUNDER",
+  "DRIVER",
+  "GRINDER",
+  "GROUND MAN HELPER",
+  "INCHARGE",
+  "LABOUR CONTRACTOR",
+  "MACHINE MAN",
+  "OPERATOR",
+  "PACKING MAN",
+  "SECURITY",
+  "STAFF",
+  "SUPERVISOR",
+  "WELDER",
+  "EMPLOYEE",
+  "N A",
+] as const;

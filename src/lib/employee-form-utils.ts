@@ -1,7 +1,14 @@
 import type {
   DocumentKey,
   DocumentNumberKey,
+  EmployeeFormData,
   FileMeta,
+} from "@/types/employee-form";
+import {
+  EMPTY_DOCUMENT_NUMBERS,
+  EMPTY_DOCUMENTS,
+  INITIAL_CONTRACT_PACKING,
+  INITIAL_EMPLOYEE_FORM,
 } from "@/types/employee-form";
 
 export function calculateAgeFromDob(dateOfBirth: string): number | null {
@@ -93,6 +100,42 @@ export const DOCUMENT_UPLOAD_KEYS = (
 ).filter((key) => key !== "profilePhoto");
 
 export const ALL_DOCUMENT_KEYS = Object.keys(DOCUMENT_LABELS) as DocumentKey[];
+
+/** Merge partial API or legacy payloads with the canonical empty form shape. */
+export function normalizeEmployeeFormData(
+  data: Partial<EmployeeFormData> | null | undefined
+): EmployeeFormData {
+  const source = data ?? {};
+
+  return {
+    basicInformation: {
+      ...INITIAL_EMPLOYEE_FORM.basicInformation,
+      ...(source.basicInformation ?? {}),
+    },
+    workAssignment: {
+      ...INITIAL_EMPLOYEE_FORM.workAssignment,
+      ...(source.workAssignment ?? {}),
+      machineAssignment: source.workAssignment?.machineAssignment ?? "",
+    },
+    familyMembers: Array.isArray(source.familyMembers) ? source.familyMembers : [],
+    documents: { ...EMPTY_DOCUMENTS, ...(source.documents ?? {}) },
+    documentNumbers: {
+      ...EMPTY_DOCUMENT_NUMBERS,
+      ...(source.documentNumbers ?? {}),
+    },
+    existingDocumentPaths: { ...(source.existingDocumentPaths ?? {}) },
+    bankAndSalary: {
+      ...INITIAL_EMPLOYEE_FORM.bankAndSalary,
+      ...(source.bankAndSalary ?? {}),
+      firmHeadProfile: source.bankAndSalary?.firmHeadProfile ?? "",
+      pfFirm: source.bankAndSalary?.pfFirm ?? "",
+      contractPacking: {
+        ...INITIAL_CONTRACT_PACKING,
+        ...(source.bankAndSalary?.contractPacking ?? {}),
+      },
+    },
+  };
+}
 
 export const DOCUMENT_KEYS_WITH_NUMBER: DocumentNumberKey[] = [
   "pan",

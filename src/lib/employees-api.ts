@@ -1,5 +1,6 @@
 import type { EmployeeFormData } from "@/types/employee-form";
 import type { EmployeeListItem } from "@/types/employee-list";
+import { normalizeEmployeeFormData } from "@/lib/employee-form-utils";
 import { buildEmployeePayloadJson } from "@/lib/form-data-utils";
 import { ALL_DOCUMENT_KEYS } from "@/lib/employee-form-utils";
 
@@ -57,7 +58,7 @@ export async function fetchEmployee(id: string): Promise<EmployeeFormData> {
   }
 
   const data = (await response.json()) as EmployeeResponse;
-  return data.employee;
+  return normalizeEmployeeFormData(data.employee);
 }
 
 export async function createEmployee(

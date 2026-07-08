@@ -42,13 +42,20 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
     onChange({ ...data, [key]: value });
   };
 
+  const contractPacking = data.contractPacking ?? {
+    itemName: "",
+    minimumOutput: "",
+    quantityProduced: "",
+    ratePerPiece: "",
+  };
+
   const updateContractField = <K extends keyof ContractPacking>(
     key: K,
     value: ContractPacking[K]
   ) => {
     onChange({
       ...data,
-      contractPacking: { ...data.contractPacking, [key]: value },
+      contractPacking: { ...contractPacking, [key]: value },
     });
   };
 
@@ -68,7 +75,7 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
   const pfActive = isStatutoryActive(data.pfStatus);
 
   const firmHeadOptions = useMemo(() => {
-    const current = data.firmHeadProfile.trim();
+    const current = (data.firmHeadProfile ?? "").trim();
     const base = FIRM_HEAD_PROFILE_OPTIONS.map((option) => ({
       value: option,
       label: option,
@@ -98,8 +105,8 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
   const basicAmount = Number(data.basicSalary) || 0;
   const allowances = calculateAllowances(basicAmount);
   const contractTotal = calculateContractTotal(
-    data.contractPacking.quantityProduced,
-    data.contractPacking.ratePerPiece
+    contractPacking.quantityProduced,
+    contractPacking.ratePerPiece
   );
 
   return (
@@ -210,7 +217,7 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
           <SelectInput
             label="Item Name"
             name="contractItemName"
-            value={data.contractPacking.itemName}
+            value={contractPacking.itemName}
             onChange={(e) => updateContractField("itemName", e.target.value)}
             placeholder="Select item"
             options={PACKING_ITEM_OPTIONS.map((item) => ({
@@ -221,7 +228,7 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
           <SelectInput
             label="Minimum Output"
             name="contractMinimumOutput"
-            value={data.contractPacking.minimumOutput}
+            value={contractPacking.minimumOutput}
             onChange={(e) => updateContractField("minimumOutput", e.target.value)}
             placeholder="Required quantity"
             options={MINIMUM_OUTPUT_OPTIONS.map((qty) => ({
@@ -236,7 +243,7 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
             min="0"
             step="1"
             placeholder="Actual quantity"
-            value={data.contractPacking.quantityProduced}
+            value={contractPacking.quantityProduced}
             onChange={(e) => updateContractField("quantityProduced", e.target.value)}
           />
           <TextInput
@@ -246,7 +253,7 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
             min="0"
             step="0.01"
             placeholder="Rate per unit"
-            value={data.contractPacking.ratePerPiece}
+            value={contractPacking.ratePerPiece}
             onChange={(e) => updateContractField("ratePerPiece", e.target.value)}
           />
           <div className="flex flex-col justify-end rounded-lg border border-corporate-border bg-corporate-surface p-4">

@@ -60,9 +60,15 @@ export function mapFormToEmployeeInsert(
   const basicSalary = parseAmount(bank.basicSalary) ?? parseAmount(bank.fixSalaryAmount);
   const allowanceBreakdown =
     basicSalary !== null ? calculateAllowances(basicSalary) : null;
+  const contractPacking = bank.contractPacking ?? {
+    itemName: "",
+    minimumOutput: "",
+    quantityProduced: "",
+    ratePerPiece: "",
+  };
   const contractTotal = calculateContractTotal(
-    bank.contractPacking.quantityProduced,
-    bank.contractPacking.ratePerPiece
+    contractPacking.quantityProduced,
+    contractPacking.ratePerPiece
   );
 
   const photoUrl =
@@ -90,7 +96,7 @@ export function mapFormToEmployeeInsert(
     employee_type: basic.employeeType,
     salary_basis: basic.salaryBasis || null,
     assigned_from_group: basic.assignedFromGroup.trim() || null,
-    machine_assignment: work.machineAssignment.trim() || null,
+    machine_assignment: (work.machineAssignment ?? "").trim() || null,
     family_members: formData.familyMembers,
     document_paths: mergedPaths,
     pan_number: docNumbers.pan || null,
@@ -119,14 +125,14 @@ export function mapFormToEmployeeInsert(
     worked_days: parseAmount(bank.workedDays),
     esi_status: bank.esiStatus || null,
     pf_status: bank.pfStatus || null,
-    firm_head_profile: bank.firmHeadProfile.trim() || null,
-    pf_firm: bank.pfFirm.trim() || null,
+    firm_head_profile: (bank.firmHeadProfile ?? "").trim() || null,
+    pf_firm: (bank.pfFirm ?? "").trim() || null,
     fooding_allowance: bank.foodingAllowance || null,
     contract_packing: {
-      itemName: bank.contractPacking.itemName,
-      minimumOutput: bank.contractPacking.minimumOutput,
-      quantityProduced: bank.contractPacking.quantityProduced,
-      ratePerPiece: bank.contractPacking.ratePerPiece,
+      itemName: contractPacking.itemName,
+      minimumOutput: contractPacking.minimumOutput,
+      quantityProduced: contractPacking.quantityProduced,
+      ratePerPiece: contractPacking.ratePerPiece,
       totalEarned: contractTotal,
     },
     bonus_last_year: parseAmount(bank.bonusLastYear),

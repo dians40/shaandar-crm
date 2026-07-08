@@ -1,7 +1,11 @@
 "use client";
 
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import {
+  clearActiveEmployeeSession,
+  setActiveEmployeeSession,
+} from "@/lib/master-panel-entity-bridge";
 import EmployeeBioDataCard from "./employee-bio-data-card";
 import EmployeeForm from "./employee-form";
 import EmployeeList from "./employee-list";
@@ -56,6 +60,32 @@ export default function EmployeeManagementPanel() {
   }, []);
 
   const safeEmployees = Array.isArray(employees) ? employees : EMPTY_EMPLOYEES;
+
+  const selectedEmployeeName = useMemo(() => {
+    if (!selectedId) return "";
+    return safeEmployees.find((employee) => employee.id === selectedId)?.name ?? "";
+  }, [safeEmployees, selectedId]);
+
+  useEffect(() => {
+    if (view === "add") {
+      setActiveEmployeeSession({
+        mode: "add",
+        activeEmployeeName: "Drafting...",
+      });
+      return;
+    }
+
+    if (view === "edit" && selectedId) {
+      setActiveEmployeeSession({
+        mode: "edit",
+        activeEmployeeName: selectedEmployeeName.trim() || "Employee",
+        employeeId: selectedId,
+      });
+      return;
+    }
+
+    clearActiveEmployeeSession();
+  }, [view, selectedId, selectedEmployeeName]);
 
   const withWorkspaceTabs = (content: ReactNode) => (
     <>

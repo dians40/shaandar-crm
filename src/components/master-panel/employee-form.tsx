@@ -12,6 +12,8 @@ import {
 import { cn } from "@/lib/utils";
 import { FORM_SECTIONS } from "@/constants/employee-options";
 import { createEmployee, fetchEmployee, updateEmployee } from "@/lib/employees-api";
+import { normalizeEmployeeFormData } from "@/lib/employee-form-utils";
+import { updateActiveEmployeeName } from "@/lib/master-panel-entity-bridge";
 import {
   hasValidationErrors,
   validateBasicInformation,
@@ -61,12 +63,21 @@ export default function EmployeeForm({
     setLoadError(null);
 
     fetchEmployee(employeeId)
-      .then((data) => setFormData(data))
+      .then((data) => setFormData(normalizeEmployeeFormData(data)))
       .catch((error) =>
         setLoadError(error instanceof Error ? error.message : "Failed to load employee.")
       )
       .finally(() => setIsLoading(false));
   }, [mode, employeeId]);
+
+  useEffect(() => {
+    const name = formData.basicInformation.name.trim();
+    if (mode === "add") {
+      updateActiveEmployeeName(name || "Drafting...");
+    } else if (mode === "edit") {
+      updateActiveEmployeeName(name || "Employee");
+    }
+  }, [formData.basicInformation.name, mode]);
 
   const activeIndex = FORM_SECTIONS.findIndex(
     (section) => section.id === activeSection

@@ -15,7 +15,7 @@ export default function WorkAssignmentSection({ data, onChange }: Props) {
   const { departmentNames, isReady } = useGeneralSettings();
 
   const options = useMemo(() => {
-    const current = data.machineAssignment.trim();
+    const current = (data.machineAssignment ?? "").trim();
     const merged = mergeDepartmentOptions(
       current ? [current] : [],
       departmentNames

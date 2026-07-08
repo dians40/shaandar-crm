@@ -11,6 +11,11 @@ import { validateEmployeeForm } from "@/lib/validate-employee-form";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractDocumentFiles } from "@/lib/form-data-utils";
 import { uploadEmployeeDocuments } from "@/lib/supabase/upload-documents";
+import {
+  employeeFirmSchemaHint,
+  updateEmployeeWithFirmColumnFallback,
+} from "@/lib/employee-firm-columns";
+import { ensureEmployeeFirmColumnsSchema } from "@/lib/employee-schema-ensure";
 import { EMPLOYEE_FULL_COLUMNS, EMPLOYEE_LIST_COLUMNS } from "@/types/employee-db";
 import type { EmployeeFormData } from "@/types/employee-form";
 import { EMPTY_DOCUMENT_NUMBERS } from "@/types/employee-form";
@@ -92,6 +97,8 @@ export async function PUT(request: Request, context: RouteContext) {
 
     const supabase = createAdminClient();
 
+    await ensureEmployeeFirmColumnsSchema();
+
     const fullFormData: EmployeeFormData = {
       ...employeePayload,
       documents: extractDocumentFiles(formData),
@@ -114,19 +121,21 @@ export async function PUT(request: Request, context: RouteContext) {
       );
     }
 
-    const { error: updateError } = await supabase
-      .from("employees")
-      .update({
-        ...updatePayload,
+    const { error: updateError } = await updateEmployeeWithFirmColumnFallback(
+      supabase,
+      id,
+      updatePayload,
+      {
         document_paths: documentPaths,
         photo_url: documentPaths.profilePhoto ?? updatePayload.photo_url ?? null,
-      })
-      .eq("id", id);
+      }
+    );
 
     if (updateError) {
-      const hint = updateError.message.includes("column")
-        ? " Run migration 003_employee_extended_fields.sql in Supabase SQL Editor."
-        : "";
+      const hint =
+        updateError.message.includes("column") || updateError.message.includes("schema cache")
+          ? employeeFirmSchemaHint()
+          : "";
       return NextResponse.json({ error: updateError.message + hint }, { status: 500 });
     }
 

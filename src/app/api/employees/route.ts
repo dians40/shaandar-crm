@@ -10,6 +10,11 @@ import { validateEmployeeForm } from "@/lib/validate-employee-form";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractDocumentFiles } from "@/lib/form-data-utils";
 import { uploadEmployeeDocuments } from "@/lib/supabase/upload-documents";
+import {
+  employeeFirmSchemaHint,
+  insertEmployeeWithFirmColumnFallback,
+} from "@/lib/employee-firm-columns";
+import { ensureEmployeeFirmColumnsSchema } from "@/lib/employee-schema-ensure";
 import { EMPLOYEE_LIST_COLUMNS, EMPLOYEE_LIST_COLUMNS_BASE } from "@/types/employee-db";
 import type { EmployeeFormData } from "@/types/employee-form";
 import { EMPTY_DOCUMENT_NUMBERS } from "@/types/employee-form";
@@ -104,6 +109,8 @@ export async function POST(request: Request) {
 
     const supabase = createAdminClient();
 
+    await ensureEmployeeFirmColumnsSchema();
+
     const fullFormData: EmployeeFormData = {
       ...employeePayload,
       documents: extractDocumentFiles(formData),
@@ -113,16 +120,15 @@ export async function POST(request: Request) {
 
     const insertPayload = mapFormToEmployeeInsert(fullFormData);
 
-    const { data: inserted, error: insertError } = await supabase
-      .from("employees")
-      .insert(insertPayload)
-      .select("id")
-      .single();
+    const { data: inserted, error: insertError } = await insertEmployeeWithFirmColumnFallback(
+      supabase,
+      insertPayload
+    );
 
     if (insertError || !inserted) {
       const msg = insertError?.message ?? "Failed to create employee.";
-      const hint = msg.includes("column")
-        ? " Run migration 003_employee_extended_fields.sql in Supabase SQL Editor."
+      const hint = msg.includes("column") || msg.includes("schema cache")
+        ? employeeFirmSchemaHint()
         : "";
       return NextResponse.json({ error: msg + hint }, { status: 500 });
     }

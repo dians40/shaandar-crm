@@ -2,61 +2,53 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { requireAuth } from "@/lib/api/auth-guard";
+import {
+  checkEmployeeFirmColumnsReady,
+  ensureEmployeeFirmColumnsSchema,
+} from "@/lib/employee-schema-ensure";
 
 /**
- * One-time schema sync for migration 006.
+ * Employee firm-column schema sync for migration 016.
  * Requires DATABASE_URL or SUPABASE_DB_URL in server environment.
  * POST /api/admin/sync-employee-schema
  */
-export async function POST() {
+export async function GET() {
   const authError = await requireAuth();
   if (authError) return authError;
 
-  const databaseUrl =
-    process.env.DATABASE_URL?.trim() ||
-    process.env.SUPABASE_DB_URL?.trim() ||
-    process.env.POSTGRES_URL?.trim();
+  const check = await checkEmployeeFirmColumnsReady();
+  return NextResponse.json(check);
+}
 
-  if (!databaseUrl) {
-    return NextResponse.json(
-      {
-        error:
-          "DATABASE_URL not configured on server. Run supabase/migrations/006_employee_unified_assignment_status.sql in Supabase SQL Editor instead.",
-      },
-      { status: 503 }
-    );
-  }
+export async function POST() {
+  const authError = await requireAuth();
+  if (authError) return authError;
 
   const migrationPath = path.join(
     process.cwd(),
     "supabase",
     "migrations",
-    "006_employee_unified_assignment_status.sql"
+    "016_employee_firm_head_pf_firm.sql"
   );
 
   if (!fs.existsSync(migrationPath)) {
-    return NextResponse.json({ error: "Migration file not found." }, { status: 500 });
+    return NextResponse.json({ error: "Migration 016 file not found." }, { status: 500 });
   }
 
-  const sql = fs.readFileSync(migrationPath, "utf8");
+  const result = await ensureEmployeeFirmColumnsSchema();
 
-  try {
-    const pg = await import("pg");
-    const client = new pg.default.Client({
-      connectionString: databaseUrl,
-      ssl: { rejectUnauthorized: false },
-    });
-    await client.connect();
-    await client.query(sql);
-    await client.end();
-
-    return NextResponse.json({
-      ok: true,
-      message:
-        "Migration 006 applied. assigned_from_group, esi_status, pf_status synced and PostgREST cache reloaded.",
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Migration failed.";
-    return NextResponse.json({ error: message }, { status: 500 });
+  if (!result.ok) {
+    return NextResponse.json(
+      {
+        error: result.message,
+        hint: "Run supabase/migrations/016_employee_firm_head_pf_firm.sql in Supabase SQL Editor.",
+      },
+      { status: 503 }
+    );
   }
+
+  return NextResponse.json({
+    ok: true,
+    message: result.message,
+  });
 }

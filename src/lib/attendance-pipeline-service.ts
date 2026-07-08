@@ -214,12 +214,18 @@ async function transitionRowsSupabase(
     updatePayload.workflow_stage = "archived";
   }
 
-  const { data, error } = await supabase
+  let updateQuery = supabase
     .from(BIOMETRIC_TABLE)
     .update(updatePayload)
-    .in("id", ids)
-    .eq("pipeline_stage", from)
-    .select("id");
+    .in("id", ids);
+
+  if (from === PIPELINE_STAGES.LAYER_2_STAGING) {
+    updateQuery = updateQuery.or(`pipeline_stage.eq.${from},pipeline_stage.is.null`);
+  } else {
+    updateQuery = updateQuery.eq("pipeline_stage", from);
+  }
+
+  const { data, error } = await updateQuery.select("id");
 
   if (error) {
     if (isAttendanceSchemaError(error.message ?? "")) {
@@ -241,10 +247,18 @@ export async function transitionPipelineStage(input: {
   }
   await ensureAttendanceTablesSchema();
 
+  const pipelineColumnReady = await isPipelineStageColumnAvailable();
+  if (pipelineColumnReady) {
+    await ensurePipelineStageColumn();
+    await backfillMissingPipelineStages();
+  }
+
   let transitioned = 0;
+  let sqlTransitionError: Error | null = null;
   try {
     transitioned = await transitionRowsSupabase(input.ids, input.from, input.to);
   } catch (error) {
+    sqlTransitionError = error instanceof Error ? error : new Error(String(error));
     console.warn("[pipeline] SQL transition failed, trying storage:", error);
   }
 
@@ -259,6 +273,9 @@ export async function transitionPipelineStage(input: {
   }
 
   if (transitioned === 0 && input.ids.length > 0) {
+    if (!pipelineColumnReady && sqlTransitionError) {
+      throw sqlTransitionError;
+    }
     throw new Error(
       `No rows transitioned from ${input.from} to ${input.to}. Verify records exist at the current layer.`
     );

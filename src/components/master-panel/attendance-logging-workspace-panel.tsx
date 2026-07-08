@@ -339,7 +339,6 @@ export default function AttendanceLoggingWorkspacePanel() {
             punchOut: record.punchOut ?? "",
             remarks: record.assignedMachine ?? "",
             status: mappedStatusFromRecord(record),
-            overtimeHours: safeBulkNumericFromRecord(record),
           });
         } catch (entryError) {
           console.error(entryError);

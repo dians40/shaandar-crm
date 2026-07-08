@@ -14,6 +14,7 @@ import {
   fetchRowsByPipelineStage,
   gridRowsToStagingRows,
   gridRowsToWorkflowRecords,
+  rejectPipelineRows,
   transitionPipelineStage,
   updatePipelineRowFields,
   persistSavedRow,
@@ -96,6 +97,15 @@ export async function POST(request: Request) {
     if (action === "commit-workflow" || action === "commit-all-workflow") {
       const result = await commitWorkflowToSaved(ids);
       return NextResponse.json({ ok: true, ...result, toStage: PIPELINE_STAGES.LAYER_4_SAVED });
+    }
+
+    if (action === "reject-row" || action === "reject-rows") {
+      const stageParam = String(body.stage ?? PIPELINE_STAGES.LAYER_2_STAGING);
+      if (!isPipelineStage(stageParam)) {
+        return NextResponse.json({ error: "Valid stage is required for rejection." }, { status: 400 });
+      }
+      const result = await rejectPipelineRows({ ids, stage: stageParam });
+      return NextResponse.json({ ok: true, ...result });
     }
 
     if (action === "update-department") {

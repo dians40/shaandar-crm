@@ -2,14 +2,11 @@ export const MANUAL_WAGE_LOG_STORAGE_KEY = "shaandar-manual-wage-entry-log";
 
 export const MANUAL_ATTENDANCE_LOG_UPDATED_EVENT = "manual-attendance-log-updated";
 
-import type { OvertimeShiftType } from "@/types/manual-attendance-entry";
-
 export type ManualAttendanceLogRow = {
   id: string;
   employeeName: string;
   attendanceDate: string;
   status: string;
-  overtimeShift: OvertimeShiftType | "";
   dailyWage: number;
   remarks: string;
 };

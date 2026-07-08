@@ -49,6 +49,8 @@ export const LAYER2_STAGING_ALLOWED_PIPELINE_ACTIONS = [
   "approve-all-staging",
   "update-department",
   "update-designation",
+  "reject-row",
+  "reject-rows",
 ] as const;
 
 /** Pipeline POST actions permitted for Layer 3 workflow operators. */
@@ -58,12 +60,16 @@ export const LAYER3_WORKFLOW_ALLOWED_PIPELINE_ACTIONS = [
   "update-department",
   "update-designation",
   "update-row-fields",
+  "reject-row",
+  "reject-rows",
 ] as const;
 
 /** Pipeline POST actions permitted for Layer 4 saved-record operators. */
 export const LAYER4_SAVED_ALLOWED_PIPELINE_ACTIONS = [
   "persist-saved-row",
   "persist-saved-rows",
+  "reject-row",
+  "reject-rows",
 ] as const;
 
 /** Legacy staging POST actions permitted for Layer 2 staging reviewers. */

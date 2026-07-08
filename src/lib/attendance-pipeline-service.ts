@@ -326,4 +326,32 @@ export async function persistSavedRows(ids: string[]): Promise<{ saved: number }
   return { saved };
 }
 
+export async function rejectPipelineRows(input: {
+  ids: string[];
+  stage: PipelineStage;
+}): Promise<{ rejected: number }> {
+  if (input.ids.length === 0) return { rejected: 0 };
+  if (!isSupabaseServerConfigured()) {
+    throw new Error("Database not configured for pipeline rejection.");
+  }
+  await ensureAttendanceTablesSchema();
+
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from(BIOMETRIC_TABLE)
+    .delete()
+    .in("id", input.ids)
+    .eq("pipeline_stage", input.stage)
+    .select("id");
+
+  if (error) {
+    if (isAttendanceSchemaError(error.message ?? "")) {
+      throw new Error("Pipeline rejection failed — SQL tables not ready.");
+    }
+    throw new Error(error.message);
+  }
+
+  return { rejected: data?.length ?? 0 };
+}
+
 export { INITIAL_INGEST_PIPELINE_STAGE, PIPELINE_STAGES, resolveRowPipelineStage };

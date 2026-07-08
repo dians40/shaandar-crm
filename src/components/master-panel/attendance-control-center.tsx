@@ -59,6 +59,12 @@ import {
   MASTER_LIST_TABLE_WRAPPER_CLASS,
 } from "./universal-master-list";
 import { gridRowToUploadRecord } from "@/lib/attendance-upload-record-mapper";
+import {
+  ATTENDANCE_PIPELINE_REFRESH_EVENT,
+  LAYER_4_APPROVAL_OPTIONS,
+  type PipelineApprovalAction,
+} from "@/lib/attendance-pipeline-approval-ui";
+import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
 import { dispatchDepartmentMasterRefresh } from "@/lib/department-master-client";
 import type { RestrictedAttendanceMode } from "@/types/auth-session";
 
@@ -184,6 +190,9 @@ export default function AttendanceControlCenter({
   const [workflowRefreshToken, setWorkflowRefreshToken] = useState(0);
   const [layer4SaveMessage, setLayer4SaveMessage] = useState<string | null>(null);
   const [layer4SavingId, setLayer4SavingId] = useState<string | null>(null);
+  const [layer4ApprovalSelections, setLayer4ApprovalSelections] = useState<
+    Record<string, PipelineApprovalAction>
+  >({});
   const [activeLayer4RowId, setActiveLayer4RowId] = useState<string | null>(null);
 
   const resetPanelState = useCallback(() => {
@@ -332,6 +341,16 @@ export default function AttendanceControlCenter({
     if (restrictedMode === "stagingOnly" || restrictedMode === "workflowOnly") return;
     void loadGridRows();
   }, [loadGridRows, restrictedMode]);
+
+  useEffect(() => {
+    const refreshPipeline = () => {
+      setStagingRefreshToken((token) => token + 1);
+      setWorkflowRefreshToken((token) => token + 1);
+      void loadGridRows();
+    };
+    window.addEventListener(ATTENDANCE_PIPELINE_REFRESH_EVENT, refreshPipeline);
+    return () => window.removeEventListener(ATTENDANCE_PIPELINE_REFRESH_EVENT, refreshPipeline);
+  }, [loadGridRows]);
 
   const viewSavedDate = useCallback(
     (date: string) => {
@@ -795,13 +814,67 @@ export default function AttendanceControlCenter({
     }
   }, [activeLayer4RowId]);
 
-  const handleLayer4RowActivate = useCallback(
-    (row: BiometricAttendanceGridRow) => {
-      setActiveLayer4RowId(row.id);
-      toggleRowSelection(row);
-      void persistLayer4Row(row);
+  const handleLayer4RowActivate = useCallback((row: BiometricAttendanceGridRow) => {
+    setActiveLayer4RowId(row.id);
+    const key = rowSelectionKey(row);
+    setSelectedRowIds((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  const handleLayer4Approval = useCallback(
+    async (row: BiometricAttendanceGridRow, action: PipelineApprovalAction) => {
+      if (!action || !row.id || row.source !== "biometric") return;
+      setLayer4SavingId(row.id);
+      setLayer4SaveMessage(null);
+      try {
+        if (action === "save_archive") {
+          const response = await fetch("/api/v1/attendance/pipeline", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "persist-saved-row", ids: [row.id] }),
+          });
+          const body = (await response.json()) as { error?: string };
+          if (!response.ok) throw new Error(body.error ?? "Failed to save row to server.");
+          setGridRows((current) => current.filter((entry) => entry.id !== row.id));
+          setSelectedRowIds((current) => {
+            const next = new Set(current);
+            next.delete(rowSelectionKey(row));
+            return next;
+          });
+          if (activeLayer4RowId === row.id) setActiveLayer4RowId(null);
+          setLayer4SaveMessage(
+            `Archived ${row.employeeName || row.payCode} (${row.date}) to Saved File/Archive storage.`
+          );
+        } else if (action === "reject") {
+          const response = await fetch("/api/v1/attendance/pipeline", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "reject-row",
+              ids: [row.id],
+              stage: PIPELINE_STAGES.LAYER_4_SAVED,
+            }),
+          });
+          const body = (await response.json()) as { error?: string };
+          if (!response.ok) throw new Error(body.error ?? "Failed to reject row.");
+          setGridRows((current) => current.filter((entry) => entry.id !== row.id));
+          setLayer4SaveMessage(`Rejected ${row.employeeName || row.payCode} (${row.date}).`);
+        }
+        setLayer4ApprovalSelections((current) => ({ ...current, [row.id]: "" }));
+      } catch (saveError) {
+        setLayer4SaveMessage(
+          saveError instanceof Error ? saveError.message : "Layer 4 approval action failed."
+        );
+        setLayer4ApprovalSelections((current) => ({ ...current, [row.id]: "" }));
+      } finally {
+        setLayer4SavingId(null);
+      }
     },
-    [persistLayer4Row]
+    [activeLayer4RowId]
   );
 
   const handleSaveSelectedLayer4Rows = useCallback(async () => {
@@ -917,6 +990,7 @@ export default function AttendanceControlCenter({
           <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
             <tr>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Select</th>
+              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Approval</th>
               {ATTENDANCE_BULK_IMPORT_COLUMNS.map((column) => (
                 <th key={column.key} className={MASTER_LIST_HEADER_CELL_CLASS}>
                   {column.label}
@@ -928,7 +1002,7 @@ export default function AttendanceControlCenter({
             {isGridLoading ? (
               <tr>
                 <td
-                  colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 1}
+                  colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 2}
                   className="px-3 py-10 text-center text-corporate-muted"
                 >
                   <span className="inline-flex items-center gap-2 text-sm">
@@ -940,7 +1014,7 @@ export default function AttendanceControlCenter({
             ) : gridRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 1}
+                  colSpan={ATTENDANCE_BULK_IMPORT_COLUMNS.length + 2}
                   className="px-3 py-10 text-center text-sm text-corporate-muted"
                 >
                   {layer4FromDate || layer4ToDate
@@ -977,6 +1051,35 @@ export default function AttendanceControlCenter({
                         aria-label={`Select ${row.employeeName || row.payCode}`}
                         className="h-4 w-4 rounded border-corporate-border"
                       />
+                    </td>
+                    <td
+                      className={cn(MASTER_LIST_BODY_CELL_CLASS, "whitespace-nowrap")}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {row.source === "biometric" && row.id ? (
+                        <select
+                          value={layer4ApprovalSelections[row.id] ?? ""}
+                          disabled={layer4SavingId === row.id}
+                          onChange={(event) => {
+                            const value = event.target.value as PipelineApprovalAction;
+                            setLayer4ApprovalSelections((current) => ({
+                              ...current,
+                              [row.id]: value,
+                            }));
+                            void handleLayer4Approval(row, value);
+                          }}
+                          className="min-w-[160px] rounded border border-corporate-border bg-white px-2 py-1 text-xs font-medium disabled:opacity-50"
+                          aria-label={`Layer 4 approval for ${row.employeeName || row.payCode}`}
+                        >
+                          {LAYER_4_APPROVAL_OPTIONS.map((option) => (
+                            <option key={option.value || "select"} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     {ATTENDANCE_BULK_IMPORT_COLUMNS.map((column) => {
                       const value = uploadRecord[column.key] ?? "";

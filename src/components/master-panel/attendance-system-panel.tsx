@@ -10,10 +10,16 @@ import {
   MANUAL_ATTENDANCE_LOG_UPDATED_EVENT,
   mergeManualEntryNamesIntoOptions,
 } from "@/lib/manual-attendance-log-store";
+import {
+  ATTENDANCE_PIPELINE_REFRESH_EVENT,
+  LAYER_3_APPROVAL_OPTIONS,
+  type PipelineApprovalAction,
+} from "@/lib/attendance-pipeline-approval-ui";
 import { cn } from "@/lib/utils";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
+import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
 import LayerFilterControls from "./layer-filter-controls";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
@@ -40,18 +46,9 @@ export default function AttendanceSystemPanel({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [approvalSelections, setApprovalSelections] = useState<Record<string, PipelineApprovalAction>>({});
   const [manualLogRefresh, setManualLogRefresh] = useState(0);
   const { departmentNames } = useGeneralSettings();
-
-  useEffect(() => {
-    const handler = () => setManualLogRefresh((current) => current + 1);
-    window.addEventListener(MANUAL_ATTENDANCE_LOG_UPDATED_EVENT, handler);
-    window.addEventListener("storage", handler);
-    return () => {
-      window.removeEventListener(MANUAL_ATTENDANCE_LOG_UPDATED_EVENT, handler);
-      window.removeEventListener("storage", handler);
-    };
-  }, []);
 
   const resetPanelState = useCallback(() => {
     setFromDate("");
@@ -92,6 +89,19 @@ export default function AttendanceSystemPanel({
   useEffect(() => {
     void loadRecords();
   }, [loadRecords, refreshToken]);
+
+  useEffect(() => {
+    const handler = () => setManualLogRefresh((current) => current + 1);
+    const refreshPipeline = () => void loadRecords();
+    window.addEventListener(MANUAL_ATTENDANCE_LOG_UPDATED_EVENT, handler);
+    window.addEventListener(ATTENDANCE_PIPELINE_REFRESH_EVENT, refreshPipeline);
+    window.addEventListener("storage", handler);
+    return () => {
+      window.removeEventListener(MANUAL_ATTENDANCE_LOG_UPDATED_EVENT, handler);
+      window.removeEventListener(ATTENDANCE_PIPELINE_REFRESH_EVENT, refreshPipeline);
+      window.removeEventListener("storage", handler);
+    };
+  }, [loadRecords]);
 
   const departmentOptions = useMemo(() => {
     void manualLogRefresh;
@@ -142,6 +152,34 @@ export default function AttendanceSystemPanel({
       }
     } catch (fieldError) {
       setError(fieldError instanceof Error ? fieldError.message : "Field update failed.");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleLayer3Approval = async (row: BiometricAttendanceGridRow, action: PipelineApprovalAction) => {
+    if (!action) return;
+    setBusyId(row.id);
+    setMessage(null);
+    setError(null);
+    try {
+      if (action === "approve_layer_4") {
+        await postPipelineAction({ action: "commit-workflow", ids: [row.id] });
+        setMessage(`Approved ${row.employeeName} — moved to Layer 4 saved history.`);
+      } else if (action === "reject") {
+        await postPipelineAction({
+          action: "reject-row",
+          ids: [row.id],
+          stage: PIPELINE_STAGES.LAYER_3_WORKFLOW,
+        });
+        setMessage(`Rejected ${row.employeeName} — removed from Layer 3 workflow.`);
+      }
+      setApprovalSelections((current) => ({ ...current, [row.id]: "" }));
+      await loadRecords();
+      onCommitted?.();
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : "Approval action failed.");
+      setApprovalSelections((current) => ({ ...current, [row.id]: "" }));
     } finally {
       setBusyId(null);
     }
@@ -260,14 +298,23 @@ export default function AttendanceSystemPanel({
               rows.map((row) => (
                 <tr key={row.id}>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    <button
-                      type="button"
+                    <select
+                      value={approvalSelections[row.id] ?? ""}
                       disabled={busyId === row.id}
-                      onClick={() => void handleApprove(row)}
-                      className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                      onChange={(event) => {
+                        const value = event.target.value as PipelineApprovalAction;
+                        setApprovalSelections((current) => ({ ...current, [row.id]: value }));
+                        void handleLayer3Approval(row, value);
+                      }}
+                      className="min-w-[160px] rounded border border-corporate-border bg-white px-2 py-1.5 text-xs font-medium disabled:opacity-50"
+                      aria-label={`Layer 3 approval for ${row.employeeName}`}
                     >
-                      {busyId === row.id ? "Saving..." : "Approve"}
-                    </button>
+                      {LAYER_3_APPROVAL_OPTIONS.map((option) => (
+                        <option key={option.value || "select"} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "font-medium")}>
                     {row.employeeName}

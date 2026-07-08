@@ -132,7 +132,6 @@ export function useAttendanceWorkflow() {
       punchOut: string;
       remarks: string;
       status: string;
-      overtimeHours: number;
     }) => {
       const now = new Date().toISOString();
       const record = normalizeAttendanceWorkflowRecord({

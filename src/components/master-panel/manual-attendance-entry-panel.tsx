@@ -6,15 +6,13 @@ import { FormGrid, SelectInput, TextInput, TextareaInput } from "@/components/fo
 import { cn } from "@/lib/utils";
 import { useAttendanceWorkflow } from "@/hooks/use-attendance-workflow";
 import { useEmployees } from "@/hooks/use-employees";
+import { dispatchAttendancePipelineRefresh } from "@/lib/attendance-pipeline-approval-ui";
 import {
   buildAttendanceSyncPayload,
   EMPTY_MANUAL_ATTENDANCE_FORM,
   formatAttendanceStatusLabel,
-  formatOvertimeShiftLabel,
   MANUAL_ATTENDANCE_STATUS_OPTIONS,
-  OVERTIME_SHIFT_OPTIONS,
   type ManualAttendanceFormState,
-  type OvertimeShiftType,
 } from "@/types/manual-attendance-entry";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
@@ -100,11 +98,10 @@ export default function ManualAttendanceEntryPanel() {
           employeeName: selectedEmployee?.name ?? "",
           attendanceDate: form.attendanceDate,
           status: payload.status,
-          overtimeHours: payload.overtime_hours,
-          overtimeShift: form.overtimeShift || undefined,
           remarks: payload.remarks,
           punchIn: payload.punch_in,
           punchOut: payload.punch_out,
+          dailyWage,
         }),
       });
 
@@ -131,7 +128,6 @@ export default function ManualAttendanceEntryPanel() {
         punchOut: payload.punch_out ?? "",
         remarks: payload.remarks,
         status: payload.status,
-        overtimeHours: payload.overtime_hours,
       });
 
       const nextLog: ManualAttendanceLogRow[] = [
@@ -140,7 +136,6 @@ export default function ManualAttendanceEntryPanel() {
           employeeName: selectedEmployee?.name ?? "",
           attendanceDate: form.attendanceDate,
           status: payload.status,
-          overtimeShift: form.overtimeShift,
           dailyWage,
           remarks: form.remarks.trim(),
         },
@@ -149,7 +144,11 @@ export default function ManualAttendanceEntryPanel() {
       setWageLog(nextLog);
       writeManualAttendanceLog(nextLog);
 
-      setSuccess(result.message ?? "Attendance and wage entry saved successfully.");
+      dispatchAttendancePipelineRefresh();
+      setSuccess(
+        result.message ??
+          "Manual attendance submitted to Layer 2 staging — approve in the Attendance Control Center pipeline."
+      );
       setForm({
         ...EMPTY_MANUAL_ATTENDANCE_FORM,
         attendanceDate: form.attendanceDate,
@@ -173,7 +172,7 @@ export default function ManualAttendanceEntryPanel() {
               Manual Attendance &amp; Wage Entry
             </h3>
             <p className="text-sm text-corporate-muted">
-              Log labor and staff attendance, overtime shift, and daily wages in one sheet.
+              Log labor and staff attendance with daily wages — submissions enter Layer 2 approval immediately.
             </p>
           </div>
         </div>
@@ -214,7 +213,7 @@ export default function ManualAttendanceEntryPanel() {
           />
         </FormGrid>
 
-        <FormGrid cols={3}>
+        <FormGrid cols={2}>
           <SelectInput
             label="Attendance Status"
             required
@@ -228,21 +227,6 @@ export default function ManualAttendanceEntryPanel() {
               setForm((current) => ({
                 ...current,
                 status: event.target.value as ManualAttendanceFormState["status"],
-              }))
-            }
-          />
-          <SelectInput
-            label="Overtime Shift"
-            value={form.overtimeShift}
-            placeholder="Select overtime shift"
-            options={OVERTIME_SHIFT_OPTIONS.map((option) => ({
-              value: option.value,
-              label: option.label,
-            }))}
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                overtimeShift: event.target.value as OvertimeShiftType | "",
               }))
             }
           />
@@ -296,7 +280,6 @@ export default function ManualAttendanceEntryPanel() {
                 <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
                 <th className={MASTER_LIST_HEADER_CELL_CLASS}>Employee</th>
                 <th className={MASTER_LIST_HEADER_CELL_CLASS}>Status</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Overtime Shift</th>
                 <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Daily Wage</th>
                 <th className={MASTER_LIST_HEADER_CELL_CLASS}>Remarks</th>
               </tr>
@@ -304,13 +287,13 @@ export default function ManualAttendanceEntryPanel() {
             <tbody className="divide-y divide-corporate-border">
               {!isReady || !logReady ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-corporate-muted">
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-corporate-muted">
                     Loading attendance log...
                   </td>
                 </tr>
               ) : displayLog.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-corporate-muted">
+                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-corporate-muted">
                     No manual attendance entries yet. Use the form above to log staff attendance.
                   </td>
                 </tr>
@@ -327,9 +310,6 @@ export default function ManualAttendanceEntryPanel() {
                       <span className="rounded-full border border-corporate-border bg-corporate-bg px-2.5 py-1 text-xs font-semibold">
                         {formatAttendanceStatusLabel(row.status)}
                       </span>
-                    </td>
-                    <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-xs")}>
-                      {row.overtimeShift ? formatOvertimeShiftLabel(row.overtimeShift) : "—"}
                     </td>
                     <td
                       className={cn(

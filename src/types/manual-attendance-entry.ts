@@ -1,8 +1,9 @@
 export type BiometricShiftCode = "DY1" | "G11";
 
-export type ManualAttendanceStatus = BiometricShiftCode;
-
+/** Bulk import OT column — same codes as biometric shift. */
 export type OvertimeShiftType = BiometricShiftCode;
+
+export type ManualAttendanceStatus = BiometricShiftCode;
 
 export type WorkShift = "day" | "night";
 
@@ -13,7 +14,6 @@ export type ManualAttendanceFormState = {
   employeeId: string;
   attendanceDate: string;
   status: ManualAttendanceStatus | "";
-  overtimeShift: OvertimeShiftType | "";
   dailyWage: string;
   remarks: string;
 };
@@ -26,16 +26,10 @@ export const MANUAL_ATTENDANCE_STATUS_OPTIONS: {
   { value: "G11", label: "G11" },
 ];
 
-export const OVERTIME_SHIFT_OPTIONS: { value: OvertimeShiftType; label: string }[] = [
-  { value: "DY1", label: "DY1" },
-  { value: "G11", label: "G11" },
-];
-
 export const EMPTY_MANUAL_ATTENDANCE_FORM: ManualAttendanceFormState = {
   employeeId: "",
   attendanceDate: new Date().toISOString().slice(0, 10),
   status: "",
-  overtimeShift: "",
   dailyWage: "",
   remarks: "",
 };
@@ -78,7 +72,7 @@ export function formatAttendanceStatusLabel(status: ManualAttendanceStatus | str
 }
 
 export function formatOvertimeShiftLabel(shift: OvertimeShiftType | ""): string {
-  if (!shift) return "None";
+  if (!shift) return "—";
   return normalizeBiometricCode(shift);
 }
 
@@ -100,24 +94,20 @@ export type AttendanceSyncPayload = {
 
 export function buildAttendanceShiftPunchTimes(
   date: string,
-  status: ManualAttendanceStatus,
-  overtimeShift: OvertimeShiftType | ""
+  status: ManualAttendanceStatus
 ): { punchIn: string; punchOut?: string } {
   const { workShift } = resolveAttendanceStatusParts(status);
-  const otBand = overtimeShift ? normalizeBiometricCode(overtimeShift) : null;
 
   if (workShift === "night") {
-    const endHour = otBand === BIOMETRIC_NIGHT_CODE ? 8 : 6;
     return {
       punchIn: `${date}T21:00:00.000Z`,
-      punchOut: `${date}T${String(endHour).padStart(2, "0")}:00:00.000Z`,
+      punchOut: `${date}T06:00:00.000Z`,
     };
   }
 
-  const endHour = otBand === BIOMETRIC_DAY_CODE ? 20 : 18;
   return {
     punchIn: `${date}T09:00:00.000Z`,
-    punchOut: `${date}T${String(Math.min(23, endHour)).padStart(2, "0")}:00:00.000Z`,
+    punchOut: `${date}T18:00:00.000Z`,
   };
 }
 
@@ -130,17 +120,10 @@ export function buildAttendanceSyncPayload(
   if (!form.status) return { payload: {} as AttendanceSyncPayload, error: "Select an attendance status." };
 
   const status = normalizeBiometricCode(form.status);
-  const overtimeShift = form.overtimeShift ? normalizeBiometricCode(form.overtimeShift) : "";
-
-  const { punchIn, punchOut } = buildAttendanceShiftPunchTimes(
-    form.attendanceDate,
-    status,
-    overtimeShift
-  );
+  const { punchIn, punchOut } = buildAttendanceShiftPunchTimes(form.attendanceDate, status);
 
   const remarkParts = [
     form.remarks.trim(),
-    overtimeShift ? `Overtime Shift: ${overtimeShift}` : "",
     employeeName ? `Staff: ${employeeName}` : "",
   ].filter(Boolean);
 
@@ -150,7 +133,7 @@ export function buildAttendanceSyncPayload(
       punch_in: punchIn,
       ...(punchOut ? { punch_out: punchOut } : {}),
       status,
-      overtime_hours: overtimeShift ? 1 : 0,
+      overtime_hours: 0,
       remarks: remarkParts.join(" · "),
     },
     error: null,

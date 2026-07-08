@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireFullAccessUser } from "@/lib/api/auth-guard";
 import type { ManualAttendanceStatus } from "@/types/manual-attendance-entry";
 import { BIOMETRIC_DAY_CODE } from "@/types/manual-attendance-entry";
+import { ingestManualAttendanceToPipeline } from "@/lib/manual-attendance-pipeline-ingest";
 import {
   buildDefaultAttendanceWorkflowNotes,
   normalizeAttendanceWorkflowRecord,
@@ -15,7 +16,6 @@ import { fetchRowsByPipelineStage, gridRowsToWorkflowRecords } from "@/lib/atten
 import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
 import {
   ensureAttendanceTablesSchema,
-  formatSchemaEnsureFailureMessage,
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
 
@@ -283,16 +283,11 @@ type ManualEntryBody = {
   employeeName?: string;
   attendanceDate?: string;
   status?: ManualAttendanceStatus;
-  overtimeHours?: number;
-  overtimeShift?: "DY1" | "G11";
   remarks?: string;
   punchIn?: string;
   punchOut?: string;
+  dailyWage?: number;
 };
-
-function mapManualStatusToDbStatus(_status: ManualAttendanceStatus): string {
-  return "present";
-}
 
 export async function POST(request: Request) {
   const authError = await requireFullAccessUser();
@@ -324,85 +319,38 @@ export async function POST(request: Request) {
   const punchOut = String(payload.punchOut ?? "").trim();
   const employeeName = String(payload.employeeName ?? "").trim();
   const remarks = String(payload.remarks ?? "").trim();
-  const overtimeHours = Number.isFinite(Number(payload.overtimeHours))
-    ? Number(payload.overtimeHours)
-    : payload.overtimeShift
-      ? 1
-      : 0;
-  const overtimeShift = payload.overtimeShift ?? null;
-
-  const workflowNotes = {
-    ...buildDefaultAttendanceWorkflowNotes(punchIn, punchOut, employeeName || undefined),
-    source: "manual" as const,
-    manualStatus: status,
-    overtimeHours,
-    overtimeShift,
-    shiftRemarks: remarks,
-  };
-
-  const workflowRecord = normalizeAttendanceWorkflowRecord({
-    id: `att-manual-${Date.now()}`,
-    employeeId,
-    employeeName,
-    attendanceDate,
-    punchIn,
-    punchOut,
-    assignedMachine: remarks,
-    workflowStage: "pending_allocation",
-    source: "manual",
-  });
-
-  if (!isSupabaseServerConfigured()) {
-    return NextResponse.json({
-      ok: true,
-      message: "Attendance saved locally (database not configured).",
-      record: workflowRecord,
-      sync: {
-        employee_id: employeeId,
-        punch_in: punchIn,
-        punch_out: punchOut || null,
-        status,
-        overtime_hours: overtimeHours,
-        remarks,
-      },
-    });
-  }
+  const dailyWage = Number.isFinite(Number(payload.dailyWage)) ? Number(payload.dailyWage) : 0;
 
   try {
-    const supabase = createAdminClient();
-    const dbStatus = mapManualStatusToDbStatus(status);
-
-    const { data, error } = await supabase
-      .from(ATTENDANCE_TABLE)
-      .upsert(
-        {
-          employee_id: employeeId,
-          attendance_date: attendanceDate,
-          status: dbStatus,
-          notes: serializeAttendanceWorkflowNotes(workflowNotes),
-        },
-        { onConflict: "employee_id,attendance_date" }
-      )
-      .select("id, employee_id, attendance_date, status")
-      .single();
-
-    if (error) throw error;
-
-    const record = normalizeAttendanceWorkflowRecord({
-      ...workflowRecord,
-      id: String(data.id),
+    const saved = await ingestManualAttendanceToPipeline({
+      employeeId,
+      employeeName,
+      attendanceDate,
+      status,
+      punchIn,
+      punchOut,
+      remarks,
+      dailyWage,
     });
 
     return NextResponse.json({
       ok: true,
-      message: "Attendance log synced successfully.",
-      record,
+      message:
+        "Manual attendance submitted to Layer 2 staging — approve in the Attendance Control Center pipeline.",
+      record: {
+        id: saved.id,
+        employeeId,
+        employeeName,
+        attendanceDate,
+        payCode: saved.payCode,
+        pipelineStage: PIPELINE_STAGES.LAYER_2_STAGING,
+      },
       sync: {
         employee_id: employeeId,
         punch_in: punchIn,
         punch_out: punchOut || null,
         status,
-        overtime_hours: overtimeHours,
+        overtime_hours: 0,
         remarks,
       },
     });

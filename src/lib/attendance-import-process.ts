@@ -29,8 +29,7 @@ export function buildImportPunchTimes(row: AttendanceImportRow): {
 } {
   const { punchIn, punchOut } = buildAttendanceShiftPunchTimes(
     row.attendanceDate,
-    row.status,
-    row.overtimeShift
+    row.status
   );
 
   return { punchIn, punchOut: punchOut ?? "" };

@@ -17,8 +17,14 @@ import {
   MANUAL_ATTENDANCE_LOG_UPDATED_EVENT,
   mergeManualEntryNamesIntoOptions,
 } from "@/lib/manual-attendance-log-store";
+import {
+  ATTENDANCE_PIPELINE_REFRESH_EVENT,
+  LAYER_2_APPROVAL_OPTIONS,
+  type PipelineApprovalAction,
+} from "@/lib/attendance-pipeline-approval-ui";
 import { cn } from "@/lib/utils";
 import type { AttendanceStagingRow } from "@/types/attendance-staging";
+import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
 import LayerFilterControls from "./layer-filter-controls";
 import {
   MASTER_LIST_BODY_CELL_CLASS,
@@ -63,18 +69,9 @@ export default function AttendanceStagingWorkflowPanel({
   const [editOut, setEditOut] = useState("");
   const [editRemark, setEditRemark] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [approvalSelections, setApprovalSelections] = useState<Record<string, PipelineApprovalAction>>({});
   const [manualLogRefresh, setManualLogRefresh] = useState(0);
   const { departmentNames } = useGeneralSettings();
-
-  useEffect(() => {
-    const handler = () => setManualLogRefresh((current) => current + 1);
-    window.addEventListener(MANUAL_ATTENDANCE_LOG_UPDATED_EVENT, handler);
-    window.addEventListener("storage", handler);
-    return () => {
-      window.removeEventListener(MANUAL_ATTENDANCE_LOG_UPDATED_EVENT, handler);
-      window.removeEventListener("storage", handler);
-    };
-  }, []);
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -106,6 +103,19 @@ export default function AttendanceStagingWorkflowPanel({
   useEffect(() => {
     void loadRows();
   }, [loadRows, refreshToken]);
+
+  useEffect(() => {
+    const handler = () => setManualLogRefresh((current) => current + 1);
+    const refreshPipeline = () => void loadRows();
+    window.addEventListener(MANUAL_ATTENDANCE_LOG_UPDATED_EVENT, handler);
+    window.addEventListener(ATTENDANCE_PIPELINE_REFRESH_EVENT, refreshPipeline);
+    window.addEventListener("storage", handler);
+    return () => {
+      window.removeEventListener(MANUAL_ATTENDANCE_LOG_UPDATED_EVENT, handler);
+      window.removeEventListener(ATTENDANCE_PIPELINE_REFRESH_EVENT, refreshPipeline);
+      window.removeEventListener("storage", handler);
+    };
+  }, [loadRows]);
 
   const departmentOptions = useMemo(() => {
     void manualLogRefresh;
@@ -186,6 +196,34 @@ export default function AttendanceStagingWorkflowPanel({
       setError(
         designationError instanceof Error ? designationError.message : "Designation update failed."
       );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleLayer2Approval = async (row: AttendanceStagingRow, action: PipelineApprovalAction) => {
+    if (!action) return;
+    setBusyId(row.id);
+    setMessage(null);
+    setError(null);
+    try {
+      if (action === "approve_layer_3") {
+        await postPipelineAction({ action: "approve-staging", ids: [row.id] });
+        setMessage(`Approved ${row.employeeName || row.payCode} — moved to Live Workflow (Layer 3).`);
+      } else if (action === "reject") {
+        await postPipelineAction({
+          action: "reject-row",
+          ids: [row.id],
+          stage: PIPELINE_STAGES.LAYER_2_STAGING,
+        });
+        setMessage(`Rejected ${row.employeeName || row.payCode} — removed from Layer 2 staging.`);
+      }
+      setApprovalSelections((current) => ({ ...current, [row.id]: "" }));
+      await loadRows();
+      onApproved?.();
+    } catch (approvalError) {
+      setError(approvalError instanceof Error ? approvalError.message : "Approval action failed.");
+      setApprovalSelections((current) => ({ ...current, [row.id]: "" }));
     } finally {
       setBusyId(null);
     }
@@ -382,17 +420,26 @@ export default function AttendanceStagingWorkflowPanel({
                   )}
                 >
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    <div className="flex gap-1">
+                    <div className="flex flex-col gap-1">
                       {!row.isLocked && (
                         <>
-                          <button
-                            type="button"
+                          <select
+                            value={approvalSelections[row.id] ?? ""}
                             disabled={busyId === row.id}
-                            onClick={() => void handleApprove(row)}
-                            className="rounded bg-emerald-600 px-2 py-1 text-xs font-semibold text-white"
+                            onChange={(event) => {
+                              const value = event.target.value as PipelineApprovalAction;
+                              setApprovalSelections((current) => ({ ...current, [row.id]: value }));
+                              void handleLayer2Approval(row, value);
+                            }}
+                            className="min-w-[160px] rounded border border-corporate-border bg-white px-2 py-1 text-xs font-medium"
+                            aria-label={`Layer 2 approval for ${row.employeeName || row.payCode}`}
                           >
-                            Approve
-                          </button>
+                            {LAYER_2_APPROVAL_OPTIONS.map((option) => (
+                              <option key={option.value || "select"} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
                           <button
                             type="button"
                             onClick={() => {

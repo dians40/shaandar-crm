@@ -26,7 +26,7 @@ export async function GET() {
       ok: true,
       ready: true,
       mode: "sql",
-      message: "Attendance SQL tables are ready.",
+      message: "Attendance SQL tables and pipeline columns are ready.",
     });
   }
 
@@ -56,7 +56,7 @@ export async function POST() {
       ok: true,
       ready: true,
       mode: "sql",
-      message: "Attendance tables already exist.",
+      message: "Attendance tables and pipeline columns already exist.",
     });
   }
 

@@ -19,7 +19,7 @@ let ensureSucceeded = false;
 
 export { resolveDatabaseUrl } from "@/lib/database-url";
 
-/** Detect Supabase PostgREST / Postgres "table not found" errors. */
+/** Detect Supabase PostgREST / Postgres schema errors (missing tables or columns). */
 export function isAttendanceSchemaError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
@@ -28,6 +28,9 @@ export function isAttendanceSchemaError(message: string): boolean {
     lower.includes("could not find table") ||
     lower.includes("not find table") ||
     (lower.includes("relation") && lower.includes("does not exist")) ||
+    (lower.includes("column") && lower.includes("does not exist")) ||
+    (lower.includes("pipeline_stage") && lower.includes("does not exist")) ||
+    (lower.includes("workflow_stage") && lower.includes("does not exist")) ||
     (lower.includes("public.employee_attendance") && lower.includes("not")) ||
     (lower.includes("public.biometric_attendance") && lower.includes("not")) ||
     (lower.includes("public.attendance_staging") && lower.includes("not")) ||
@@ -67,6 +70,18 @@ export async function checkAttendanceSchemaReady(): Promise<{
           message: `Table public.${table} is missing from the database schema cache.`,
         };
       }
+    }
+
+    const { error: pipelineColumnError } = await supabase
+      .from("biometric_attendance")
+      .select("pipeline_stage, workflow_stage")
+      .limit(1);
+    if (pipelineColumnError && isAttendanceSchemaError(pipelineColumnError.message ?? "")) {
+      return {
+        ready: false,
+        message:
+          "Column biometric_attendance.pipeline_stage is missing. Run attendance schema migration 013.",
+      };
     }
 
     return { ready: true };
@@ -175,7 +190,7 @@ export async function ensureAttendanceTablesSchema(): Promise<{
   const existing = await checkAttendanceSchemaReady();
   if (existing.ready) {
     ensureSucceeded = true;
-    return { ok: true, message: "Attendance tables already exist." };
+    return { ok: true, message: "Attendance tables and pipeline columns already exist." };
   }
 
   if (ensureSucceeded) {

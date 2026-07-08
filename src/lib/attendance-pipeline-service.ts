@@ -17,10 +17,10 @@ import {
   ensurePipelineStageColumn,
   backfillMissingPipelineStages,
   isAttendanceSchemaError,
-  isPipelineStageColumnError,
 } from "@/lib/attendance-schema-ensure";
 import {
   isPipelineStageColumnAvailable,
+  isPipelineStageUnavailableMessage,
   resetPipelineStageColumnCache,
 } from "@/lib/pipeline-stage-column-compat";
 import { fetchStorageGridRows, transitionStoragePipelineStage, updateStorageRowFields } from "@/lib/attendance-storage-fallback";
@@ -77,8 +77,9 @@ async function fetchRowsByPipelineStageSupabase(
   const { data, error } = await query;
   if (error) {
     const message = error.message ?? "Pipeline fetch failed.";
-    if (isPipelineStageColumnError(message)) {
-      throw new Error(message);
+    if (isPipelineStageUnavailableMessage(message) && pipelineColumnReady) {
+      resetPipelineStageColumnCache();
+      return fetchRowsByPipelineStageSupabase(stage, options);
     }
     if (isAttendanceSchemaError(message)) return [];
     throw new Error(message);
@@ -137,25 +138,15 @@ export async function fetchRowsByPipelineStage(
   if (!isPipelineStage(stage)) throw new Error(`Invalid pipeline stage: ${stage}`);
 
   if (isSupabaseServerConfigured()) {
-    await ensurePipelineStageColumn();
     resetPipelineStageColumnCache();
     if (await isPipelineStageColumnAvailable()) {
+      await ensurePipelineStageColumn();
       await backfillMissingPipelineStages();
     }
     try {
       return await fetchRowsByPipelineStageSupabase(stage, options);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Pipeline fetch failed.";
-      if (isPipelineStageColumnError(message)) {
-        resetPipelineStageColumnCache();
-        try {
-          return await fetchRowsByPipelineStageSupabase(stage, options);
-        } catch (retryError) {
-          console.warn("[pipeline] compat fetch failed:", retryError);
-        }
-      } else {
-        console.warn("[pipeline] supabase fetch failed:", error);
-      }
+      console.warn("[pipeline] supabase fetch failed:", error);
     }
   }
 
@@ -309,15 +300,30 @@ export async function updatePipelineRowFields(input: {
   let updated = 0;
   if (isSupabaseServerConfigured()) {
     await ensureAttendanceTablesSchema();
+    const pipelineColumnReady = await isPipelineStageColumnAvailable();
     try {
       const supabase = createAdminClient();
-      const { data, error } = await supabase
+      let updateQuery = supabase
         .from(BIOMETRIC_TABLE)
         .update(updatePayload)
-        .in("id", ids)
-        .eq("pipeline_stage", stage)
-        .select("id");
-      if (!error) updated = data?.length ?? 0;
+        .in("id", ids);
+      if (pipelineColumnReady) {
+        updateQuery = updateQuery.eq("pipeline_stage", stage);
+      }
+      const { data, error } = await updateQuery.select("id");
+      if (error) {
+        if (isPipelineStageUnavailableMessage(error.message ?? "")) {
+          resetPipelineStageColumnCache();
+          const { data: retryData, error: retryError } = await supabase
+            .from(BIOMETRIC_TABLE)
+            .update(updatePayload)
+            .in("id", ids)
+            .select("id");
+          if (!retryError) updated = retryData?.length ?? 0;
+        }
+      } else {
+        updated = data?.length ?? 0;
+      }
     } catch (error) {
       console.warn("[pipeline] SQL field update failed:", error);
     }
@@ -379,29 +385,41 @@ export async function updatePipelineStagingEdit(input: {
 
   let updated = 0;
   if (isSupabaseServerConfigured()) {
-    await ensurePipelineStageColumn();
+    const pipelineColumnReady = await isPipelineStageColumnAvailable();
+    if (pipelineColumnReady) {
+      await ensurePipelineStageColumn();
+    }
     try {
       const supabase = createAdminClient();
-      const { data, error } = await supabase
+      let updateQuery = supabase
         .from(BIOMETRIC_TABLE)
         .update(updatePayload)
-        .eq("id", id)
-        .or(
+        .eq("id", id);
+      if (pipelineColumnReady) {
+        updateQuery = updateQuery.or(
           `pipeline_stage.eq.${PIPELINE_STAGES.LAYER_2_STAGING},pipeline_stage.is.null`
-        )
-        .select("id");
+        );
+      }
+      const { data, error } = await updateQuery.select("id");
       if (error) {
-        if (isPipelineStageColumnError(error.message ?? "")) {
-          throw new Error(error.message);
+        if (isPipelineStageUnavailableMessage(error.message ?? "")) {
+          resetPipelineStageColumnCache();
+          const { data: retryData, error: retryError } = await supabase
+            .from(BIOMETRIC_TABLE)
+            .update(updatePayload)
+            .eq("id", id)
+            .select("id");
+          if (!retryError) updated = retryData?.length ?? 0;
+        } else {
+          throw new Error(error.message ?? "Layer 2 edit failed.");
         }
-        throw new Error(error.message ?? "Layer 2 edit failed.");
+      } else {
+        updated = data?.length ?? 0;
       }
-      updated = data?.length ?? 0;
     } catch (error) {
-      if (isPipelineStageColumnError(error instanceof Error ? error.message : "")) {
-        throw error;
+      if (!isPipelineStageUnavailableMessage(error instanceof Error ? error.message : "")) {
+        console.warn("[pipeline] SQL staging edit failed:", error);
       }
-      console.warn("[pipeline] SQL staging edit failed:", error);
     }
   }
 
@@ -456,15 +474,27 @@ export async function rejectPipelineRows(input: {
   }
   await ensureAttendanceTablesSchema();
 
+  const pipelineColumnReady = await isPipelineStageColumnAvailable();
   const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from(BIOMETRIC_TABLE)
-    .delete()
-    .in("id", input.ids)
-    .eq("pipeline_stage", input.stage)
-    .select("id");
+  let deleteQuery = supabase.from(BIOMETRIC_TABLE).delete().in("id", input.ids);
+  if (pipelineColumnReady) {
+    deleteQuery = deleteQuery.eq("pipeline_stage", input.stage);
+  }
+  const { data, error } = await deleteQuery.select("id");
 
   if (error) {
+    if (isPipelineStageUnavailableMessage(error.message ?? "")) {
+      resetPipelineStageColumnCache();
+      const { data: retryData, error: retryError } = await supabase
+        .from(BIOMETRIC_TABLE)
+        .delete()
+        .in("id", input.ids)
+        .select("id");
+      if (retryError) {
+        throw new Error("Pipeline rejection failed — could not delete rows.");
+      }
+      return { rejected: retryData?.length ?? 0 };
+    }
     if (isAttendanceSchemaError(error.message ?? "")) {
       throw new Error("Pipeline rejection failed — SQL tables not ready.");
     }

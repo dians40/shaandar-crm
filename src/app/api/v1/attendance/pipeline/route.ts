@@ -28,6 +28,7 @@ import {
   checkAttendanceSchemaReady,
   ensurePipelineStageColumn,
 } from "@/lib/attendance-schema-ensure";
+import { resetPipelineStageColumnCache } from "@/lib/pipeline-stage-column-compat";
 import { getDatabaseUrlResolutionHint } from "@/lib/database-url";
 import { getSupabaseSqlEditorUrl } from "@/lib/attendance-setup-messages";
 
@@ -54,6 +55,7 @@ export async function GET(request: Request) {
     const schemaCheck = await checkAttendanceSchemaReady();
     if (!schemaCheck.ready) {
       const ensure = await ensurePipelineStageColumn();
+      resetPipelineStageColumnCache();
       const recheck = await checkAttendanceSchemaReady();
       if (!recheck.ready) {
         return NextResponse.json(
@@ -70,6 +72,12 @@ export async function GET(request: Request) {
       }
       if (!ensure.ok) {
         console.warn("[pipeline] schema ensure:", ensure.message);
+      }
+    } else if (schemaCheck.pipelineStageReady === false) {
+      const ensure = await ensurePipelineStageColumn();
+      resetPipelineStageColumnCache();
+      if (!ensure.ok) {
+        console.warn("[pipeline] pipeline_stage ensure:", ensure.message);
       }
     }
 

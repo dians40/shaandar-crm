@@ -9,6 +9,16 @@ export function resetPipelineStageColumnCache(): void {
   columnAvailableCache = null;
 }
 
+/** True when PostgREST reports pipeline_stage / workflow_stage is missing or unreadable. */
+export function isPipelineStageUnavailableMessage(message: string): boolean {
+  const lower = message.toLowerCase();
+  if (isPipelineStageColumnError(message)) return true;
+  return (
+    lower.includes("pipeline_stage") ||
+    lower.includes("workflow_stage")
+  );
+}
+
 /** Probe PostgREST for biometric_attendance.pipeline_stage (cached per process). */
 export async function isPipelineStageColumnAvailable(): Promise<boolean> {
   if (!isSupabaseServerConfigured()) {
@@ -24,7 +34,7 @@ export async function isPipelineStageColumnAvailable(): Promise<boolean> {
       .from("biometric_attendance")
       .select("pipeline_stage")
       .limit(1);
-    if (error && isPipelineStageColumnError(error.message ?? "")) {
+    if (error) {
       columnAvailableCache = false;
       return false;
     }

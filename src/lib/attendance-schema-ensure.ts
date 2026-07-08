@@ -84,16 +84,20 @@ export async function checkAttendanceSchemaReady(): Promise<{
       .from("biometric_attendance")
       .select("pipeline_stage, workflow_stage")
       .limit(1);
-    if (
-      pipelineColumnError &&
-      isPipelineStageColumnError(pipelineColumnError.message ?? "")
-    ) {
-      return {
-        ready: true,
-        pipelineStageReady: false,
-        message:
-          "Column biometric_attendance.pipeline_stage is missing. Run migration 013 in Supabase SQL Editor for full 4-layer pipeline.",
-      };
+    if (pipelineColumnError) {
+      const columnMessage = pipelineColumnError.message ?? "";
+      if (
+        isPipelineStageColumnError(columnMessage) ||
+        columnMessage.toLowerCase().includes("pipeline_stage") ||
+        columnMessage.toLowerCase().includes("workflow_stage")
+      ) {
+        return {
+          ready: true,
+          pipelineStageReady: false,
+          message:
+            "Column biometric_attendance.pipeline_stage is missing. Run migration 013 in Supabase SQL Editor (/api/v1/attendance/schema/migration-sql?file=013).",
+        };
+      }
     }
 
     return { ready: true, pipelineStageReady: true };
@@ -304,7 +308,7 @@ export async function ensurePipelineStageColumn(): Promise<{
   migrationSql?: string;
 }> {
   const check = await checkAttendanceSchemaReady();
-  if (check.ready) {
+  if (check.pipelineStageReady !== false) {
     return { ok: true, message: "pipeline_stage column already exists." };
   }
 
@@ -337,8 +341,12 @@ export async function ensureAttendanceTablesSchema(): Promise<{
   migrationSql?: string;
 }> {
   const existing = await checkAttendanceSchemaReady();
-  if (existing.ready) {
+  if (existing.ready && existing.pipelineStageReady !== false) {
     return { ok: true, message: "Attendance tables and pipeline columns already exist." };
+  }
+
+  if (existing.ready && existing.pipelineStageReady === false) {
+    return ensurePipelineStageColumn();
   }
 
   if (ensureInFlight) return ensureInFlight;

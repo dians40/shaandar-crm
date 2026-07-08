@@ -17,6 +17,7 @@ import {
 import {
   emptyExpenseReceiptForm,
   type ExpenseReceiptFormState,
+  type ExpenseReceiptVoucherRecord,
 } from "@/types/accounting-voucher";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import LedgerPostingLinesGrid from "./shared/ledger-posting-lines-grid";
@@ -63,16 +64,6 @@ export default function ExpenseReceiptPanel({ config }: Props) {
   );
 
   const totalAmount = useMemo(() => computeExpenseReceiptTotal(form), [form]);
-
-  const filteredRecords = useMemo(
-    () =>
-      records.filter(
-        (row) =>
-          matchesUniversalNameSearch(searchQuery, row.partyDisplayName) ||
-          matchesUniversalNameSearch(searchQuery, row.voucherNumber)
-      ),
-    [records, searchQuery]
-  );
 
   const viewingRecord = useMemo(
     () => records.find((row) => row.id === viewingId) ?? null,
@@ -247,47 +238,78 @@ export default function ExpenseReceiptPanel({ config }: Props) {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       >
-        {filteredRecords.length === 0 ? (
-          <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
-            {LIST_SEARCH_EMPTY_MESSAGE}
-          </p>
-        ) : (
-          <UniversalMasterListTable>
-            <thead className={MASTER_LIST_HEAD_CLASS}>
-              <tr>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>{config.partyLabel}</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Voucher #</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRecords.map((row) => (
-                <UniversalMasterListRow
-                  key={row.id}
-                  onEdit={() => {
-                    setViewingId(row.id);
-                    setView("detail");
-                  }}
-                >
-                  <UniversalMasterListNameCell
-                    name={row.partyDisplayName}
-                    onEdit={() => {
-                      setViewingId(row.id);
-                      setView("detail");
-                    }}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.voucherNumber}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.voucherDate}</td>
-                  <td className={`${MASTER_LIST_BODY_CELL_CLASS} text-right font-medium`}>
-                    {formatCurrency(row.totalAmount)}
-                  </td>
-                </UniversalMasterListRow>
-              ))}
-            </tbody>
-          </UniversalMasterListTable>
-        )}
+        <ExpenseReceiptListContent
+          records={records}
+          partyLabel={config.partyLabel}
+          onOpenDetail={(row) => {
+            setViewingId(row.id);
+            setView("detail");
+          }}
+        />
       </UniversalMasterListShell>
     </>
+  );
+}
+
+type ExpenseReceiptListContentProps = {
+  records: ExpenseReceiptVoucherRecord[];
+  partyLabel: string;
+  onOpenDetail: (record: ExpenseReceiptVoucherRecord) => void;
+};
+
+function ExpenseReceiptListContent({
+  records,
+  partyLabel,
+  onOpenDetail,
+}: ExpenseReceiptListContentProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredRecords = useMemo(() => {
+    const filterExtend = {
+      departmentFilter,
+      designationFilter,
+      skipDepartmentIfAbsent: true as const,
+      skipDesignationIfAbsent: true as const,
+    };
+    return records.filter(
+      (row) =>
+        matchesUniversalNameSearch(searchQuery, row.partyDisplayName, [], filterExtend) ||
+        matchesUniversalNameSearch(searchQuery, row.voucherNumber, [], filterExtend)
+    );
+  }, [records, searchQuery, departmentFilter, designationFilter]);
+
+  if (filteredRecords.length === 0) {
+    return (
+      <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
+        {LIST_SEARCH_EMPTY_MESSAGE}
+      </p>
+    );
+  }
+
+  return (
+    <UniversalMasterListTable>
+      <thead className={MASTER_LIST_HEAD_CLASS}>
+        <tr>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>{partyLabel}</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Voucher #</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
+          <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filteredRecords.map((row) => (
+          <UniversalMasterListRow key={row.id} onEdit={() => onOpenDetail(row)}>
+            <UniversalMasterListNameCell
+              name={row.partyDisplayName}
+              onEdit={() => onOpenDetail(row)}
+            />
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.voucherNumber}</td>
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.voucherDate}</td>
+            <td className={`${MASTER_LIST_BODY_CELL_CLASS} text-right font-medium`}>
+              {formatCurrency(row.totalAmount)}
+            </td>
+          </UniversalMasterListRow>
+        ))}
+      </tbody>
+    </UniversalMasterListTable>
   );
 }

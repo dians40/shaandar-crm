@@ -102,18 +102,6 @@ export default function BomManagementPanel() {
     [form.unitExpenses]
   );
 
-  const filtered = useMemo(
-    () =>
-      boms.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.bomName, [
-          row.outputItemName,
-          String(row.outputQuantity),
-          row.outputUnitName,
-        ])
-      ),
-    [boms, searchQuery]
-  );
-
   const resetForm = () => {
     setForm(EMPTY_BOM_FORM);
     setEditingId(null);
@@ -659,53 +647,107 @@ export default function BomManagementPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <Layers className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No BOM records yet."}
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.bomName}
-                    onEdit={() => openEdit(row)}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.outputItemName}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {row.outputQuantity} {row.outputUnitName}
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    ₹{row.unitExpense.toLocaleString("en-IN")}
-                  </td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => {
-                        setViewingId(row.id);
-                        setView("detail");
-                      }}
-                      onEdit={() => openEdit(row)}
-                      extra={
-                        <MasterRemoveOrProtected
-                          canRemove={
-                            !checkUsedInTransactions("bom", row.id, row.bomName)
-                          }
-                          onRemove={() => {
-                            if (!window.confirm(`Remove BOM "${row.bomName}"?`)) return;
-                            removeBom(row.id);
-                          }}
-                        />
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <BomListBody
+              boms={boms}
+              onEdit={openEdit}
+              onView={(row) => {
+                setViewingId(row.id);
+                setView("detail");
+              }}
+              onRemove={(row) => {
+                if (!window.confirm(`Remove BOM "${row.bomName}"?`)) return;
+                removeBom(row.id);
+              }}
+              checkUsedInTransactions={checkUsedInTransactions}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+type BomListBodyProps = {
+  boms: BomRecord[];
+  onEdit: (record: BomRecord) => void;
+  onView: (record: BomRecord) => void;
+  onRemove: (record: BomRecord) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+};
+
+function BomListBody({
+  boms,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: BomListBodyProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filtered = useMemo(
+    () =>
+      boms.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.bomName,
+          [row.outputItemName, String(row.outputQuantity), row.outputUnitName],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [boms, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (boms.length === 0) {
+    return (
+      <tr>
+        <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <Layers className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          No BOM records yet.
+        </td>
+      </tr>
+    );
+  }
+
+  if (filtered.length === 0) {
+    return (
+      <tr>
+        <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          {LIST_SEARCH_EMPTY_MESSAGE}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filtered.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell name={row.bomName} onEdit={() => onEdit(row)} />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.outputItemName}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            {row.outputQuantity} {row.outputUnitName}
+          </td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            ₹{row.unitExpense.toLocaleString("en-IN")}
+          </td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              extra={
+                <MasterRemoveOrProtected
+                  canRemove={!checkUsedInTransactions("bom", row.id, row.bomName)}
+                  onRemove={() => onRemove(row)}
+                />
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

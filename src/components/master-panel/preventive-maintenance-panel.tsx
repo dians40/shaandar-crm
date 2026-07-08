@@ -20,7 +20,7 @@ import {
   validatePreventiveMaintenanceForm,
   type MaintenanceComponentLine,
   type PreventiveMaintenanceFormState,
-  type PreventiveMaintenanceRecord,
+  type PreventiveMaintenanceRule,
 } from "@/types/preventive-maintenance";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import UniversalRecordProfile from "./universal-record-profile";
@@ -375,8 +375,8 @@ export default function PreventiveMaintenancePanel() {
 }
 
 type PreventiveMaintenanceListContentProps = {
-  rules: PreventiveMaintenanceRecord[];
-  onOpenDetail: (record: PreventiveMaintenanceRecord) => void;
+  rules: PreventiveMaintenanceRule[];
+  onOpenDetail: (record: PreventiveMaintenanceRule) => void;
 };
 
 function PreventiveMaintenanceListContent({

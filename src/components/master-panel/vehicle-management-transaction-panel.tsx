@@ -180,20 +180,6 @@ export default function VehicleManagementTransactionPanel() {
     ledgerId,
   ]);
 
-  const filtered = useMemo(
-    () =>
-      records.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.vehicleRegistration, [
-          row.tripDate,
-          row.tripType,
-          row.partyStationName,
-          VEHICLE_TRIP_STATUS_LABELS[row.tripStatus],
-          String(row.finalSettlement),
-        ])
-      ),
-    [records, searchQuery]
-  );
-
   const resetForm = () => {
     setForm(EMPTY_VEHICLE_TRIP_FORM);
     setLedgerId(null);
@@ -956,47 +942,83 @@ export default function VehicleManagementTransactionPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <Car className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No vehicle trips logged yet."}
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openLedger(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.vehicleRegistration}
-                    onEdit={() => openLedger(row)}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.tripDate}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(row.tripStatus)}`}
-                    >
-                      {VEHICLE_TRIP_STATUS_LABELS[row.tripStatus]}
-                    </span>
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {formatCurrency(row.cashAdvanceGiven)}
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {formatCurrency(row.netDueCashBalance)}
-                  </td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      showView={false}
-                      onEdit={() => openLedger(row)}
-                      editLabel="Open Ledger"
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <VehicleTripsListBody records={records} onOpenLedger={openLedger} />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+type VehicleTripsListBodyProps = {
+  records: VehicleTripExpenseRecord[];
+  onOpenLedger: (record: VehicleTripExpenseRecord) => void;
+};
+
+function VehicleTripsListBody({ records, onOpenLedger }: VehicleTripsListBodyProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filtered = useMemo(
+    () =>
+      records.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.vehicleRegistration,
+          [
+            row.tripDate,
+            row.tripType,
+            row.partyStationName,
+            VEHICLE_TRIP_STATUS_LABELS[row.tripStatus],
+            String(row.finalSettlement),
+          ],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [records, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (filtered.length === 0) {
+    return (
+      <tr>
+        <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <Car className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No vehicle trips logged yet."}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filtered.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onOpenLedger(row)}>
+          <UniversalMasterListNameCell
+            name={row.vehicleRegistration}
+            onEdit={() => onOpenLedger(row)}
+          />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.tripDate}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(row.tripStatus)}`}
+            >
+              {VEHICLE_TRIP_STATUS_LABELS[row.tripStatus]}
+            </span>
+          </td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{formatCurrency(row.cashAdvanceGiven)}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{formatCurrency(row.netDueCashBalance)}</td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              showView={false}
+              onEdit={() => onOpenLedger(row)}
+              editLabel="Open Ledger"
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

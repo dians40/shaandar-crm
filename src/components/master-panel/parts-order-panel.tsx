@@ -102,20 +102,6 @@ export default function PartsOrderPanel() {
     return counts;
   }, [records]);
 
-  const filteredRecords = useMemo(
-    () =>
-      records.filter(
-        (row) =>
-          row.workflowStage === activeStage &&
-          matchesUniversalNameSearch(searchQuery, row.operatorEmployeeName, [
-            row.orderNumber,
-            row.machineName,
-            row.partsItemNeeded,
-          ])
-      ),
-    [records, activeStage, searchQuery]
-  );
-
   const resetPanelState = useCallback(() => {
     setActiveStage("operator_request");
     setView("list");
@@ -358,35 +344,97 @@ export default function PartsOrderPanel() {
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
           >
-            {filteredRecords.length === 0 ? (
-              <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
-                {LIST_SEARCH_EMPTY_MESSAGE}
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {filteredRecords.map((record) => (
-                  <StageRecordCard
-                    key={record.id}
-                    record={record}
-                    activeStage={activeStage}
-                    destinationOptions={destinationOptions}
-                    vehicleOptions={vehicleOptions}
-                    godownMap={Object.fromEntries(godowns.map((g) => [g.id, g.name]))}
-                    vehicleMap={Object.fromEntries(
-                      vehicles.map((v) => [v.id, v.registrationNumber])
-                    )}
-                    onSupervisorAuthorize={() => handleSupervisorAuthorize(record)}
-                    onHoDispatch={(draft) => handleHoDispatch(record, draft)}
-                    onMarkReceived={() => handleMarkReceived(record)}
-                    onCompleteRepair={(draft) => handleCompleteRepairLog(record, draft)}
-                  />
-                ))}
-              </div>
-            )}
+            <PartsOrderListContent
+              records={records}
+              activeStage={activeStage}
+              destinationOptions={destinationOptions}
+              vehicleOptions={vehicleOptions}
+              godownMap={Object.fromEntries(godowns.map((g) => [g.id, g.name]))}
+              vehicleMap={Object.fromEntries(vehicles.map((v) => [v.id, v.registrationNumber]))}
+              onSupervisorAuthorize={handleSupervisorAuthorize}
+              onHoDispatch={handleHoDispatch}
+              onMarkReceived={handleMarkReceived}
+              onCompleteRepair={handleCompleteRepairLog}
+            />
           </UniversalMasterListShell>
         </div>
       </div>
     </>
+  );
+}
+
+type PartsOrderListContentProps = {
+  records: PartsOrderRecord[];
+  activeStage: PartsOrderStage;
+  destinationOptions: { value: string; label: string }[];
+  vehicleOptions: { value: string; label: string }[];
+  godownMap: Record<string, string>;
+  vehicleMap: Record<string, string>;
+  onSupervisorAuthorize: (record: PartsOrderRecord) => void;
+  onHoDispatch: (record: PartsOrderRecord, draft: PartsOrderFormState) => void;
+  onMarkReceived: (record: PartsOrderRecord) => void;
+  onCompleteRepair: (record: PartsOrderRecord, draft: PartsOrderFormState) => void;
+};
+
+function PartsOrderListContent({
+  records,
+  activeStage,
+  destinationOptions,
+  vehicleOptions,
+  godownMap,
+  vehicleMap,
+  onSupervisorAuthorize,
+  onHoDispatch,
+  onMarkReceived,
+  onCompleteRepair,
+}: PartsOrderListContentProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredRecords = useMemo(
+    () =>
+      records.filter(
+        (row) =>
+          row.workflowStage === activeStage &&
+          matchesUniversalNameSearch(
+            searchQuery,
+            row.operatorEmployeeName,
+            [row.orderNumber, row.machineName, row.partsItemNeeded],
+            {
+              departmentFilter,
+              designationFilter,
+              skipDepartmentIfAbsent: true,
+              skipDesignationIfAbsent: true,
+            }
+          )
+      ),
+    [records, activeStage, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (filteredRecords.length === 0) {
+    return (
+      <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
+        {LIST_SEARCH_EMPTY_MESSAGE}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {filteredRecords.map((record) => (
+        <StageRecordCard
+          key={record.id}
+          record={record}
+          activeStage={activeStage}
+          destinationOptions={destinationOptions}
+          vehicleOptions={vehicleOptions}
+          godownMap={godownMap}
+          vehicleMap={vehicleMap}
+          onSupervisorAuthorize={() => onSupervisorAuthorize(record)}
+          onHoDispatch={(draft) => onHoDispatch(record, draft)}
+          onMarkReceived={() => onMarkReceived(record)}
+          onCompleteRepair={(draft) => onCompleteRepair(record, draft)}
+        />
+      ))}
+    </div>
   );
 }
 

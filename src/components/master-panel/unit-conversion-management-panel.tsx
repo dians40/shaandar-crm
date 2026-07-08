@@ -67,22 +67,6 @@ export default function UnitConversionManagementPanel() {
     [conversions, viewingId]
   );
 
-  const filteredConversions = useMemo(
-    () =>
-      conversions.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.baseUnitName, [
-          row.intermediateUnitName,
-          row.tertiaryUnitName,
-          row.fourthUnitName,
-          row.id,
-          row.totalBaseUnits != null ? String(row.totalBaseUnits) : "",
-          formatChainShort(row, unitNameById),
-          formatChainSummary(row, unitNameById),
-        ])
-      ),
-    [conversions, searchQuery, unitNameById]
-  );
-
   const canRemove = useCallback(
     (record: UnitConversionRecord) =>
       !checkUsedInTransactions("unit-conversion", record.id, record.baseUnitName),
@@ -232,9 +216,8 @@ export default function UnitConversionManagementPanel() {
         title="Conversion List"
         subtitle="Flexible unit conversions — from simple 1-step to multi-level chains."
       >
-        <UnitConversionList
+        <UnitConversionListBody
           conversions={conversions}
-          filteredConversions={filteredConversions}
           unitNameById={unitNameById}
           canRemove={canRemove}
           onView={openView}
@@ -243,5 +226,62 @@ export default function UnitConversionManagementPanel() {
         />
       </UniversalMasterListShell>
     </>
+  );
+}
+
+type UnitConversionListBodyProps = {
+  conversions: UnitConversionRecord[];
+  unitNameById: Record<string, string>;
+  canRemove: (record: UnitConversionRecord) => boolean;
+  onView: (record: UnitConversionRecord) => void;
+  onEdit: (record: UnitConversionRecord) => void;
+  onRemove: (record: UnitConversionRecord) => void;
+};
+
+function UnitConversionListBody({
+  conversions,
+  unitNameById,
+  canRemove,
+  onView,
+  onEdit,
+  onRemove,
+}: UnitConversionListBodyProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredConversions = useMemo(
+    () =>
+      conversions.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.baseUnitName,
+          [
+            row.intermediateUnitName,
+            row.tertiaryUnitName,
+            row.fourthUnitName,
+            row.id,
+            row.totalBaseUnits != null ? String(row.totalBaseUnits) : "",
+            formatChainShort(row, unitNameById),
+            formatChainSummary(row, unitNameById),
+          ],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [conversions, searchQuery, unitNameById, departmentFilter, designationFilter]
+  );
+
+  return (
+    <UnitConversionList
+      conversions={conversions}
+      filteredConversions={filteredConversions}
+      unitNameById={unitNameById}
+      canRemove={canRemove}
+      onView={onView}
+      onEdit={onEdit}
+      onRemove={onRemove}
+    />
   );
 }

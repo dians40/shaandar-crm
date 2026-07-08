@@ -16,6 +16,8 @@ export type SalaryWagesReportId =
   | "vacuum-forming"
   | "printing-glass";
 
+export type ReportParentId = "salary";
+
 export type ReportCategoryId = "salary-wages";
 
 export type SalaryWagesReportDefinition = {
@@ -30,6 +32,13 @@ export type ReportCategoryDefinition = {
   label: string;
   description: string;
   reports: SalaryWagesReportDefinition[];
+};
+
+export type ReportParentDefinition = {
+  id: ReportParentId;
+  label: string;
+  description: string;
+  categories: ReportCategoryDefinition[];
 };
 
 export const SALARY_WAGES_REPORTS: SalaryWagesReportDefinition[] = [
@@ -80,14 +89,39 @@ export const REPORT_CATEGORIES: ReportCategoryDefinition[] = [
   },
 ];
 
+export const REPORT_PARENTS: ReportParentDefinition[] = [
+  {
+    id: "salary",
+    label: "Salary",
+    description: "Salary, payroll, and production wage reporting",
+    categories: REPORT_CATEGORIES,
+  },
+];
+
 export const DEFAULT_SALARY_WAGES_REPORT_ID: SalaryWagesReportId = "salary";
 
 export function isSalaryWagesReportId(value: string | null): value is SalaryWagesReportId {
   return SALARY_WAGES_REPORTS.some((report) => report.id === value);
 }
 
+export function isReportCategoryId(value: string | null): value is ReportCategoryId {
+  return REPORT_CATEGORIES.some((category) => category.id === value);
+}
+
+export function isReportParentId(value: string | null): value is ReportParentId {
+  return REPORT_PARENTS.some((parent) => parent.id === value);
+}
+
 export function getSalaryWagesReport(id: string | null): SalaryWagesReportDefinition | undefined {
   return SALARY_WAGES_REPORTS.find((report) => report.id === id);
+}
+
+export function getReportCategory(id: string | null): ReportCategoryDefinition | undefined {
+  return REPORT_CATEGORIES.find((category) => category.id === id);
+}
+
+export function getReportParent(id: string | null): ReportParentDefinition | undefined {
+  return REPORT_PARENTS.find((parent) => parent.id === id);
 }
 
 export function buildReportHref(

@@ -22,8 +22,11 @@ import {
 } from "@/lib/auth-navigation";
 import {
   buildReportHref,
+  isReportCategoryId,
   isSalaryWagesReportId,
-  REPORT_CATEGORIES,
+  REPORT_PARENTS,
+  type ReportCategoryId,
+  type ReportParentId,
 } from "@/constants/reports-navigation";
 import { LAYER2_STAGING_WORKSPACE_MODULE } from "@/types/auth-session";
 
@@ -72,12 +75,50 @@ export default function Sidebar({
     reports: pathSection === "reports",
   });
 
+  const [expandedReportParents, setExpandedReportParents] = useState<
+    Record<ReportParentId, boolean>
+  >({
+    salary: pathSection === "reports",
+  });
+
+  const [expandedReportCategories, setExpandedReportCategories] = useState<
+    Record<ReportCategoryId, boolean>
+  >({
+    "salary-wages": pathSection === "reports",
+  });
+
   useEffect(() => {
     const section = getExpandableSectionForPath(pathname);
     if (section) {
       setExpandedSections((current) => ({ ...current, [section]: true }));
     }
   }, [pathname]);
+
+  const activeCategoryId = isReportCategoryId(searchParams.get("category"))
+    ? searchParams.get("category")
+    : null;
+
+  const activeReportId = isSalaryWagesReportId(searchParams.get("report"))
+    ? searchParams.get("report")
+    : null;
+
+  useEffect(() => {
+    if (!pathname.startsWith("/report-generated")) return;
+
+    setExpandedReportParents((current) => ({ ...current, salary: true }));
+
+    if (activeCategoryId) {
+      setExpandedReportCategories((current) => ({
+        ...current,
+        [activeCategoryId]: true,
+      }));
+      return;
+    }
+
+    if (activeReportId) {
+      setExpandedReportCategories((current) => ({ ...current, "salary-wages": true }));
+    }
+  }, [pathname, activeCategoryId, activeReportId]);
 
   const handleSectionToggle = useCallback(
     (sectionId: ExpandableSectionId, href: string) => {
@@ -94,9 +135,19 @@ export default function Sidebar({
     [pathname, router]
   );
 
-  const activeReportId = isSalaryWagesReportId(searchParams.get("report"))
-    ? searchParams.get("report")
-    : null;
+  const handleReportParentToggle = useCallback((parentId: ReportParentId) => {
+    setExpandedReportParents((current) => ({
+      ...current,
+      [parentId]: !current[parentId],
+    }));
+  }, []);
+
+  const handleReportCategoryToggle = useCallback((categoryId: ReportCategoryId) => {
+    setExpandedReportCategories((current) => ({
+      ...current,
+      [categoryId]: !current[categoryId],
+    }));
+  }, []);
 
   const nestedModules = useMemo(
     () =>
@@ -211,42 +262,124 @@ export default function Sidebar({
                     {isExpanded && expandableKey === "reports" && (
                       <ul
                         id={`sidebar-section-${expandableKey}`}
-                        className="mt-0.5 space-y-2 border-l-2 border-corporate-brand/20 pb-2 pl-3"
-                        aria-label="Reports categories"
+                        className="mt-0.5 space-y-1 border-l-2 border-corporate-brand/20 pb-2 pl-3"
+                        aria-label="Reports hierarchy"
                       >
-                        {REPORT_CATEGORIES.map((category) => (
-                          <li key={category.id}>
-                            <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-corporate-muted">
-                              {category.label}
-                            </p>
-                            <ul className="space-y-0.5" aria-label={category.label}>
-                              {category.reports.map((report) => {
-                                const reportHref = buildReportHref(report.id, category.id);
-                                const isReportActive =
-                                  isSectionActive && activeReportId === report.id;
-                                const ReportIcon = report.icon;
-                                return (
-                                  <li key={report.id}>
-                                    <Link
-                                      href={reportHref}
-                                      onClick={() => onNavigate?.()}
-                                      className={cn(
-                                        "flex min-h-10 items-center gap-2 rounded-full border px-3 py-2 text-left text-sm font-medium transition-all sm:text-xs",
-                                        isReportActive
-                                          ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
-                                          : "border-transparent text-corporate-muted hover:border-corporate-border hover:bg-corporate-bg hover:text-corporate-text"
-                                      )}
-                                      aria-current={isReportActive ? "page" : undefined}
-                                    >
-                                      <ReportIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                                      <span className="truncate">{report.label}</span>
-                                    </Link>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </li>
-                        ))}
+                        {REPORT_PARENTS.map((parent) => {
+                          const isParentExpanded = expandedReportParents[parent.id];
+
+                          return (
+                            <li key={parent.id}>
+                              <button
+                                type="button"
+                                onClick={() => handleReportParentToggle(parent.id)}
+                                className={cn(
+                                  "flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors sm:text-xs",
+                                  isParentExpanded
+                                    ? "text-corporate-brand"
+                                    : "text-corporate-muted hover:bg-corporate-bg hover:text-corporate-text"
+                                )}
+                                aria-expanded={isParentExpanded}
+                                aria-controls={`sidebar-report-parent-${parent.id}`}
+                              >
+                                <span className="min-w-0 flex-1 truncate">{parent.label}</span>
+                                <ChevronDown
+                                  className={cn(
+                                    "h-3.5 w-3.5 shrink-0 transition-transform",
+                                    isParentExpanded ? "rotate-0" : "-rotate-90"
+                                  )}
+                                  aria-hidden
+                                />
+                              </button>
+
+                              {isParentExpanded && (
+                                <ul
+                                  id={`sidebar-report-parent-${parent.id}`}
+                                  className="mt-0.5 space-y-1 border-l-2 border-corporate-brand/15 pb-1 pl-3"
+                                  aria-label={`${parent.label} categories`}
+                                >
+                                  {parent.categories.map((category) => {
+                                    const isCategoryExpanded =
+                                      expandedReportCategories[category.id];
+
+                                    return (
+                                      <li key={category.id}>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleReportCategoryToggle(category.id)}
+                                          className={cn(
+                                            "flex min-h-10 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors sm:text-xs",
+                                            isCategoryExpanded
+                                              ? "text-corporate-text"
+                                              : "text-corporate-muted hover:bg-corporate-bg hover:text-corporate-text"
+                                          )}
+                                          aria-expanded={isCategoryExpanded}
+                                          aria-controls={`sidebar-report-category-${category.id}`}
+                                        >
+                                          <span className="min-w-0 flex-1 truncate">
+                                            {category.label}
+                                          </span>
+                                          <ChevronDown
+                                            className={cn(
+                                              "h-3.5 w-3.5 shrink-0 transition-transform",
+                                              isCategoryExpanded ? "rotate-0" : "-rotate-90"
+                                            )}
+                                            aria-hidden
+                                          />
+                                        </button>
+
+                                        {isCategoryExpanded && (
+                                          <ul
+                                            id={`sidebar-report-category-${category.id}`}
+                                            className="mt-0.5 space-y-0.5 border-l-2 border-corporate-brand/10 pb-1 pl-3"
+                                            aria-label={`${category.label} reports`}
+                                          >
+                                            {category.reports.map((report) => {
+                                              const reportHref = buildReportHref(
+                                                report.id,
+                                                category.id
+                                              );
+                                              const isReportActive =
+                                                isSectionActive &&
+                                                activeReportId === report.id &&
+                                                (activeCategoryId === null ||
+                                                  activeCategoryId === category.id);
+                                              const ReportIcon = report.icon;
+
+                                              return (
+                                                <li key={report.id}>
+                                                  <Link
+                                                    href={reportHref}
+                                                    onClick={() => onNavigate?.()}
+                                                    className={cn(
+                                                      "flex min-h-10 items-center gap-2 rounded-full border px-3 py-2 text-left text-sm font-medium transition-all sm:text-xs",
+                                                      isReportActive
+                                                        ? "border-corporate-brand bg-corporate-brand text-white shadow-sm"
+                                                        : "border-transparent text-corporate-muted hover:border-corporate-border hover:bg-corporate-bg hover:text-corporate-text"
+                                                    )}
+                                                    aria-current={
+                                                      isReportActive ? "page" : undefined
+                                                    }
+                                                  >
+                                                    <ReportIcon
+                                                      className="h-3.5 w-3.5 shrink-0"
+                                                      aria-hidden
+                                                    />
+                                                    <span className="truncate">{report.label}</span>
+                                                  </Link>
+                                                </li>
+                                              );
+                                            })}
+                                          </ul>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     )}
 

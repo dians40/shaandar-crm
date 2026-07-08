@@ -41,7 +41,7 @@ export async function POST() {
     return NextResponse.json(
       {
         error: result.message,
-        hint: "Run supabase/migrations/016_employee_firm_head_pf_firm.sql in Supabase SQL Editor.",
+        hint: "Run supabase/migrations/017_employee_schema_cache_sync.sql in Supabase SQL Editor.",
       },
       { status: 503 }
     );

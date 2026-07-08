@@ -12,7 +12,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { extractDocumentFiles } from "@/lib/form-data-utils";
 import { uploadEmployeeDocuments } from "@/lib/supabase/upload-documents";
 import {
-  employeeFirmSchemaHint,
+  employeeSchemaHint,
   updateEmployeeWithFirmColumnFallback,
 } from "@/lib/employee-firm-columns";
 import { ensureEmployeeFirmColumnsSchema } from "@/lib/employee-schema-ensure";
@@ -133,8 +133,9 @@ export async function PUT(request: Request, context: RouteContext) {
 
     if (updateError) {
       const hint =
-        updateError.message.includes("column") || updateError.message.includes("schema cache")
-          ? employeeFirmSchemaHint()
+        updateError.message.includes("column") ||
+        updateError.message.includes("schema cache")
+          ? employeeSchemaHint()
           : "";
       return NextResponse.json({ error: updateError.message + hint }, { status: 500 });
     }

@@ -2,15 +2,22 @@ import fs from "fs";
 import path from "path";
 import { resolveDatabaseUrl } from "@/lib/database-url";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
-import { isEmployeeFirmSchemaError } from "@/lib/employee-firm-columns";
+import {
+  isEmployeeSchemaCacheError,
+  employeeSchemaHint,
+} from "@/lib/employee-firm-columns";
 
-const MIGRATION_FILE = "016_employee_firm_head_pf_firm.sql";
+const MIGRATION_FILES = [
+  "006_employee_unified_assignment_status.sql",
+  "016_employee_firm_head_pf_firm.sql",
+  "017_employee_schema_cache_sync.sql",
+];
 
 let ensureInFlight: Promise<{ ok: boolean; message: string }> | null = null;
 let ensureSucceeded = false;
 
 export function isEmployeeSchemaError(message: string): boolean {
-  return isEmployeeFirmSchemaError(message);
+  return isEmployeeSchemaCacheError(message);
 }
 
 export async function checkEmployeeFirmColumnsReady(): Promise<{
@@ -25,45 +32,38 @@ export async function checkEmployeeFirmColumnsReady(): Promise<{
     const supabase = createAdminClient();
     const { error } = await supabase
       .from("employees")
-      .select("assigned_firm_group, pf_active_firm")
+      .select(
+        "assigned_from_group, esi_status, pf_status, assigned_firm_group, pf_active_firm"
+      )
       .limit(1);
 
-    if (error && isEmployeeFirmSchemaError(error.message ?? "")) {
-      const legacyProbe = await supabase
-        .from("employees")
-        .select("firm_head_profile, pf_firm")
-        .limit(1);
-
-      if (!legacyProbe.error) {
-        return {
-          ready: true,
-          message: "Legacy firm column names detected (firm_head_profile, pf_firm).",
-        };
-      }
-
+    if (error && isEmployeeSchemaCacheError(error.message ?? "")) {
       return {
         ready: false,
-        message: error.message ?? "Employee firm columns missing from schema cache.",
+        message: error.message ?? "Employee columns missing from schema cache.",
       };
+    }
+
+    if (error) {
+      return { ready: false, message: error.message };
     }
 
     return { ready: true };
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Could not verify employee firm columns.";
+      error instanceof Error ? error.message : "Could not verify employee schema.";
     return { ready: false, message };
   }
 }
 
 function readMigrationSql(): string | null {
-  const migrationPath = path.join(
-    process.cwd(),
-    "supabase",
-    "migrations",
-    MIGRATION_FILE
-  );
-  if (!fs.existsSync(migrationPath)) return null;
-  return fs.readFileSync(migrationPath, "utf8");
+  const parts: string[] = [];
+  for (const file of MIGRATION_FILES) {
+    const migrationPath = path.join(process.cwd(), "supabase", "migrations", file);
+    if (!fs.existsSync(migrationPath)) return null;
+    parts.push(fs.readFileSync(migrationPath, "utf8"));
+  }
+  return parts.join("\n\n");
 }
 
 async function applyMigrationViaPostgres(
@@ -82,7 +82,7 @@ async function applyMigrationViaPostgres(
     return {
       ok: true,
       message:
-        "Employee firm columns ensured (assigned_firm_group, pf_active_firm) and PostgREST cache reloaded.",
+        "Employee schema migrations applied (assigned_from_group, statutory status, firm columns) and PostgREST cache reloaded.",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Employee schema ensure failed.";
@@ -96,13 +96,13 @@ export async function ensureEmployeeFirmColumnsSchema(): Promise<{
   message: string;
 }> {
   if (ensureSucceeded) {
-    return { ok: true, message: "Employee firm columns already ensured this session." };
+    return { ok: true, message: "Employee schema already ensured this session." };
   }
 
   const probe = await checkEmployeeFirmColumnsReady();
   if (probe.ready) {
     ensureSucceeded = true;
-    return { ok: true, message: probe.message ?? "Employee firm columns ready." };
+    return { ok: true, message: probe.message ?? "Employee schema ready." };
   }
 
   if (ensureInFlight) {
@@ -114,14 +114,13 @@ export async function ensureEmployeeFirmColumnsSchema(): Promise<{
     if (!databaseUrl) {
       return {
         ok: false,
-        message:
-          "DATABASE_URL not configured. Run supabase/migrations/016_employee_firm_head_pf_firm.sql in Supabase SQL Editor.",
+        message: "DATABASE_URL not configured." + employeeSchemaHint(),
       };
     }
 
     const sql = readMigrationSql();
     if (!sql) {
-      return { ok: false, message: `Migration file ${MIGRATION_FILE} not found.` };
+      return { ok: false, message: "Employee migration files not found." };
     }
 
     const result = await applyMigrationViaPostgres(sql, databaseUrl);

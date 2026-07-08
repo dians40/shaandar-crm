@@ -114,19 +114,34 @@ export const DEFAULT_LOCATION_SEEDS = [
   "Admin Block",
 ];
 
-/** Core department names seeded into the Department master on first load. */
+/** Core department names seeded into the Department master on first load (serial order preserved). */
 export const DEFAULT_DEPARTMENT_SEEDS = [
-  "Production",
-  "Accounts",
-  "HR",
-  "Quality",
-  "Glass Packing",
-  "Dining Packing",
-  "Maintenance",
-  "Admin",
-  "glass packing",
-  "Dinning packing",
-];
+  "CHAIR MACHINE DAY",
+  "CHAIR MACHINE NIGHT",
+  "DANA MACHINE DAY",
+  "DANA MACHINE NIGHT",
+  "DRIVER",
+  "ELECTRICAL MAN",
+  "EXTRA WORK",
+  "GRINDING MAN DAY",
+  "GRINDING MAN NIGHT",
+  "HIKON MACHINE",
+  "KOL PAT DAY",
+  "LUMPS GRINDING NIGHT",
+  "MASCORT MACHINE DAY",
+  "MIXING COLOR DAY",
+  "MIXING COLOR NIGHT",
+  "OPERATOR CHAIR MACHINE",
+  "PACKING CARTOON",
+  "PAPER CUP MACHINE",
+  "PRINTING MACHINE NIGHT",
+  "SECURITY NIGHT",
+  "SILAE BAG",
+  "STAFF",
+  "SUPERVISOR",
+  "TFM OPERATOR AND HELPER",
+  "UNLOADING",
+] as const;
 
 /** Core designation names seeded into the Designation master on first load. */
 export const DEFAULT_DESIGNATION_SEEDS = [

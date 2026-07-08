@@ -6,6 +6,7 @@ export type EmployeeListItem = {
   employeeType: EmployeeType;
   mobileNumber: string;
   machineAssignment: string;
+  basicSalary: number | null;
   fixSalaryAmount: number | null;
   variableSalaryEnabled: boolean;
   dailyRate: number | null;

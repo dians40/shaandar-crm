@@ -1,26 +1,36 @@
+import { isCompleteProfileSalaryBasis } from "@/constants/employee-options";
 import type { EmployeeListItem } from "@/types/employee-list";
 
-function isBlank(value: string | null | undefined): boolean {
+function isPresent(value: string | null | undefined): boolean {
   const trimmed = (value ?? "").trim();
-  return !trimmed || trimmed === "—";
+  return Boolean(trimmed) && trimmed !== "—";
 }
 
-function hasSalaryConfigured(employee: EmployeeListItem): boolean {
-  if (employee.variableSalaryEnabled) {
-    return employee.dailyRate !== null && employee.dailyRate > 0;
-  }
-  return employee.fixSalaryAmount !== null && employee.fixSalaryAmount > 0;
+function resolveBasicSalary(employee: EmployeeListItem): number | null {
+  return employee.basicSalary ?? employee.fixSalaryAmount;
 }
 
-export function isEmployeeProfileComplete(employee: EmployeeListItem): boolean {
+function hasOvertimeAmount(employee: EmployeeListItem): boolean {
   return (
-    !isBlank(employee.name) &&
-    !isBlank(employee.employeeType) &&
-    !isBlank(employee.machineAssignment) &&
-    !isBlank(employee.mobileNumber) &&
-    !isBlank(employee.assignedFromGroup) &&
-    employee.salaryBasis.trim() === "Daily" &&
-    hasSalaryConfigured(employee)
+    employee.overtimeHourlyRate !== null &&
+    employee.overtimeHourlyRate !== undefined &&
+    Number.isFinite(employee.overtimeHourlyRate)
+  );
+}
+
+/** All seven profile fields must pass for "Profile Updated". */
+export function isEmployeeProfileComplete(employee: EmployeeListItem): boolean {
+  const basicSalary = resolveBasicSalary(employee);
+
+  return (
+    isPresent(employee.name) &&
+    isPresent(employee.machineAssignment) &&
+    isPresent(employee.employeeType) &&
+    isCompleteProfileSalaryBasis(employee.salaryBasis) &&
+    basicSalary !== null &&
+    basicSalary > 0 &&
+    isPresent(employee.assignedFromGroup) &&
+    hasOvertimeAmount(employee)
   );
 }
 

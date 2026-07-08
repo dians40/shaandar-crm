@@ -140,7 +140,7 @@ export default function BankSalarySection({ data, salaryBasis = "", errors = {},
           <div className="sm:col-span-2">
             <ToggleInput
               label="Variable Salary Option"
-              description="Enable for Daily / Contract-based employees — salary = daily rate × worked days"
+              description="Enable for Daily / Contractor employees — salary = daily rate × worked days"
               checked={data.variableSalaryEnabled}
               onChange={(checked) => updateField("variableSalaryEnabled", checked)}
             />

@@ -5,6 +5,7 @@ export type SalaryBasis =
   | "Daily"
   | "Weekly"
   | "Monthly"
+  | "Contractor"
   | "Contract-based";
 
 export type AssignedFirm = "Krishna Food Product" | "MAHEK Industries";

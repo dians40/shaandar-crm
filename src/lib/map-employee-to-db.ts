@@ -2,6 +2,7 @@ import type { EmployeeFormData, DocumentNumbers } from "@/types/employee-form";
 import type { DocumentPaths, EmployeeInsert, EmployeeRow } from "@/types/employee-db";
 import type { EmployeeListItem } from "@/types/employee-list";
 import { combineAssignedFromGroup } from "@/lib/employee-assigned-from";
+import { normalizeSalaryBasis } from "@/constants/employee-options";
 import {
   parseStatutoryStatusFromDb,
 } from "@/lib/statutory-status";
@@ -185,6 +186,7 @@ export function mapEmployeeRowToListItem(
 ): EmployeeListItem {
   const variableEnabled = Boolean(row.variable_salary_enabled);
   const salaryBase = row.basic_salary ?? row.fix_salary_amount;
+  const basicSalary = row.basic_salary ?? row.fix_salary_amount ?? null;
   const effectiveSalary = getEffectiveGrossSalary(
     salaryBase,
     variableEnabled,
@@ -197,6 +199,7 @@ export function mapEmployeeRowToListItem(
     employeeType: row.employee_type as EmployeeListItem["employeeType"],
     mobileNumber: row.mobile_number,
     machineAssignment: row.machine_assignment || "—",
+    basicSalary,
     fixSalaryAmount: salaryBase ?? null,
     variableSalaryEnabled: variableEnabled,
     dailyRate: row.daily_rate ?? null,
@@ -205,7 +208,7 @@ export function mapEmployeeRowToListItem(
     assignedFromGroup: resolveAssignedFromGroup(row) || "—",
     esiStatus: parseStatutoryStatusFromDb(row.esi_status, row.esi_enabled),
     pfStatus: parseStatutoryStatusFromDb(row.pf_status, row.pf_enabled),
-    salaryBasis: (row.salary_basis ?? "").trim(),
+    salaryBasis: normalizeSalaryBasis(row.salary_basis),
     hasAttendanceRecords: options?.hasAttendanceRecords ?? false,
     overtimeHourlyRate: row.overtime_hourly_rate ?? null,
   };
@@ -231,7 +234,7 @@ export function mapEmployeeRowToFormData(row: EmployeeRow): EmployeeFormData {
       referenceFromName: row.reference_name ?? "",
       referenceMobileNumber: row.reference_mobile ?? "",
       employeeType: row.employee_type as EmployeeFormData["basicInformation"]["employeeType"],
-      salaryBasis: (row.salary_basis ?? "") as EmployeeFormData["basicInformation"]["salaryBasis"],
+      salaryBasis: normalizeSalaryBasis(row.salary_basis),
       assignedFromGroup: resolveAssignedFromGroup(row),
     },
     workAssignment: {

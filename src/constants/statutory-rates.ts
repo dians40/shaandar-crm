@@ -14,4 +14,4 @@ export const PF_RATES = {
   label: "EPF (Employees Provident Fund)",
 } as const;
 
-export const VARIABLE_SALARY_BASIS = ["Daily", "Weekly", "Contract-based"] as const;
+export const VARIABLE_SALARY_BASIS = ["Daily", "Weekly", "Contractor", "Contract-based"] as const;

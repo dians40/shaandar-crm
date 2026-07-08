@@ -1,15 +1,14 @@
 import type { EmployeeListItem } from "@/types/employee-list";
-import { splitFullName } from "@/lib/employee-name-utils";
 
 /** Legacy mock data — app now uses Supabase. Kept for reference/tests only. */
 export const MOCK_EMPLOYEES: EmployeeListItem[] = [
   {
     id: "emp-001",
     name: "Rahul Sharma",
-    ...splitFullName("Rahul Sharma"),
     employeeType: "Regular",
     mobileNumber: "9876543210",
     machineAssignment: "Machine A",
+    basicSalary: 25000,
     fixSalaryAmount: 25000,
     variableSalaryEnabled: false,
     dailyRate: null,
@@ -18,17 +17,17 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     assignedFromGroup: "Krishna Food Product",
     esiStatus: "Active",
     pfStatus: "Active",
-    salaryBasis: "Daily",
+    salaryBasis: "Monthly",
     hasAttendanceRecords: false,
     overtimeHourlyRate: 400,
   },
   {
     id: "emp-002",
     name: "Priya Verma",
-    ...splitFullName("Priya Verma"),
     employeeType: "Contractor",
     mobileNumber: "9123456780",
     machineAssignment: "Machine B",
+    basicSalary: null,
     fixSalaryAmount: null,
     variableSalaryEnabled: true,
     dailyRate: 800,
@@ -37,17 +36,17 @@ export const MOCK_EMPLOYEES: EmployeeListItem[] = [
     assignedFromGroup: "Contractor 2",
     esiStatus: "Non-Active",
     pfStatus: "Non-Active",
-    salaryBasis: "Daily",
+    salaryBasis: "Contractor",
     hasAttendanceRecords: true,
     overtimeHourlyRate: 300,
   },
   {
     id: "emp-003",
     name: "Amit Kumar",
-    ...splitFullName("Amit Kumar"),
     employeeType: "Temporary",
     mobileNumber: "9988776655",
     machineAssignment: "—",
+    basicSalary: 18000,
     fixSalaryAmount: 18000,
     variableSalaryEnabled: false,
     dailyRate: null,

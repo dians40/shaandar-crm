@@ -4,21 +4,52 @@ export const LEGACY_EMPLOYEE_TYPES = ["Contractor", "Regular", "Temporary"] as c
 
 export type LegacyEmployeeType = (typeof LEGACY_EMPLOYEE_TYPES)[number];
 
+export const EMPLOYEE_FORM_SALARY_BASIS_OPTIONS: SalaryBasis[] = [
+  "Monthly",
+  "Weekly",
+  "Daily",
+  "Contractor",
+];
+
 export const SALARY_BASIS_BY_TYPE: Record<LegacyEmployeeType, SalaryBasis[]> = {
-  Contractor: ["Daily"],
-  Regular: ["Daily"],
-  Temporary: ["Daily"],
+  Contractor: EMPLOYEE_FORM_SALARY_BASIS_OPTIONS,
+  Regular: EMPLOYEE_FORM_SALARY_BASIS_OPTIONS,
+  Temporary: EMPLOYEE_FORM_SALARY_BASIS_OPTIONS,
 };
 
-export const DEFAULT_SALARY_BASIS_OPTIONS: SalaryBasis[] = ["Daily"];
+export const DEFAULT_SALARY_BASIS_OPTIONS: SalaryBasis[] =
+  EMPLOYEE_FORM_SALARY_BASIS_OPTIONS;
 
-export const EMPLOYEE_FORM_SALARY_BASIS_OPTIONS: SalaryBasis[] = ["Daily"];
+/** Legacy DB value mapped to the form label "Contractor". */
+export const LEGACY_SALARY_BASIS_ALIASES: Partial<Record<string, SalaryBasis>> = {
+  "Contract-based": "Contractor",
+};
+
+export function normalizeSalaryBasis(
+  value: string | null | undefined
+): SalaryBasis | "" {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return "";
+  return LEGACY_SALARY_BASIS_ALIASES[trimmed] ?? (trimmed as SalaryBasis);
+}
+
+export function isCompleteProfileSalaryBasis(
+  value: string | null | undefined
+): boolean {
+  const normalized = normalizeSalaryBasis(value);
+  return (
+    normalized !== "" &&
+    EMPLOYEE_FORM_SALARY_BASIS_OPTIONS.includes(normalized)
+  );
+}
 
 export function getSalaryBasisOptionsForEmployeeType(
   employeeType: string
 ): SalaryBasis[] {
-  void employeeType;
-  return EMPLOYEE_FORM_SALARY_BASIS_OPTIONS;
+  if (employeeType in SALARY_BASIS_BY_TYPE) {
+    return SALARY_BASIS_BY_TYPE[employeeType as LegacyEmployeeType];
+  }
+  return DEFAULT_SALARY_BASIS_OPTIONS;
 }
 
 export const MACHINE_OPTIONS = [

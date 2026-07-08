@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { deleteEmployee, patchEmployeeSalary } from "@/lib/employees-api";
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
+import { useSynchronizedHorizontalScroll } from "@/hooks/use-synchronized-horizontal-scroll";
 import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import { matchesMultiCriteriaFilter } from "@/lib/master-list-filter";
 import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
@@ -88,6 +89,10 @@ export default function EmployeeList({
         })
       ),
     [employees, searchQuery, departmentFilter, designationFilter]
+  );
+
+  const { topScrollRef, tableScrollRef, scrollWidthRef } = useSynchronizedHorizontalScroll(
+    `${isLoading}:${filteredEmployees.length}:${employees.length}`
   );
 
   const handleSalarySave = async (employee: EmployeeListItem) => {
@@ -214,7 +219,14 @@ export default function EmployeeList({
       )}
 
       <div className="overflow-hidden rounded-xl border border-corporate-border bg-white">
-        <div className="workspace-table-scroll">
+        <div
+          ref={topScrollRef}
+          className="workspace-table-scroll overflow-x-auto overflow-y-hidden border-b border-corporate-border/80"
+          aria-label="Employee list horizontal scroll (top)"
+        >
+          <div ref={scrollWidthRef} className="h-3" aria-hidden />
+        </div>
+        <div ref={tableScrollRef} className="workspace-table-scroll overflow-x-auto">
           <table className="min-w-full divide-y divide-corporate-border">
             <thead className="bg-corporate-bg">
               <tr>
@@ -306,7 +318,7 @@ export default function EmployeeList({
                           className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                             profileComplete
                               ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
-                              : "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+                              : "bg-amber-50 text-red-800 ring-1 ring-amber-300"
                           }`}
                         >
                           {profileStatusLabel}

@@ -54,6 +54,7 @@ export function createAutoProvisionedEmployee(
     employeeType: "Direct Roll / Employee",
     mobileNumber: code.replace(/\D/g, "").slice(0, 10) || code || "",
     machineAssignment: "",
+    basicSalary: null,
     fixSalaryAmount: null,
     variableSalaryEnabled: false,
     dailyRate: null,

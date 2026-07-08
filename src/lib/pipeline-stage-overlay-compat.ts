@@ -13,6 +13,16 @@ import {
 
 const OVERLAY_MANIFEST_PATH = "pipeline-overlays/stages.json";
 
+async function ensureOverlayStorageReady(supabase: SupabaseClient): Promise<boolean> {
+  try {
+    await ensureAttendanceStorageBucket(supabase);
+    return true;
+  } catch (error) {
+    console.warn("[pipeline-overlay] storage bucket unavailable:", error);
+    return false;
+  }
+}
+
 type OverlayManifest = Record<
   string,
   {
@@ -67,7 +77,9 @@ async function readOverlayManifest(supabase: SupabaseClient): Promise<OverlayMan
 async function writeOverlayManifest(
   supabase: SupabaseClient,
   manifest: OverlayManifest
-): Promise<void> {
+): Promise<boolean> {
+  if (!(await ensureOverlayStorageReady(supabase))) return false;
+
   const body = Buffer.from(JSON.stringify(manifest), "utf8");
   const { error } = await supabase.storage
     .from(ATTENDANCE_STORAGE_BUCKET)
@@ -76,15 +88,17 @@ async function writeOverlayManifest(
       upsert: true,
     });
   if (error) {
-    throw new Error(`Pipeline overlay save failed: ${error.message}`);
+    console.warn("[pipeline-overlay] manifest save failed:", error.message);
+    return false;
   }
+  return true;
 }
 
 /** Load overlay manifest when SQL pipeline_stage column is unavailable. */
 export async function loadPipelineStageOverlayManifest(
   supabase: SupabaseClient
 ): Promise<OverlayManifest> {
-  await ensureAttendanceStorageBucket(supabase);
+  if (!(await ensureOverlayStorageReady(supabase))) return {};
   return readOverlayManifest(supabase);
 }
 
@@ -98,7 +112,8 @@ export async function transitionOverlayPipelineStage(
   assertPipelineTransition(from, to);
   if (ids.length === 0) return 0;
 
-  await ensureAttendanceStorageBucket(supabase);
+  if (!(await ensureOverlayStorageReady(supabase))) return 0;
+
   const manifest = await readOverlayManifest(supabase);
   const now = new Date().toISOString();
   let transitioned = 0;
@@ -121,7 +136,8 @@ export async function transitionOverlayPipelineStage(
   }
 
   if (transitioned > 0) {
-    await writeOverlayManifest(supabase, manifest);
+    const saved = await writeOverlayManifest(supabase, manifest);
+    if (!saved) return 0;
   }
 
   return transitioned;
@@ -160,7 +176,7 @@ export async function removeOverlayPipelineStages(
   ids: string[]
 ): Promise<void> {
   if (ids.length === 0) return;
-  await ensureAttendanceStorageBucket(supabase);
+  if (!(await ensureOverlayStorageReady(supabase))) return;
   const manifest = await readOverlayManifest(supabase);
   let changed = false;
   for (const id of ids) {

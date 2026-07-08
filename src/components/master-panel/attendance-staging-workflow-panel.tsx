@@ -26,6 +26,7 @@ import {
   getSupabaseSqlEditorUrl,
   PIPELINE_STAGE_MIGRATION_SQL_URL,
 } from "@/lib/attendance-setup-messages";
+import { readJsonResponse } from "@/lib/read-json-response";
 import { useSynchronizedHorizontalScroll } from "@/hooks/use-synchronized-horizontal-scroll";
 import { cn } from "@/lib/utils";
 import type { AttendanceStagingRow } from "@/types/attendance-staging";
@@ -126,12 +127,12 @@ export default function AttendanceStagingWorkflowPanel({
       if (departmentFilter) params.set("department", departmentFilter);
       if (designationFilter) params.set("designation", designationFilter);
       const response = await fetch(`/api/v1/attendance/pipeline?${params.toString()}`);
-      const body = (await response.json()) as {
+      const body = await readJsonResponse<{
         rows?: AttendanceStagingRow[];
         error?: string;
         setupRequired?: boolean;
         migrationSqlUrl?: string;
-      };
+      }>(response);
       if (!response.ok) {
         throw new Error(body.error ?? "Failed to load staging.");
       }
@@ -192,7 +193,7 @@ export default function AttendanceStagingWorkflowPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const body = (await response.json()) as Record<string, unknown>;
+    const body = await readJsonResponse<Record<string, unknown>>(response);
     if (!response.ok) {
       const err = new Error(String(body.error ?? "Pipeline action failed.")) as PipelineActionError;
       if (body.pipelineMigrationRequired) {

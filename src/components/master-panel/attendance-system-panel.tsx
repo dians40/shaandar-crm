@@ -20,7 +20,7 @@ import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
 import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
-import LayerFilterControls from "./layer-filter-controls";
+import { readJsonResponse } from "@/lib/read-json-response";
 import {
   PipelineBulkActionBar,
   PipelineSelectAllCheckbox,
@@ -93,10 +93,10 @@ export default function AttendanceSystemPanel({
       if (departmentFilter) params.set("department", departmentFilter);
       if (designationFilter) params.set("designation", designationFilter);
       const response = await fetch(`/api/v1/attendance/pipeline?${params.toString()}`);
-      const body = (await response.json()) as {
+      const body = await readJsonResponse<{
         rows?: BiometricAttendanceGridRow[];
         error?: string;
-      };
+      }>(response);
       if (!response.ok) throw new Error(body.error ?? "Failed to load workflow records.");
       setRows(body.rows ?? []);
     } catch (loadError) {
@@ -154,7 +154,7 @@ export default function AttendanceSystemPanel({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    const body = (await response.json()) as Record<string, unknown>;
+    const body = await readJsonResponse<Record<string, unknown>>(response);
     if (!response.ok) throw new Error(String(body.error ?? "Pipeline action failed."));
     return body;
   };

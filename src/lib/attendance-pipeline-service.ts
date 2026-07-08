@@ -98,8 +98,14 @@ async function fetchRowsByPipelineStageSupabase(
   const mapped = (data ?? []).map((row) => mapBiometricAttendanceGridRow(row as Record<string, unknown>));
 
   if (!pipelineColumnReady) {
-    const manifest = await loadPipelineStageOverlayManifest(supabase);
-    return mapped.filter((row) => rowMatchesPipelineStage(manifest, row.id, stage));
+    try {
+      const manifest = await loadPipelineStageOverlayManifest(supabase);
+      return mapped.filter((row) => rowMatchesPipelineStage(manifest, row.id, stage));
+    } catch (error) {
+      console.warn("[pipeline] overlay fetch failed:", error);
+      if (stage === PIPELINE_STAGES.LAYER_2_STAGING) return mapped;
+      return [];
+    }
   }
 
   return mapped;
@@ -299,16 +305,25 @@ export async function transitionPipelineStage(input: {
   }
 
   if (transitioned === 0) {
-    const supabase = createAdminClient();
-    transitioned = await transitionStoragePipelineStage(
-      supabase,
-      input.ids,
-      input.from,
-      input.to
-    );
+    try {
+      const supabase = createAdminClient();
+      transitioned = await transitionStoragePipelineStage(
+        supabase,
+        input.ids,
+        input.from,
+        input.to
+      );
+    } catch (error) {
+      console.warn("[pipeline] storage batch transition failed:", error);
+    }
   }
 
   if (transitioned === 0 && input.ids.length > 0) {
+    if (!pipelineColumnReady) {
+      throw new Error(
+        "Pipeline transition failed. Run migration 013 in Supabase SQL Editor (/api/v1/attendance/schema/migration-sql?file=013), or enable Supabase Storage for the attendance-imports bucket."
+      );
+    }
     throw new Error(
       `No rows transitioned from ${input.from} to ${input.to}. Verify records exist at the current layer.`
     );

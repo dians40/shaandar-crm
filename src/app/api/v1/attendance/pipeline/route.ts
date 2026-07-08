@@ -58,6 +58,8 @@ async function pipelineMigrationRequiredResponse(): Promise<Response> {
   );
 }
 
+export const maxDuration = 60;
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

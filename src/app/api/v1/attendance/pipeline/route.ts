@@ -17,12 +17,19 @@ import {
   rejectPipelineRows,
   transitionPipelineStage,
   updatePipelineRowFields,
+  updatePipelineStagingEdit,
   persistSavedRow,
   persistSavedRows,
 } from "@/lib/attendance-pipeline-service";
 import { autoSyncDepartmentName } from "@/lib/department-master-sync";
 import { parseAttendancePipelineFetchParams } from "@/lib/attendance-pipeline-fetch-options";
 import { isPipelineStage, PIPELINE_STAGES } from "@/types/attendance-pipeline";
+import {
+  checkAttendanceSchemaReady,
+  ensurePipelineStageColumn,
+} from "@/lib/attendance-schema-ensure";
+import { getDatabaseUrlResolutionHint } from "@/lib/database-url";
+import { getSupabaseSqlEditorUrl } from "@/lib/attendance-setup-messages";
 
 export async function GET(request: Request) {
   try {
@@ -42,6 +49,28 @@ export async function GET(request: Request) {
     }
     if (!isPipelineStage(stageParam)) {
       return NextResponse.json({ error: `Invalid stage: ${stageParam}` }, { status: 400 });
+    }
+
+    const schemaCheck = await checkAttendanceSchemaReady();
+    if (!schemaCheck.ready) {
+      const ensure = await ensurePipelineStageColumn();
+      const recheck = await checkAttendanceSchemaReady();
+      if (!recheck.ready) {
+        return NextResponse.json(
+          {
+            error: recheck.message ?? schemaCheck.message ?? "Attendance pipeline schema not ready.",
+            setupRequired: true,
+            hint: getDatabaseUrlResolutionHint(),
+            migrationSqlUrl: "/api/v1/attendance/schema/migration-sql?file=013",
+            sqlEditorUrl: getSupabaseSqlEditorUrl(),
+            rows: [],
+          },
+          { status: 503 }
+        );
+      }
+      if (!ensure.ok) {
+        console.warn("[pipeline] schema ensure:", ensure.message);
+      }
     }
 
     const fetchOptions = parseAttendancePipelineFetchParams(searchParams);
@@ -120,6 +149,17 @@ export async function POST(request: Request) {
       const stageParam = String(body.stage ?? PIPELINE_STAGES.LAYER_2_STAGING);
       const stage = isPipelineStage(stageParam) ? stageParam : PIPELINE_STAGES.LAYER_2_STAGING;
       const result = await updatePipelineRowFields({ ids, stage, designation });
+      return NextResponse.json({ ok: true, ...result });
+    }
+
+    if (action === "edit-staging-row") {
+      const id = ids[0] ?? String(body.id ?? "");
+      const result = await updatePipelineStagingEdit({
+        id,
+        inTime: body.correctedInTime != null ? String(body.correctedInTime) : body.inTime != null ? String(body.inTime) : null,
+        outTime: body.correctedOutTime != null ? String(body.correctedOutTime) : body.outTime != null ? String(body.outTime) : null,
+        remark: String(body.editRemark ?? body.remark ?? ""),
+      });
       return NextResponse.json({ ok: true, ...result });
     }
 

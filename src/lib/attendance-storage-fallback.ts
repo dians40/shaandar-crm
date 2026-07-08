@@ -480,6 +480,66 @@ export async function updateStorageRowFields(
   return updated;
 }
 
+/** Update in/out/remark on cloud storage batches for Layer 2 staging rows. */
+export async function updateStorageStagingEdit(
+  supabase: SupabaseClient,
+  id: string,
+  fields: { inTime?: string | null; outTime?: string | null; remark: string }
+): Promise<number> {
+  if (!id.trim()) return 0;
+  await ensureAttendanceStorageBucket(supabase);
+  let updated = 0;
+
+  const { data: dateFolders } = await supabase.storage
+    .from(ATTENDANCE_STORAGE_BUCKET)
+    .list("imports", { limit: 200, sortBy: { column: "name", order: "desc" } });
+
+  for (const folder of dateFolders ?? []) {
+    if (folder.name.endsWith(".json")) continue;
+    const reportDate = normalizeAttendanceDateIso(folder.name);
+    if (!reportDate) continue;
+
+    const { data: batchFiles } = await supabase.storage
+      .from(ATTENDANCE_STORAGE_BUCKET)
+      .list(storageImportPrefix(reportDate), { limit: 100 });
+
+    for (const file of batchFiles ?? []) {
+      if (!file.name.endsWith(".json")) continue;
+      const path = `${storageImportPrefix(reportDate)}/${file.name}`;
+      const batch = await downloadStorageBatch(supabase, path);
+      if (!batch) continue;
+
+      let batchChanged = false;
+      for (let index = 0; index < batch.rows.length; index += 1) {
+        const row = batch.rows[index];
+        const rowId = String(row.id ?? stableStorageRowId(reportDate, row, index));
+        const rowStage = String(row.pipeline_stage ?? INITIAL_INGEST_PIPELINE_STAGE);
+        if (rowId !== id || rowStage !== INITIAL_INGEST_PIPELINE_STAGE) continue;
+
+        batch.rows[index] = {
+          ...row,
+          id: rowId,
+          ...(fields.inTime !== undefined ? { in_time: fields.inTime, inTime: fields.inTime } : {}),
+          ...(fields.outTime !== undefined ? { out_time: fields.outTime, outTime: fields.outTime } : {}),
+          remark: fields.remark,
+        };
+        batchChanged = true;
+        updated += 1;
+      }
+
+      if (batchChanged) {
+        const body = Buffer.from(JSON.stringify(batch), "utf8");
+        await supabase.storage.from(ATTENDANCE_STORAGE_BUCKET).upload(path, body, {
+          contentType: "application/json",
+          upsert: true,
+        });
+      }
+    }
+  }
+
+  return updated;
+}
+
 /** @deprecated Use updateStorageRowFields */
 export async function updateStorageRowDepartment(
   supabase: SupabaseClient,

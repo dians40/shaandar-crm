@@ -22,6 +22,7 @@ import {
   LAYER_2_APPROVAL_OPTIONS,
   type PipelineApprovalAction,
 } from "@/lib/attendance-pipeline-approval-ui";
+import { useSynchronizedHorizontalScroll } from "@/hooks/use-synchronized-horizontal-scroll";
 import { cn } from "@/lib/utils";
 import type { AttendanceStagingRow } from "@/types/attendance-staging";
 import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
@@ -94,6 +95,10 @@ export default function AttendanceStagingWorkflowPanel({
   const { allSelected, isIndeterminate, toggleSelectAll } =
     getSelectionState(selectableRowIds);
 
+  const { topScrollRef, tableScrollRef, scrollWidthRef } = useSynchronizedHorizontalScroll(
+    `${loading}:${rows.length}:${filterResetKey}`
+  );
+
   const loadRows = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -111,8 +116,16 @@ export default function AttendanceStagingWorkflowPanel({
       const body = (await response.json()) as {
         rows?: AttendanceStagingRow[];
         error?: string;
+        setupRequired?: boolean;
+        migrationSqlUrl?: string;
       };
-      if (!response.ok) throw new Error(body.error ?? "Failed to load staging.");
+      if (!response.ok) {
+        throw new Error(
+          body.setupRequired
+            ? `${body.error ?? "Layer 2 pipeline schema not ready."} Open ${body.migrationSqlUrl ?? "/api/v1/attendance/schema/migration-sql?file=013"} for migration SQL.`
+            : body.error ?? "Failed to load staging."
+        );
+      }
       setRows(body.rows ?? []);
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Load failed.";
@@ -197,17 +210,6 @@ export default function AttendanceStagingWorkflowPanel({
     } finally {
       setBusyId(null);
     }
-  };
-
-  const postAction = async (payload: Record<string, unknown>) => {
-    const response = await fetch("/api/v1/attendance/staging", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ changedBy: "Supervisor", ...payload }),
-    });
-    const body = (await response.json()) as Record<string, unknown>;
-    if (!response.ok) throw new Error(String(body.error ?? "Action failed."));
-    return body;
   };
 
   const handleDesignationChange = async (row: AttendanceStagingRow, designation: string) => {
@@ -345,12 +347,13 @@ export default function AttendanceStagingWorkflowPanel({
     }
     setBusyId(editRow.id);
     try {
-      await postAction({
-        action: "edit",
-        id: editRow.id,
+      await postPipelineAction({
+        action: "edit-staging-row",
+        ids: [editRow.id],
         correctedInTime: editIn || null,
         correctedOutTime: editOut || null,
         editRemark,
+        stage: PIPELINE_STAGES.LAYER_2_STAGING,
       });
       setEditRow(null);
       setEditRemark("");
@@ -458,7 +461,15 @@ export default function AttendanceStagingWorkflowPanel({
         onBulkAction={(action) => void handleBulkAction(action)}
       />
 
-      <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "max-h-[480px] overflow-auto")}>
+      <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "max-h-[480px]")}>
+        <div
+          ref={topScrollRef}
+          className="workspace-table-scroll overflow-x-auto overflow-y-hidden border-b border-corporate-border/80"
+          aria-label="Layer 2 staging horizontal scroll (top)"
+        >
+          <div ref={scrollWidthRef} className="h-3" aria-hidden />
+        </div>
+        <div ref={tableScrollRef} className="workspace-table-scroll max-h-[440px] overflow-auto">
         <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[1400px]")}>
           <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
             <tr>
@@ -634,6 +645,7 @@ export default function AttendanceStagingWorkflowPanel({
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {editRow && (

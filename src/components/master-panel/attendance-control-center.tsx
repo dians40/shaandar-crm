@@ -71,6 +71,7 @@ import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
 import { useGeneralSettings } from "@/hooks/use-general-settings";
 import {
   ATTENDANCE_PIPELINE_REFRESH_EVENT,
+  dispatchAttendancePipelineRefresh,
   LAYER_4_APPROVAL_OPTIONS,
   type PipelineApprovalAction,
 } from "@/lib/attendance-pipeline-approval-ui";
@@ -735,6 +736,7 @@ export default function AttendanceControlCenter({
       setLayer4FromDate(savedDate);
       setLayer4ToDate(savedDate);
       setStagingRefreshToken((token) => token + 1);
+      dispatchAttendancePipelineRefresh();
       stagingSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
       console.error(error);

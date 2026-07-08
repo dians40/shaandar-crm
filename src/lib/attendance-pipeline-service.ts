@@ -15,6 +15,7 @@ import type { AttendanceWorkflowRecord } from "@/types/attendance-workflow";
 import {
   ensureAttendanceTablesSchema,
   ensurePipelineStageColumn,
+  backfillMissingPipelineStages,
   isAttendanceSchemaError,
   isPipelineStageColumnError,
 } from "@/lib/attendance-schema-ensure";
@@ -45,9 +46,14 @@ async function fetchRowsByPipelineStageSupabase(
   let query = supabase
     .from(BIOMETRIC_TABLE)
     .select("*")
-    .eq("pipeline_stage", stage)
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  if (stage === PIPELINE_STAGES.LAYER_2_STAGING) {
+    query = query.or(`pipeline_stage.eq.${stage},pipeline_stage.is.null`);
+  } else {
+    query = query.eq("pipeline_stage", stage);
+  }
 
   if (normalizedDate) query = query.eq("date", normalizedDate);
   if (fromDate) query = query.gte("date", fromDate);
@@ -122,10 +128,8 @@ export async function fetchRowsByPipelineStage(
   if (!isPipelineStage(stage)) throw new Error(`Invalid pipeline stage: ${stage}`);
 
   if (isSupabaseServerConfigured()) {
-    const ensure = await ensurePipelineStageColumn();
-    if (!ensure.ok) {
-      await ensureAttendanceTablesSchema();
-    }
+    await ensurePipelineStageColumn();
+    await backfillMissingPipelineStages();
     try {
       return await fetchRowsByPipelineStageSupabase(stage, options);
     } catch (error) {
@@ -332,6 +336,68 @@ export async function updateStagingDesignation(
     stage: PIPELINE_STAGES.LAYER_2_STAGING,
     designation,
   });
+}
+
+/** Layer 2 edit — persists in/out times and remark on biometric_attendance at LAYER_2_STAGING. */
+export async function updatePipelineStagingEdit(input: {
+  id: string;
+  inTime?: string | null;
+  outTime?: string | null;
+  remark: string;
+}): Promise<{ updated: number }> {
+  const id = input.id.trim();
+  if (!id) throw new Error("Row id is required.");
+
+  const remark = input.remark.trim();
+  if (!remark) throw new Error("Edit remark is required.");
+
+  const updatePayload: Record<string, unknown> = { remark };
+  if (input.inTime !== undefined) updatePayload.in_time = input.inTime || null;
+  if (input.outTime !== undefined) updatePayload.out_time = input.outTime || null;
+
+  let updated = 0;
+  if (isSupabaseServerConfigured()) {
+    await ensurePipelineStageColumn();
+    try {
+      const supabase = createAdminClient();
+      const { data, error } = await supabase
+        .from(BIOMETRIC_TABLE)
+        .update(updatePayload)
+        .eq("id", id)
+        .or(
+          `pipeline_stage.eq.${PIPELINE_STAGES.LAYER_2_STAGING},pipeline_stage.is.null`
+        )
+        .select("id");
+      if (error) {
+        if (isPipelineStageColumnError(error.message ?? "")) {
+          throw new Error(error.message);
+        }
+        throw new Error(error.message ?? "Layer 2 edit failed.");
+      }
+      updated = data?.length ?? 0;
+    } catch (error) {
+      if (isPipelineStageColumnError(error instanceof Error ? error.message : "")) {
+        throw error;
+      }
+      console.warn("[pipeline] SQL staging edit failed:", error);
+    }
+  }
+
+  if (updated === 0 && isSupabaseServerConfigured()) {
+    const supabase = createAdminClient();
+    const { updateStorageStagingEdit } = await import("@/lib/attendance-storage-fallback");
+    updated = await updateStorageStagingEdit(supabase, id, {
+      inTime: input.inTime,
+      outTime: input.outTime,
+      remark,
+    });
+  }
+
+  if (updated === 0) {
+    throw new Error("Edit failed — verify the record exists at LAYER_2_STAGING.");
+  }
+
+  return { updated };
 }
 
 export async function persistSavedRow(id: string): Promise<{ ok: boolean; archived: boolean }> {

@@ -93,6 +93,40 @@ export async function checkAttendanceSchemaReady(): Promise<{
   }
 }
 
+/** Assign LAYER_2_STAGING to legacy biometric rows missing pipeline_stage. */
+export async function backfillMissingPipelineStages(): Promise<number> {
+  if (!isSupabaseServerConfigured()) return 0;
+
+  const check = await checkAttendanceSchemaReady();
+  if (!check.ready) return 0;
+
+  try {
+    const supabase = createAdminClient();
+    const { data: nullRows, error: nullError } = await supabase
+      .from("biometric_attendance")
+      .update({ pipeline_stage: "LAYER_2_STAGING" })
+      .is("pipeline_stage", null)
+      .select("id");
+    if (nullError) {
+      console.warn("[attendance-schema] pipeline backfill (null) failed:", nullError.message);
+    }
+
+    const { data: emptyRows, error: emptyError } = await supabase
+      .from("biometric_attendance")
+      .update({ pipeline_stage: "LAYER_2_STAGING" })
+      .eq("pipeline_stage", "")
+      .select("id");
+    if (emptyError) {
+      console.warn("[attendance-schema] pipeline backfill (empty) failed:", emptyError.message);
+    }
+
+    return (nullRows?.length ?? 0) + (emptyRows?.length ?? 0);
+  } catch (error) {
+    console.warn("[attendance-schema] pipeline backfill error:", error);
+    return 0;
+  }
+}
+
 export function isPipelineStageColumnError(message: string): boolean {
   const lower = message.toLowerCase();
   return (
@@ -266,7 +300,10 @@ export async function ensurePipelineStageColumn(): Promise<{
 
   if (result.ok) {
     const verify = await checkAttendanceSchemaReady();
-    if (verify.ready) return result;
+    if (verify.ready) {
+      await backfillMissingPipelineStages();
+      return result;
+    }
     return {
       ok: false,
       message: "Migration ran but pipeline_stage column is still missing. Reload PostgREST schema cache.",

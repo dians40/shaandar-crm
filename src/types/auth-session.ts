@@ -49,6 +49,7 @@ export const LAYER2_STAGING_ALLOWED_PIPELINE_ACTIONS = [
   "approve-all-staging",
   "update-department",
   "update-designation",
+  "edit-staging-row",
   "reject-row",
   "reject-rows",
 ] as const;

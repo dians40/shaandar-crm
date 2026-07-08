@@ -9,7 +9,10 @@ import { useGeneralSettings } from "@/hooks/use-general-settings";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import { useOvertimeRecords } from "@/hooks/use-overtime";
 import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
-import { resolveEmployeeOvertimeAmount } from "@/lib/department-employee-filter";
+import {
+  parseFixedOvertimeAmount,
+  resolveEmployeeOvertimeAmount,
+} from "@/lib/department-employee-filter";
 import { fetchEmployee } from "@/lib/employees-api";
 import { splitAssignedFromGroup } from "@/lib/employee-assigned-from";
 import {
@@ -97,6 +100,8 @@ export default function OvertimeTrackerPanel() {
   const [payslipId, setPayslipId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_OVERTIME_FORM);
+  const [profileFixedOvertime, setProfileFixedOvertime] = useState(0);
+  const [amountManuallyEdited, setAmountManuallyEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewingId, setViewingId] = useState<string | null>(null);
@@ -132,14 +137,12 @@ export default function OvertimeTrackerPanel() {
     [form.shiftType, form.fromTime, form.toTime]
   );
 
-  const selectedEmployeeRate = useMemo(
-    () => employees.find((row) => row.id === form.employeeId)?.overtimeHourlyRate ?? 0,
-    [employees, form.employeeId]
-  );
-
-  const autoOvertimePayout = useMemo(
-    () => calculateOvertimePayout(totalHours, selectedEmployeeRate),
-    [totalHours, selectedEmployeeRate]
+  const suggestedOvertimePayout = useMemo(
+    () =>
+      profileFixedOvertime > 0 && totalHours > 0
+        ? calculateOvertimePayout(totalHours, profileFixedOvertime)
+        : profileFixedOvertime,
+    [profileFixedOvertime, totalHours]
   );
 
   const employeeOptions = useMemo(
@@ -176,43 +179,75 @@ export default function OvertimeTrackerPanel() {
   const applySelectedEmployee = (
     employeeId: string,
     employeeName: string,
-    fixedOvertimeAmount?: number
+    fixedOvertimeAmount: number
   ) => {
     const employee = employees.find((row) => row.id === employeeId);
     const contractor = resolveContractorFromEmployee(employee?.assignedFromGroup ?? "");
-    const overtimeAmount =
-      fixedOvertimeAmount ?? resolveEmployeeOvertimeAmount(employee);
     const employeeDepartment =
       employee?.machineAssignment && employee.machineAssignment !== "—"
         ? employee.machineAssignment
         : "";
 
+    setProfileFixedOvertime(fixedOvertimeAmount);
+    setAmountManuallyEdited(false);
     setForm((prev) => {
       const hours = resolvePayrollTotalHours({
         shiftType: prev.shiftType,
         fromTime: prev.fromTime,
         toTime: prev.toTime,
       });
+      const amountPaidToday =
+        fixedOvertimeAmount > 0
+          ? hours > 0
+            ? calculateOvertimePayout(hours, fixedOvertimeAmount)
+            : fixedOvertimeAmount
+          : 0;
+
       return {
         ...prev,
         employeeId,
         employeeName,
         assignedFromGroup: contractor,
         assignedMachine: employeeDepartment || prev.assignedMachine,
-        amountPaidToday:
-          overtimeAmount > 0
-            ? hours > 0
-              ? calculateOvertimePayout(hours, overtimeAmount)
-              : overtimeAmount
-            : prev.amountPaidToday,
+        amountPaidToday,
       };
     });
   };
 
+  const loadEmployeeFixedOvertime = useCallback(
+    async (employeeId: string): Promise<number> => {
+      if (!employeeId) return 0;
+
+      const employee = employees.find((row) => row.id === employeeId);
+      let fixedAmount = resolveEmployeeOvertimeAmount(employee);
+
+      try {
+        const fullProfile = await fetchEmployee(employeeId);
+        const fromProfile = parseFixedOvertimeAmount(
+          fullProfile.bankAndSalary.overtimeHourlyRate
+        );
+        if (fromProfile > 0) {
+          fixedAmount = fromProfile;
+        }
+      } catch {
+        /* keep list fallback when profile fetch fails */
+      }
+
+      return fixedAmount;
+    },
+    [employees]
+  );
+
   const consumePendingEmployeeSelection = () => {
     const selection = readMasterPanelSelection();
     if (selection?.entityType === "employee" && selection.entityId) {
-      applySelectedEmployee(selection.entityId, selection.entityName);
+      void loadEmployeeFixedOvertime(selection.entityId).then((fixedAmount) => {
+        applySelectedEmployee(
+          selection.entityId!,
+          selection.entityName ?? "",
+          fixedAmount
+        );
+      });
     }
   };
 
@@ -221,18 +256,17 @@ export default function OvertimeTrackerPanel() {
   }, [reloadDepartments]);
 
   useEffect(() => {
-    if (!form.employeeId || selectedEmployeeRate <= 0) return;
+    if (!form.employeeId || profileFixedOvertime <= 0 || amountManuallyEdited) return;
     setForm((prev) => ({
       ...prev,
-      amountPaidToday:
-        totalHours > 0
-          ? calculateOvertimePayout(totalHours, selectedEmployeeRate)
-          : selectedEmployeeRate,
+      amountPaidToday: suggestedOvertimePayout,
     }));
-  }, [form.employeeId, selectedEmployeeRate, totalHours]);
+  }, [form.employeeId, profileFixedOvertime, suggestedOvertimePayout, amountManuallyEdited]);
 
   const resetForm = () => {
     setForm(EMPTY_OVERTIME_FORM);
+    setProfileFixedOvertime(0);
+    setAmountManuallyEdited(false);
     setEditingId(null);
     setError(null);
   };
@@ -285,18 +319,20 @@ export default function OvertimeTrackerPanel() {
   };
 
   const handleEmployeeChange = async (employeeId: string) => {
-    const employee = employees.find((row) => row.id === employeeId);
-    let fixedOvertimeAmount = resolveEmployeeOvertimeAmount(employee);
-
-    if (employeeId && fixedOvertimeAmount <= 0) {
-      try {
-        const fullProfile = await fetchEmployee(employeeId);
-        fixedOvertimeAmount = Number(fullProfile.bankAndSalary.overtimeHourlyRate) || 0;
-      } catch {
-        /* list row remains fallback */
-      }
+    if (!employeeId) {
+      setProfileFixedOvertime(0);
+      setAmountManuallyEdited(false);
+      setForm((prev) => ({
+        ...prev,
+        employeeId: "",
+        employeeName: "",
+        amountPaidToday: 0,
+      }));
+      return;
     }
 
+    const employee = employees.find((row) => row.id === employeeId);
+    const fixedOvertimeAmount = await loadEmployeeFixedOvertime(employeeId);
     applySelectedEmployee(employeeId, employee?.name ?? "", fixedOvertimeAmount);
   };
 
@@ -401,14 +437,16 @@ export default function OvertimeTrackerPanel() {
       const detail = (event as CustomEvent<{ entityType?: string; entityId?: string; entityName?: string }>).detail;
       if (detail?.entityType === "employee" && detail.entityId) {
         resetForm();
-        applySelectedEmployee(detail.entityId, detail.entityName ?? "");
-        setView("add");
+        void loadEmployeeFixedOvertime(detail.entityId).then((fixedAmount) => {
+          applySelectedEmployee(detail.entityId!, detail.entityName ?? "", fixedAmount);
+          setView("add");
+        });
       }
     };
 
     window.addEventListener(MASTER_PANEL_ENTITY_SELECTED_EVENT, handler);
     return () => window.removeEventListener(MASTER_PANEL_ENTITY_SELECTED_EVENT, handler);
-  }, []);
+  }, [loadEmployeeFixedOvertime]);
 
   if (!isReady || !settingsReady) {
     return (
@@ -577,21 +615,17 @@ export default function OvertimeTrackerPanel() {
               min="0"
               step="0.01"
               required
-              readOnly={selectedEmployeeRate > 0 && totalHours > 0}
-              value={String(
-                selectedEmployeeRate > 0
-                  ? totalHours > 0
-                    ? autoOvertimePayout
-                    : form.amountPaidToday || selectedEmployeeRate
-                  : form.amountPaidToday
-              )}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, amountPaidToday: Number(e.target.value) }))
-              }
+              value={String(form.amountPaidToday)}
+              onChange={(e) => {
+                setAmountManuallyEdited(true);
+                setForm((prev) => ({ ...prev, amountPaidToday: Number(e.target.value) }));
+              }}
               hint={
-                selectedEmployeeRate > 0
-                  ? `Auto-filled from Employee Master fixed OT amount ₹${selectedEmployeeRate}${
-                      totalHours > 0 ? ` × ${totalHours} hr` : " on selection"
+                profileFixedOvertime > 0
+                  ? `Auto-filled from Employee Master fixed OT amount ₹${profileFixedOvertime.toLocaleString("en-IN")}${
+                      totalHours > 0
+                        ? ` (suggested ₹${suggestedOvertimePayout.toLocaleString("en-IN")} for ${totalHours} hr)`
+                        : " on selection — editable"
                     }`
                   : "Set Overtime Hourly Rate in Employee Master or enter amount manually"
               }

@@ -46,3 +46,9 @@ export function resolveEmployeeOvertimeAmount(
   const amount = employee?.overtimeHourlyRate;
   return amount != null && amount > 0 ? amount : 0;
 }
+
+export function parseFixedOvertimeAmount(value: string | number | null | undefined): number {
+  if (value == null) return 0;
+  const parsed = typeof value === "number" ? value : Number(String(value).trim());
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}

@@ -27,6 +27,12 @@ import type { AttendanceStagingRow } from "@/types/attendance-staging";
 import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
 import LayerFilterControls from "./layer-filter-controls";
 import {
+  PipelineBulkActionBar,
+  PipelineSelectAllCheckbox,
+  usePipelineRowSelection,
+  type PipelineBulkActionKind,
+} from "./attendance-pipeline-bulk-selection";
+import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
   MASTER_LIST_HEADER_CELL_CLASS,
@@ -71,9 +77,22 @@ export default function AttendanceStagingWorkflowPanel({
   const [editOut, setEditOut] = useState("");
   const [editRemark, setEditRemark] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [approvalSelections, setApprovalSelections] = useState<Record<string, PipelineApprovalAction>>({});
   const [manualLogRefresh, setManualLogRefresh] = useState(0);
   const { departmentNames } = useGeneralSettings();
+
+  const filterResetKey = `${fromDate}|${toDate}|${searchQuery}|${departmentFilter}|${designationFilter}|${refreshToken}`;
+  const { selectedRowIds, toggleRow, clearSelection, getSelectionState } =
+    usePipelineRowSelection(filterResetKey);
+
+  const selectableRowIds = useMemo(
+    () => rows.filter((row) => !row.isLocked).map((row) => row.id),
+    [rows]
+  );
+
+  const { allSelected, isIndeterminate, toggleSelectAll } =
+    getSelectionState(selectableRowIds);
 
   const loadRows = useCallback(async () => {
     setLoading(true);
@@ -255,6 +274,46 @@ export default function AttendanceStagingWorkflowPanel({
     }
   };
 
+  const handleBulkAction = async (action: PipelineBulkActionKind) => {
+    const ids = Array.from(selectedRowIds).filter((id) => selectableRowIds.includes(id));
+    if (ids.length === 0) return;
+
+    if (action === "approve") {
+      const selectedRows = rows.filter((row) => ids.includes(row.id));
+      const anomalyCount = selectedRows.filter((row) => row.isAnomaly || row.editRemark).length;
+      if (anomalyCount > 0) {
+        const ok = window.confirm(
+          `${anomalyCount} selected record(s) have anomalies or edits — confirm bulk approve to Layer 3?`
+        );
+        if (!ok) return;
+      }
+    }
+
+    setBulkBusy(true);
+    setMessage(null);
+    setError(null);
+    try {
+      if (action === "approve") {
+        const body = await postPipelineAction({ action: "approve-staging", ids });
+        setMessage(`Approved ${body.transitioned ?? ids.length} row(s) — moved to Live Workflow (Layer 3).`);
+      } else {
+        const body = await postPipelineAction({
+          action: "reject-row",
+          ids,
+          stage: PIPELINE_STAGES.LAYER_2_STAGING,
+        });
+        setMessage(`Rejected ${body.rejected ?? ids.length} row(s) — removed from Layer 2 staging.`);
+      }
+      clearSelection();
+      await loadRows();
+      onApproved?.();
+    } catch (bulkError) {
+      setError(bulkError instanceof Error ? bulkError.message : "Bulk action failed.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const handleApproveAll = async () => {
     setMessage(null);
     try {
@@ -388,10 +447,27 @@ export default function AttendanceStagingWorkflowPanel({
         searchPlaceholder="Search by name or pay code..."
       />
 
+      <PipelineBulkActionBar
+        selectedCount={selectedRowIds.size}
+        isBusy={bulkBusy}
+        approveLabel="Approve All to Layer 3"
+        rejectLabel="Reject All"
+        onBulkAction={(action) => void handleBulkAction(action)}
+      />
+
       <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "max-h-[480px] overflow-auto")}>
         <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[1400px]")}>
           <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
             <tr>
+              <th className={cn(MASTER_LIST_HEADER_CELL_CLASS, "w-10 text-center")}>
+                <PipelineSelectAllCheckbox
+                  checked={allSelected}
+                  indeterminate={isIndeterminate}
+                  disabled={loading || selectableRowIds.length === 0 || bulkBusy}
+                  onChange={toggleSelectAll}
+                  ariaLabel="Select all visible staging rows"
+                />
+              </th>
               {[
                 "Actions",
                 "Pay Code",
@@ -417,13 +493,13 @@ export default function AttendanceStagingWorkflowPanel({
           <tbody className="divide-y divide-corporate-border bg-white">
             {loading ? (
               <tr>
-                <td colSpan={14} className="px-3 py-8 text-center text-sm text-corporate-muted">
+                <td colSpan={15} className="px-3 py-8 text-center text-sm text-corporate-muted">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" aria-hidden />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-3 py-8 text-center text-sm text-corporate-muted">
+                <td colSpan={15} className="px-3 py-8 text-center text-sm text-corporate-muted">
                   No staging records — upload Excel and click Save to Server (Step 1).
                 </td>
               </tr>
@@ -433,9 +509,24 @@ export default function AttendanceStagingWorkflowPanel({
                   key={row.id}
                   className={cn(
                     row.isAnomaly && row.status === "Pending" && "bg-amber-50/60",
-                    row.status === "Approved" && "bg-emerald-50/40"
+                    row.status === "Approved" && "bg-emerald-50/40",
+                    selectedRowIds.has(row.id) && "bg-corporate-brand-light/40"
                   )}
                 >
+                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-center")}>
+                    {!row.isLocked ? (
+                      <input
+                        type="checkbox"
+                        checked={selectedRowIds.has(row.id)}
+                        disabled={bulkBusy || busyId === row.id}
+                        onChange={() => toggleRow(row.id)}
+                        aria-label={`Select ${row.employeeName || row.payCode}`}
+                        className="h-4 w-4 rounded border-corporate-border"
+                      />
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>
                     <div className="flex flex-col gap-1">
                       {!row.isLocked && (

@@ -22,6 +22,12 @@ import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-gr
 import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
 import LayerFilterControls from "./layer-filter-controls";
 import {
+  PipelineBulkActionBar,
+  PipelineSelectAllCheckbox,
+  usePipelineRowSelection,
+  type PipelineBulkActionKind,
+} from "./attendance-pipeline-bulk-selection";
+import {
   MASTER_LIST_BODY_CELL_CLASS,
   MASTER_LIST_HEAD_CLASS,
   MASTER_LIST_HEADER_CELL_CLASS,
@@ -48,9 +54,18 @@ export default function AttendanceSystemPanel({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [approvalSelections, setApprovalSelections] = useState<Record<string, PipelineApprovalAction>>({});
   const [manualLogRefresh, setManualLogRefresh] = useState(0);
   const { departmentNames } = useGeneralSettings();
+
+  const filterResetKey = `${fromDate}|${toDate}|${searchQuery}|${departmentFilter}|${designationFilter}|${refreshToken}`;
+  const { selectedRowIds, toggleRow, clearSelection, getSelectionState } =
+    usePipelineRowSelection(filterResetKey);
+
+  const selectableRowIds = useMemo(() => rows.map((row) => row.id), [rows]);
+  const { allSelected, isIndeterminate, toggleSelectAll } =
+    getSelectionState(selectableRowIds);
 
   const resetPanelState = useCallback(() => {
     setFromDate("");
@@ -213,6 +228,35 @@ export default function AttendanceSystemPanel({
     }
   };
 
+  const handleBulkAction = async (action: PipelineBulkActionKind) => {
+    const ids = Array.from(selectedRowIds).filter((id) => selectableRowIds.includes(id));
+    if (ids.length === 0) return;
+
+    setBulkBusy(true);
+    setMessage(null);
+    setError(null);
+    try {
+      if (action === "approve") {
+        const body = await postPipelineAction({ action: "commit-workflow", ids });
+        setMessage(`Approved ${body.transitioned ?? ids.length} row(s) — moved to Layer 4 saved history.`);
+      } else {
+        const body = await postPipelineAction({
+          action: "reject-row",
+          ids,
+          stage: PIPELINE_STAGES.LAYER_3_WORKFLOW,
+        });
+        setMessage(`Rejected ${body.rejected ?? ids.length} row(s) — removed from Layer 3 workflow.`);
+      }
+      clearSelection();
+      await loadRecords();
+      onCommitted?.();
+    } catch (bulkError) {
+      setError(bulkError instanceof Error ? bulkError.message : "Bulk action failed.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const handleApproveAll = async () => {
     if (rows.length === 0) return;
     setMessage(null);
@@ -277,10 +321,27 @@ export default function AttendanceSystemPanel({
         </p>
       )}
 
+      <PipelineBulkActionBar
+        selectedCount={selectedRowIds.size}
+        isBusy={bulkBusy}
+        approveLabel="Approve All to Layer 4"
+        rejectLabel="Reject All"
+        onBulkAction={(action) => void handleBulkAction(action)}
+      />
+
       <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "max-h-[480px] overflow-auto")}>
         <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[1100px]")}>
           <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
             <tr>
+              <th className={cn(MASTER_LIST_HEADER_CELL_CLASS, "w-10 text-center")}>
+                <PipelineSelectAllCheckbox
+                  checked={allSelected}
+                  indeterminate={isIndeterminate}
+                  disabled={loading || selectableRowIds.length === 0 || bulkBusy}
+                  onChange={toggleSelectAll}
+                  ariaLabel="Select all visible workflow rows"
+                />
+              </th>
               {[
                 "Actions",
                 "Employee",
@@ -300,13 +361,13 @@ export default function AttendanceSystemPanel({
           <tbody className="divide-y divide-corporate-border bg-white">
             {loading ? (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-sm text-corporate-muted">
+                <td colSpan={9} className="px-3 py-8 text-center text-sm text-corporate-muted">
                   <Loader2 className="mx-auto h-5 w-5 animate-spin" aria-hidden />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-sm text-corporate-muted">
+                <td colSpan={9} className="px-3 py-10 text-center text-sm text-corporate-muted">
                   <CalendarCheck className="mx-auto mb-2 h-6 w-6 opacity-60" aria-hidden />
                   {searchQuery.trim()
                     ? LIST_SEARCH_EMPTY_MESSAGE
@@ -315,7 +376,20 @@ export default function AttendanceSystemPanel({
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  className={cn(selectedRowIds.has(row.id) && "bg-corporate-brand-light/40")}
+                >
+                  <td className={cn(MASTER_LIST_BODY_CELL_CLASS, "text-center")}>
+                    <input
+                      type="checkbox"
+                      checked={selectedRowIds.has(row.id)}
+                      disabled={bulkBusy || busyId === row.id}
+                      onChange={() => toggleRow(row.id)}
+                      aria-label={`Select ${row.employeeName}`}
+                      className="h-4 w-4 rounded border-corporate-border"
+                    />
+                  </td>
                   <td className={MASTER_LIST_BODY_CELL_CLASS}>
                     <select
                       value={approvalSelections[row.id] ?? ""}

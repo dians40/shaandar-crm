@@ -48,6 +48,12 @@ import AttendanceStagingWorkflowPanel from "./attendance-staging-workflow-panel"
 import AttendanceSystemPanel from "./attendance-system-panel";
 import ManualAttendanceEntryPanel from "./manual-attendance-entry-panel";
 import LayerFilterControls from "./layer-filter-controls";
+import {
+  PipelineBulkActionBar,
+  PipelineSelectAllCheckbox,
+  usePipelineRowSelection,
+  type PipelineBulkActionKind,
+} from "./attendance-pipeline-bulk-selection";
 import { useEmployees } from "@/hooks/use-employees";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
@@ -190,7 +196,9 @@ export default function AttendanceControlCenter({
   const [dbConnected, setDbConnected] = useState<boolean | null>(null);
   const [schemaStatus, setSchemaStatus] = useState<SchemaStatus>("checking");
   const [schemaMessage, setSchemaMessage] = useState<string | null>(null);
-  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const layer4FilterResetKey = `${layer4FromDate}|${layer4ToDate}|${debouncedSearch}|${departmentFilter}|${designationFilter}`;
+  const { selectedRowIds, toggleRow, deselectRow, clearSelection, getSelectionState } =
+    usePipelineRowSelection(layer4FilterResetKey);
   const [stagingRefreshToken, setStagingRefreshToken] = useState(0);
   const [workflowRefreshToken, setWorkflowRefreshToken] = useState(0);
   const [layer4SaveMessage, setLayer4SaveMessage] = useState<string | null>(null);
@@ -230,7 +238,6 @@ export default function AttendanceControlCenter({
     setSaveStatus("idle");
     setSchemaStatus("checking");
     setSchemaMessage(null);
-    setSelectedRowIds(new Set());
   }, []);
 
   const ensureAttendanceSchema = useCallback(async (): Promise<boolean> => {
@@ -786,23 +793,26 @@ export default function AttendanceControlCenter({
     if (file) void handleFileSelect(file);
   };
 
+  const selectableLayer4Keys = useMemo(
+    () =>
+      gridRows
+        .filter((row) => row.source === "biometric" && row.id)
+        .map((row) => rowSelectionKey(row)),
+    [gridRows]
+  );
+
+  const { allSelected: layer4AllSelected, isIndeterminate: layer4Indeterminate, toggleSelectAll: toggleLayer4SelectAll } =
+    getSelectionState(selectableLayer4Keys);
+
   const selectedRows = gridRows.filter((row) => selectedRowIds.has(rowSelectionKey(row)));
 
-  const toggleRowSelection = (row: BiometricAttendanceGridRow) => {
-    const key = rowSelectionKey(row);
-    setSelectedRowIds((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
-
-  const selectAllVisibleRows = () => {
-    setSelectedRowIds(new Set(gridRows.map((row) => rowSelectionKey(row))));
-  };
-
-  const clearRowSelection = () => setSelectedRowIds(new Set());
+  const handleLayer4RowActivate = useCallback(
+    (row: BiometricAttendanceGridRow) => {
+      setActiveLayer4RowId(row.id);
+      toggleRow(rowSelectionKey(row));
+    },
+    [toggleRow]
+  );
 
   const persistLayer4Row = useCallback(async (row: BiometricAttendanceGridRow) => {
     if (!row.id || row.source !== "biometric") return;
@@ -817,11 +827,7 @@ export default function AttendanceControlCenter({
       const body = (await response.json()) as { error?: string; ok?: boolean; archived?: boolean };
       if (!response.ok) throw new Error(body.error ?? "Failed to save row to server.");
       setGridRows((current) => current.filter((entry) => entry.id !== row.id));
-      setSelectedRowIds((current) => {
-        const next = new Set(current);
-        next.delete(rowSelectionKey(row));
-        return next;
-      });
+      deselectRow(rowSelectionKey(row));
       if (activeLayer4RowId === row.id) setActiveLayer4RowId(null);
       setLayer4SaveMessage(
         `Archived ${row.employeeName || row.payCode} (${row.date}) to Saved File/Archive storage.`
@@ -833,18 +839,7 @@ export default function AttendanceControlCenter({
     } finally {
       setLayer4SavingId(null);
     }
-  }, [activeLayer4RowId]);
-
-  const handleLayer4RowActivate = useCallback((row: BiometricAttendanceGridRow) => {
-    setActiveLayer4RowId(row.id);
-    const key = rowSelectionKey(row);
-    setSelectedRowIds((current) => {
-      const next = new Set(current);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
+  }, [activeLayer4RowId, deselectRow]);
 
   const handleLayer4Approval = useCallback(
     async (row: BiometricAttendanceGridRow, action: PipelineApprovalAction) => {
@@ -861,11 +856,7 @@ export default function AttendanceControlCenter({
           const body = (await response.json()) as { error?: string };
           if (!response.ok) throw new Error(body.error ?? "Failed to save row to server.");
           setGridRows((current) => current.filter((entry) => entry.id !== row.id));
-          setSelectedRowIds((current) => {
-            const next = new Set(current);
-            next.delete(rowSelectionKey(row));
-            return next;
-          });
+          deselectRow(rowSelectionKey(row));
           if (activeLayer4RowId === row.id) setActiveLayer4RowId(null);
           setLayer4SaveMessage(
             `Archived ${row.employeeName || row.payCode} (${row.date}) to Saved File/Archive storage.`
@@ -895,36 +886,64 @@ export default function AttendanceControlCenter({
         setLayer4SavingId(null);
       }
     },
-    [activeLayer4RowId]
+    [activeLayer4RowId, deselectRow]
   );
 
-  const handleSaveSelectedLayer4Rows = useCallback(async () => {
-    const ids = selectedRows.filter((row) => row.source === "biometric" && row.id).map((row) => row.id);
-    if (ids.length === 0) return;
-    setLayer4SaveMessage(null);
-    setLayer4SavingId("bulk");
-    try {
-      const response = await fetch("/api/v1/attendance/pipeline", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "persist-saved-rows", ids }),
-      });
-      const body = (await response.json()) as { error?: string; saved?: number };
-      if (!response.ok) throw new Error(body.error ?? "Bulk save failed.");
-      const savedCount = body.saved ?? ids.length;
-      const idSet = new Set(ids);
-      setGridRows((current) => current.filter((entry) => !idSet.has(entry.id)));
-      setSelectedRowIds(new Set());
-      setActiveLayer4RowId(null);
-      setLayer4SaveMessage(
-        `Archived ${savedCount} row(s) to Saved File/Archive storage.`
-      );
-    } catch (saveError) {
-      setLayer4SaveMessage(saveError instanceof Error ? saveError.message : "Bulk save failed.");
-    } finally {
-      setLayer4SavingId(null);
-    }
-  }, [selectedRows]);
+  const handleLayer4BulkAction = useCallback(
+    async (action: PipelineBulkActionKind) => {
+      const ids = selectedRows
+        .filter((row) => row.source === "biometric" && row.id)
+        .map((row) => row.id);
+      if (ids.length === 0) return;
+
+      setLayer4SaveMessage(null);
+      setLayer4SavingId("bulk");
+      try {
+        if (action === "approve") {
+          const response = await fetch("/api/v1/attendance/pipeline", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "persist-saved-rows", ids }),
+          });
+          const body = (await response.json()) as { error?: string; saved?: number };
+          if (!response.ok) throw new Error(body.error ?? "Bulk save failed.");
+          const savedCount = body.saved ?? ids.length;
+          const idSet = new Set(ids);
+          setGridRows((current) => current.filter((entry) => !idSet.has(entry.id)));
+          clearSelection();
+          setActiveLayer4RowId(null);
+          setLayer4SaveMessage(
+            `Archived ${savedCount} row(s) to Saved File/Archive storage.`
+          );
+        } else {
+          const response = await fetch("/api/v1/attendance/pipeline", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "reject-row",
+              ids,
+              stage: PIPELINE_STAGES.LAYER_4_SAVED,
+            }),
+          });
+          const body = (await response.json()) as { error?: string; rejected?: number };
+          if (!response.ok) throw new Error(body.error ?? "Bulk reject failed.");
+          const rejectedCount = body.rejected ?? ids.length;
+          const idSet = new Set(ids);
+          setGridRows((current) => current.filter((entry) => !idSet.has(entry.id)));
+          clearSelection();
+          setActiveLayer4RowId(null);
+          setLayer4SaveMessage(`Rejected ${rejectedCount} row(s) from Layer 4 saved records.`);
+        }
+      } catch (saveError) {
+        setLayer4SaveMessage(
+          saveError instanceof Error ? saveError.message : "Bulk action failed."
+        );
+      } finally {
+        setLayer4SavingId(null);
+      }
+    },
+    [selectedRows, clearSelection]
+  );
 
   const renderHistoryGrid = () => (
     <section
@@ -948,35 +967,6 @@ export default function AttendanceControlCenter({
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={selectAllVisibleRows}
-            disabled={gridRows.length === 0}
-            className="rounded-lg border border-corporate-border bg-white px-3 py-2 text-xs font-medium text-corporate-text hover:bg-corporate-bg"
-          >
-            Select All Visible
-          </button>
-          {selectedRowIds.size > 0 && (
-            <>
-              <button
-                type="button"
-                onClick={() => void handleSaveSelectedLayer4Rows()}
-                disabled={layer4SavingId === "bulk"}
-                className="rounded-lg border border-corporate-brand bg-corporate-brand px-3 py-2 text-xs font-medium text-white hover:bg-corporate-brand/90 disabled:opacity-60"
-              >
-                {layer4SavingId === "bulk" ? "Saving…" : "Save Selected"}
-              </button>
-              <button
-                type="button"
-                onClick={clearRowSelection}
-                className="rounded-lg border border-corporate-border bg-white px-3 py-2 text-xs font-medium text-corporate-text hover:bg-corporate-bg"
-              >
-                Clear Selection
-              </button>
-            </>
-          )}
-        </div>
       </div>
 
       {layer4SaveMessage && (
@@ -984,6 +974,14 @@ export default function AttendanceControlCenter({
           {layer4SaveMessage}
         </div>
       )}
+
+      <PipelineBulkActionBar
+        selectedCount={selectedRowIds.size}
+        isBusy={layer4SavingId === "bulk"}
+        approveLabel="Save All to Archive"
+        rejectLabel="Reject All"
+        onBulkAction={(action) => void handleLayer4BulkAction(action)}
+      />
 
       {selectedRows.length > 0 && (
         <div className="rounded-lg border border-corporate-brand/30 bg-corporate-brand-light px-4 py-3 text-sm text-corporate-text">
@@ -1010,7 +1008,15 @@ export default function AttendanceControlCenter({
         <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[2700px]")}>
           <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
             <tr>
-              <th className={MASTER_LIST_HEADER_CELL_CLASS}>Select</th>
+              <th className={cn(MASTER_LIST_HEADER_CELL_CLASS, "w-10 text-center")}>
+                <PipelineSelectAllCheckbox
+                  checked={layer4AllSelected}
+                  indeterminate={layer4Indeterminate}
+                  disabled={isGridLoading || selectableLayer4Keys.length === 0 || layer4SavingId === "bulk"}
+                  onChange={toggleLayer4SelectAll}
+                  ariaLabel="Select all visible saved records"
+                />
+              </th>
               <th className={MASTER_LIST_HEADER_CELL_CLASS}>Approval</th>
               {ATTENDANCE_BULK_IMPORT_COLUMNS.map((column) => (
                 <th key={column.key} className={MASTER_LIST_HEADER_CELL_CLASS}>

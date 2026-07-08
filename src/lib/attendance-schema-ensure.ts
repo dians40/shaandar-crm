@@ -7,6 +7,7 @@ import {
   resolveDatabaseUrl,
 } from "@/lib/database-url";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
+import { resetPipelineStageColumnCache } from "@/lib/pipeline-stage-column-compat";
 
 const MIGRATION_FILES = [
   "011_ensure_attendance_tables.sql",
@@ -48,10 +49,15 @@ export function formatSchemaEnsureFailureMessage(_originalError?: string): strin
 /** Probe PostgREST for attendance tables without running DDL. */
 export async function checkAttendanceSchemaReady(): Promise<{
   ready: boolean;
+  pipelineStageReady?: boolean;
   message?: string;
 }> {
   if (!isSupabaseServerConfigured()) {
-    return { ready: true, message: "Supabase not configured — local session mode." };
+    return {
+      ready: true,
+      pipelineStageReady: true,
+      message: "Supabase not configured — local session mode.",
+    };
   }
 
   try {
@@ -68,6 +74,7 @@ export async function checkAttendanceSchemaReady(): Promise<{
       if (error && isAttendanceSchemaError(error.message ?? "")) {
         return {
           ready: false,
+          pipelineStageReady: false,
           message: `Table public.${table} is missing from the database schema cache.`,
         };
       }
@@ -77,19 +84,23 @@ export async function checkAttendanceSchemaReady(): Promise<{
       .from("biometric_attendance")
       .select("pipeline_stage, workflow_stage")
       .limit(1);
-    if (pipelineColumnError && isAttendanceSchemaError(pipelineColumnError.message ?? "")) {
+    if (
+      pipelineColumnError &&
+      isPipelineStageColumnError(pipelineColumnError.message ?? "")
+    ) {
       return {
-        ready: false,
+        ready: true,
+        pipelineStageReady: false,
         message:
-          "Column biometric_attendance.pipeline_stage is missing. Run attendance schema migration 013.",
+          "Column biometric_attendance.pipeline_stage is missing. Run migration 013 in Supabase SQL Editor for full 4-layer pipeline.",
       };
     }
 
-    return { ready: true };
+    return { ready: true, pipelineStageReady: true };
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Could not verify attendance schema.";
-    return { ready: false, message };
+    return { ready: false, pipelineStageReady: false, message };
   }
 }
 
@@ -97,8 +108,10 @@ export async function checkAttendanceSchemaReady(): Promise<{
 export async function backfillMissingPipelineStages(): Promise<number> {
   if (!isSupabaseServerConfigured()) return 0;
 
-  const check = await checkAttendanceSchemaReady();
-  if (!check.ready) return 0;
+  const { isPipelineStageColumnAvailable } = await import(
+    "@/lib/pipeline-stage-column-compat"
+  );
+  if (!(await isPipelineStageColumnAvailable())) return 0;
 
   try {
     const supabase = createAdminClient();
@@ -342,6 +355,7 @@ export async function ensureAttendanceTablesSchema(): Promise<{
 
     const result = await applyMigrationSql(sql, "attendance_tables");
     if (result.ok) {
+      resetPipelineStageColumnCache();
       const verify = await checkAttendanceSchemaReady();
       if (verify.ready) return result;
       return {

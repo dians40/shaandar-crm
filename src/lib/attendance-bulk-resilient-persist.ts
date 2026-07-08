@@ -14,6 +14,10 @@ import {
 import { INITIAL_INGEST_PIPELINE_STAGE } from "@/types/attendance-pipeline";
 import { normalizeAttendanceDateIso, todayIsoDateString } from "@/types/attendance-bulk-import-row";
 import { prisma } from "@/lib/prisma";
+import {
+  isPipelineStageColumnAvailable,
+  omitPipelineStageFields,
+} from "@/lib/pipeline-stage-column-compat";
 
 function safeString(value: unknown): string {
   try {
@@ -139,14 +143,21 @@ export async function persistBiometricRowsResilient(
   if (!prisma || rows.length === 0) return { saved: 0, errors, mergeStats };
 
   const sanitized = rows.map((row) => sanitizeBiometricCreateRow(row));
+  const pipelineColumnReady = await isPipelineStageColumnAvailable();
+  const rowsForWrite = pipelineColumnReady
+    ? sanitized
+    : sanitized.map((row) => {
+        const { pipelineStage, workflowStage, ...rest } = row;
+        return rest as Prisma.BiometricAttendanceCreateManyInput;
+      });
   let saved = 0;
 
   try {
-    const existingMap = await fetchExistingPrismaRows(sanitized);
+    const existingMap = await fetchExistingPrismaRows(rowsForWrite);
     const toInsert: Prisma.BiometricAttendanceCreateManyInput[] = [];
     const toPatch: { id: string; data: Record<string, unknown> }[] = [];
 
-    for (const incoming of sanitized) {
+    for (const incoming of rowsForWrite) {
       const key = bulkMergeKey(incoming.payCode, incoming.date);
       const existing = existingMap.get(key);
 
@@ -235,11 +246,22 @@ async function fetchExistingSupabaseRows(
 
   if (payCodes.length === 0 || dates.length === 0) return map;
 
-  const { data, error } = await supabase
-    .from("biometric_attendance")
-    .select("id, pay_code, date, out_time, duration, gross_hours, net_hours, department, designation, pipeline_stage")
-    .in("pay_code", payCodes)
-    .in("date", dates);
+  const pipelineColumnReady = await isPipelineStageColumnAvailable();
+  const { data, error } = pipelineColumnReady
+    ? await supabase
+        .from("biometric_attendance")
+        .select(
+          "id, pay_code, date, out_time, duration, gross_hours, net_hours, department, designation, pipeline_stage"
+        )
+        .in("pay_code", payCodes)
+        .in("date", dates)
+    : await supabase
+        .from("biometric_attendance")
+        .select(
+          "id, pay_code, date, out_time, duration, gross_hours, net_hours, department, designation"
+        )
+        .in("pay_code", payCodes)
+        .in("date", dates);
 
   if (error) {
     throw new Error(error.message ?? "existing row lookup failed");
@@ -294,10 +316,14 @@ export async function persistBiometricRowsSupabaseResilient(
         const existing = existingMap.get(key);
 
         if (!existing) {
-          toInsert.push({
-            ...incoming,
-            pipeline_stage: incoming.pipeline_stage ?? INITIAL_INGEST_PIPELINE_STAGE,
-          });
+          const pipelineColumnReady = await isPipelineStageColumnAvailable();
+          const insertRow = pipelineColumnReady
+            ? {
+                ...incoming,
+                pipeline_stage: incoming.pipeline_stage ?? INITIAL_INGEST_PIPELINE_STAGE,
+              }
+            : omitPipelineStageFields(incoming);
+          toInsert.push(insertRow);
           mergeStats.inserted += 1;
           continue;
         }
@@ -332,11 +358,12 @@ export async function persistBiometricRowsSupabaseResilient(
       }
 
       for (const { id, patch } of toPatch) {
-        const { error: patchError } = await supabase
-          .from("biometric_attendance")
-          .update(patch)
-          .eq("id", id)
-          .eq("pipeline_stage", INITIAL_INGEST_PIPELINE_STAGE);
+        const pipelineColumnReady = await isPipelineStageColumnAvailable();
+        let patchQuery = supabase.from("biometric_attendance").update(patch).eq("id", id);
+        if (pipelineColumnReady) {
+          patchQuery = patchQuery.eq("pipeline_stage", INITIAL_INGEST_PIPELINE_STAGE);
+        }
+        const { error: patchError } = await patchQuery;
 
         if (patchError) {
           errors.push(patchError.message ?? "evening merge patch failed");

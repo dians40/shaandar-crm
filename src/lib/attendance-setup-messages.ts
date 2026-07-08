@@ -6,11 +6,20 @@ export const ATTENDANCE_SETUP_TITLE =
 
 /** Short user-facing body — shown only in the top setup banner. */
 export const ATTENDANCE_SETUP_MESSAGE =
-  "Attendance SQL setup is incomplete. The biometric_attendance.pipeline_stage column is missing — run migration 013 in Supabase SQL Editor, then click Retry setup.";
+  "Attendance SQL tables are not created yet. Run the migration in Supabase SQL Editor, then click Retry setup.";
 
-/** Developer hint — shown only in the top setup banner, not in every layer. */
+export const PIPELINE_STAGE_UPGRADE_MESSAGE =
+  "Optional one-time upgrade: add biometric_attendance.pipeline_stage (migration 013) in Supabase SQL Editor to enable Layer 2 → 3 → 4 approvals. Upload and Layer 2 review work without it.";
+
+export const PIPELINE_STAGE_UPGRADE_HINT =
+  "Open /api/v1/attendance/schema/migration-sql?file=013 · copy SQL · Run in Supabase · click Retry setup · or set SUPABASE_DB_PASSWORD in Vercel for auto-migration.";
+
+/** Developer hint when core attendance tables are missing. */
 export const ATTENDANCE_SETUP_DEV_HINT =
-  "Open /api/v1/attendance/schema/migration-sql?file=013 for copy-paste SQL, or set SUPABASE_DB_PASSWORD in Vercel to auto-apply migrations on save.";
+  "Set SUPABASE_DB_PASSWORD in Vercel environment variables to auto-create tables on save.";
+
+export const PIPELINE_STAGE_MIGRATION_SQL_URL =
+  "/api/v1/attendance/schema/migration-sql?file=013";
 
 export function getSupabaseSqlEditorUrl(): string {
   const projectRef = extractSupabaseProjectRef();

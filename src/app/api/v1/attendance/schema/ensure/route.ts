@@ -5,6 +5,7 @@ import {
   ensurePipelineStageColumn,
   readPipelineStageMigrationSql,
 } from "@/lib/attendance-schema-ensure";
+import { resetPipelineStageColumnCache } from "@/lib/pipeline-stage-column-compat";
 import { getDatabaseUrlResolutionHint } from "@/lib/database-url";
 import { getSupabaseSqlEditorUrl } from "@/lib/attendance-setup-messages";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
@@ -28,15 +29,18 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       ready: true,
+      pipelineStageReady: check.pipelineStageReady !== false,
       mode: "sql",
-      message: "Attendance SQL tables and pipeline columns are ready.",
+      message: check.pipelineStageReady === false
+        ? check.message
+        : "Attendance SQL tables and pipeline columns are ready.",
     });
   }
 
   return NextResponse.json({
     ok: false,
     ready: false,
-    mode: "none",
+    pipelineStageReady: false,
     message: check.message ?? "Attendance SQL tables are not ready.",
     hint: getDatabaseUrlResolutionHint(),
     migrationSqlUrl: "/api/v1/attendance/schema/migration-sql?file=013",
@@ -84,11 +88,14 @@ export async function POST() {
   );
 
   if (result.ok) {
+    resetPipelineStageColumnCache();
+    const verify = await checkAttendanceSchemaReady();
     return NextResponse.json({
       ok: true,
       ready: true,
+      pipelineStageReady: verify.pipelineStageReady !== false,
       mode: "sql",
-      message: result.message,
+      message: verify.pipelineStageReady === false ? verify.message : result.message,
     });
   }
 

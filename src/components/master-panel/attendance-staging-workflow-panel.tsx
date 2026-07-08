@@ -44,6 +44,7 @@ import {
 type AttendanceStagingWorkflowPanelProps = {
   refreshToken?: number;
   schemaReady?: boolean;
+  pipelineStageReady?: boolean;
   onApproved?: () => void;
 };
 
@@ -62,6 +63,7 @@ function formatTime(iso: string | null): string {
 export default function AttendanceStagingWorkflowPanel({
   refreshToken = 0,
   schemaReady = true,
+  pipelineStageReady = true,
   onApproved,
 }: AttendanceStagingWorkflowPanelProps) {
   const [rows, setRows] = useState<AttendanceStagingRow[]>([]);
@@ -120,11 +122,7 @@ export default function AttendanceStagingWorkflowPanel({
         migrationSqlUrl?: string;
       };
       if (!response.ok) {
-        throw new Error(
-          body.setupRequired
-            ? `${body.error ?? "Layer 2 pipeline schema not ready."} Open ${body.migrationSqlUrl ?? "/api/v1/attendance/schema/migration-sql?file=013"} for migration SQL.`
-            : body.error ?? "Failed to load staging."
-        );
+        throw new Error(body.error ?? "Failed to load staging.");
       }
       setRows(body.rows ?? []);
     } catch (loadError) {
@@ -425,6 +423,12 @@ export default function AttendanceStagingWorkflowPanel({
       {!schemaReady && rows.length === 0 && (
         <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           No Layer 2 staging records — upload Excel in Layer 1 to ingest rows at LAYER_2_STAGING.
+        </p>
+      )}
+      {!pipelineStageReady && (
+        <p className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+          Layer 2 is showing all biometric rows (compat mode). Run migration 013 to enable approve →
+          Layer 3 → Layer 4 transitions.
         </p>
       )}
       {error && schemaReady && (

@@ -19,6 +19,10 @@ import {
   isAttendanceSchemaError,
   isPipelineStageColumnError,
 } from "@/lib/attendance-schema-ensure";
+import {
+  isPipelineStageColumnAvailable,
+  resetPipelineStageColumnCache,
+} from "@/lib/pipeline-stage-column-compat";
 import { fetchStorageGridRows, transitionStoragePipelineStage, updateStorageRowFields } from "@/lib/attendance-storage-fallback";
 import type { AttendancePipelineFetchOptions } from "@/lib/attendance-pipeline-fetch-options";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
@@ -42,6 +46,7 @@ async function fetchRowsByPipelineStageSupabase(
   const searchToken = options.search?.trim();
   const departmentToken = options.department?.trim();
   const designationToken = options.designation?.trim();
+  const pipelineColumnReady = await isPipelineStageColumnAvailable();
 
   let query = supabase
     .from(BIOMETRIC_TABLE)
@@ -49,10 +54,14 @@ async function fetchRowsByPipelineStageSupabase(
     .order("created_at", { ascending: false })
     .limit(limit);
 
-  if (stage === PIPELINE_STAGES.LAYER_2_STAGING) {
-    query = query.or(`pipeline_stage.eq.${stage},pipeline_stage.is.null`);
-  } else {
-    query = query.eq("pipeline_stage", stage);
+  if (pipelineColumnReady) {
+    if (stage === PIPELINE_STAGES.LAYER_2_STAGING) {
+      query = query.or(`pipeline_stage.eq.${stage},pipeline_stage.is.null`);
+    } else {
+      query = query.eq("pipeline_stage", stage);
+    }
+  } else if (stage !== PIPELINE_STAGES.LAYER_2_STAGING) {
+    return [];
   }
 
   if (normalizedDate) query = query.eq("date", normalizedDate);
@@ -129,17 +138,24 @@ export async function fetchRowsByPipelineStage(
 
   if (isSupabaseServerConfigured()) {
     await ensurePipelineStageColumn();
-    await backfillMissingPipelineStages();
+    resetPipelineStageColumnCache();
+    if (await isPipelineStageColumnAvailable()) {
+      await backfillMissingPipelineStages();
+    }
     try {
       return await fetchRowsByPipelineStageSupabase(stage, options);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Pipeline fetch failed.";
       if (isPipelineStageColumnError(message)) {
-        throw new Error(
-          "Column biometric_attendance.pipeline_stage does not exist. Run migration 013 in Supabase SQL Editor (/api/v1/attendance/schema/migration-sql?file=013)."
-        );
+        resetPipelineStageColumnCache();
+        try {
+          return await fetchRowsByPipelineStageSupabase(stage, options);
+        } catch (retryError) {
+          console.warn("[pipeline] compat fetch failed:", retryError);
+        }
+      } else {
+        console.warn("[pipeline] supabase fetch failed:", error);
       }
-      console.warn("[pipeline] supabase fetch failed:", error);
     }
   }
 
@@ -188,6 +204,12 @@ async function transitionRowsSupabase(
 ): Promise<number> {
   assertPipelineTransition(from, to);
   if (ids.length === 0) return 0;
+
+  if (!(await isPipelineStageColumnAvailable())) {
+    throw new Error(
+      "Layer transitions require migration 013 (pipeline_stage column). Copy SQL from /api/v1/attendance/schema/migration-sql?file=013 and run in Supabase SQL Editor."
+    );
+  }
 
   const supabase = createAdminClient();
   const updatePayload: Record<string, unknown> = { pipeline_stage: to };

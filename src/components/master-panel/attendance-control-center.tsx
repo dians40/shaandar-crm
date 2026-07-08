@@ -15,6 +15,9 @@ import {
   ATTENDANCE_SETUP_TITLE,
   getSupabaseSqlEditorUrl,
   isAttendanceSetupError,
+  PIPELINE_STAGE_MIGRATION_SQL_URL,
+  PIPELINE_STAGE_UPGRADE_HINT,
+  PIPELINE_STAGE_UPGRADE_MESSAGE,
 } from "@/lib/attendance-setup-messages";
 import { cn } from "@/lib/utils";
 import {
@@ -197,6 +200,7 @@ export default function AttendanceControlCenter({
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [dbConnected, setDbConnected] = useState<boolean | null>(null);
   const [schemaStatus, setSchemaStatus] = useState<SchemaStatus>("checking");
+  const [pipelineStageReady, setPipelineStageReady] = useState(true);
   const [schemaMessage, setSchemaMessage] = useState<string | null>(null);
   const layer4FilterResetKey = `${layer4FromDate}|${layer4ToDate}|${debouncedSearch}|${departmentFilter}|${designationFilter}`;
   const { selectedRowIds, toggleRow, deselectRow, clearSelection, getSelectionState } =
@@ -260,19 +264,24 @@ export default function AttendanceControlCenter({
       const body = (await response.json()) as {
         ok?: boolean;
         ready?: boolean;
+        pipelineStageReady?: boolean;
         mode?: "sql" | "local" | "none";
         message?: string;
         hint?: string;
         error?: string;
       };
 
-      if (response.ok && body.ok) {
+      if (response.ok && body.ready) {
         setSchemaStatus("ready");
-        setSchemaMessage(null);
+        setPipelineStageReady(body.pipelineStageReady !== false);
+        setSchemaMessage(
+          body.pipelineStageReady === false ? body.message ?? PIPELINE_STAGE_UPGRADE_MESSAGE : null
+        );
         return true;
       }
 
       setSchemaStatus("missing");
+      setPipelineStageReady(false);
       setSchemaMessage(body.hint ?? body.error ?? body.message ?? ATTENDANCE_SETUP_MESSAGE);
       return false;
     } catch (error) {
@@ -1176,6 +1185,7 @@ export default function AttendanceControlCenter({
           <AttendanceStagingWorkflowPanel
             refreshToken={stagingRefreshToken}
             schemaReady={schemaStatus === "ready" || gridMeta.mergedCount > 0}
+            pipelineStageReady={pipelineStageReady}
             onApproved={() => setWorkflowRefreshToken((token) => token + 1)}
           />
         </div>
@@ -1377,6 +1387,63 @@ export default function AttendanceControlCenter({
         </div>
       )}
 
+      {dbConnected !== false && schemaStatus === "ready" && !pipelineStageReady && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 shadow-card">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" aria-hidden />
+            <div className="space-y-3 text-sm text-sky-950">
+              <p className="font-semibold">Pipeline upgrade available (migration 013)</p>
+              <p className="text-sky-900">
+                {schemaMessage ?? PIPELINE_STAGE_UPGRADE_MESSAGE}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={getSupabaseSqlEditorUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-900 hover:bg-sky-100"
+                >
+                  Open Supabase SQL Editor
+                </a>
+                <a
+                  href={PIPELINE_STAGE_MIGRATION_SQL_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-900 hover:bg-sky-100"
+                >
+                  Download migration 013 SQL
+                </a>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const response = await fetch(PIPELINE_STAGE_MIGRATION_SQL_URL);
+                      const sql = await response.text();
+                      await navigator.clipboard.writeText(sql);
+                      setImportMessage("Migration 013 SQL copied to clipboard — paste in Supabase SQL Editor and Run.");
+                    } catch {
+                      setImportError("Could not copy SQL — use Download migration 013 SQL instead.");
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-900 hover:bg-sky-100"
+                >
+                  Copy migration 013 SQL
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void ensureAttendanceSchema()}
+                  className="inline-flex items-center gap-2 rounded-lg border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-sky-900 hover:bg-sky-100"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+                  Retry setup
+                </button>
+              </div>
+              <p className="text-xs text-sky-800">{PIPELINE_STAGE_UPGRADE_HINT}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <nav
         className="sticky top-[4.25rem] z-20 -mx-1 rounded-xl border border-corporate-brand/25 bg-white/95 px-3 py-2 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/90"
         aria-label="Attendance four-layer pipeline navigation"
@@ -1547,6 +1614,7 @@ export default function AttendanceControlCenter({
         <AttendanceStagingWorkflowPanel
           refreshToken={stagingRefreshToken}
           schemaReady={schemaStatus === "ready" || gridMeta.mergedCount > 0}
+          pipelineStageReady={pipelineStageReady}
           onApproved={() => setWorkflowRefreshToken((token) => token + 1)}
         />
       </div>

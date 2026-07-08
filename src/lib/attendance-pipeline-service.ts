@@ -17,6 +17,7 @@ import {
   ensurePipelineStageColumn,
   backfillMissingPipelineStages,
   isAttendanceSchemaError,
+  reloadPostgrestSchemaCache,
 } from "@/lib/attendance-schema-ensure";
 import {
   isPipelineStageColumnAvailable,
@@ -197,9 +198,7 @@ async function transitionRowsSupabase(
   if (ids.length === 0) return 0;
 
   if (!(await isPipelineStageColumnAvailable())) {
-    throw new Error(
-      "Layer transitions require migration 013 (pipeline_stage column). Copy SQL from /api/v1/attendance/schema/migration-sql?file=013 and run in Supabase SQL Editor."
-    );
+    return 0;
   }
 
   const supabase = createAdminClient();
@@ -247,18 +246,22 @@ export async function transitionPipelineStage(input: {
   }
   await ensureAttendanceTablesSchema();
 
+  resetPipelineStageColumnCache();
+  if (!(await isPipelineStageColumnAvailable())) {
+    await ensurePipelineStageColumn();
+    await reloadPostgrestSchemaCache();
+    resetPipelineStageColumnCache();
+  }
+
   const pipelineColumnReady = await isPipelineStageColumnAvailable();
   if (pipelineColumnReady) {
-    await ensurePipelineStageColumn();
     await backfillMissingPipelineStages();
   }
 
   let transitioned = 0;
-  let sqlTransitionError: Error | null = null;
   try {
     transitioned = await transitionRowsSupabase(input.ids, input.from, input.to);
   } catch (error) {
-    sqlTransitionError = error instanceof Error ? error : new Error(String(error));
     console.warn("[pipeline] SQL transition failed, trying storage:", error);
   }
 
@@ -273,8 +276,10 @@ export async function transitionPipelineStage(input: {
   }
 
   if (transitioned === 0 && input.ids.length > 0) {
-    if (!pipelineColumnReady && sqlTransitionError) {
-      throw sqlTransitionError;
+    if (!pipelineColumnReady) {
+      throw new Error(
+        "Layer transitions require migration 013 (pipeline_stage column). Copy SQL from /api/v1/attendance/schema/migration-sql?file=013 and run in Supabase SQL Editor."
+      );
     }
     throw new Error(
       `No rows transitioned from ${input.from} to ${input.to}. Verify records exist at the current layer.`

@@ -22,6 +22,10 @@ import {
   LAYER_2_APPROVAL_OPTIONS,
   type PipelineApprovalAction,
 } from "@/lib/attendance-pipeline-approval-ui";
+import {
+  getSupabaseSqlEditorUrl,
+  PIPELINE_STAGE_MIGRATION_SQL_URL,
+} from "@/lib/attendance-setup-messages";
 import { useSynchronizedHorizontalScroll } from "@/hooks/use-synchronized-horizontal-scroll";
 import { cn } from "@/lib/utils";
 import type { AttendanceStagingRow } from "@/types/attendance-staging";
@@ -40,6 +44,12 @@ import {
   MASTER_LIST_TABLE_CLASS,
   MASTER_LIST_TABLE_WRAPPER_CLASS,
 } from "./universal-master-list";
+
+type PipelineActionError = Error & {
+  pipelineMigrationRequired?: boolean;
+  migrationSql?: string;
+  sqlEditorUrl?: string;
+};
 
 type AttendanceStagingWorkflowPanelProps = {
   refreshToken?: number;
@@ -74,6 +84,7 @@ export default function AttendanceStagingWorkflowPanel({
   const [designationFilter, setDesignationFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [migrationSqlHint, setMigrationSqlHint] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [editRow, setEditRow] = useState<AttendanceStagingRow | null>(null);
   const [editIn, setEditIn] = useState("");
@@ -182,8 +193,27 @@ export default function AttendanceStagingWorkflowPanel({
       body: JSON.stringify(payload),
     });
     const body = (await response.json()) as Record<string, unknown>;
-    if (!response.ok) throw new Error(String(body.error ?? "Pipeline action failed."));
+    if (!response.ok) {
+      const err = new Error(String(body.error ?? "Pipeline action failed.")) as PipelineActionError;
+      if (body.pipelineMigrationRequired) {
+        err.pipelineMigrationRequired = true;
+        err.migrationSql = typeof body.migrationSql === "string" ? body.migrationSql : undefined;
+        err.sqlEditorUrl = typeof body.sqlEditorUrl === "string" ? body.sqlEditorUrl : undefined;
+      }
+      throw err;
+    }
+    setMigrationSqlHint(null);
     return body;
+  };
+
+  const handlePipelineActionError = (actionError: unknown) => {
+    const err = actionError as PipelineActionError;
+    setError(err instanceof Error ? err.message : "Action failed.");
+    if (err.pipelineMigrationRequired) {
+      setMigrationSqlHint(err.migrationSql ?? null);
+    } else {
+      setMigrationSqlHint(null);
+    }
   };
 
   const handleDepartmentChange = async (row: AttendanceStagingRow, department: string) => {
@@ -255,7 +285,7 @@ export default function AttendanceStagingWorkflowPanel({
       await loadRows();
       onApproved?.();
     } catch (approvalError) {
-      setError(approvalError instanceof Error ? approvalError.message : "Approval action failed.");
+      handlePipelineActionError(approvalError);
       setApprovalSelections((current) => ({ ...current, [row.id]: "" }));
     } finally {
       setBusyId(null);
@@ -271,7 +301,7 @@ export default function AttendanceStagingWorkflowPanel({
       await loadRows();
       onApproved?.();
     } catch (approveError) {
-      setError(approveError instanceof Error ? approveError.message : "Approve failed.");
+      handlePipelineActionError(approveError);
     } finally {
       setBusyId(null);
     }
@@ -311,7 +341,7 @@ export default function AttendanceStagingWorkflowPanel({
       await loadRows();
       onApproved?.();
     } catch (bulkError) {
-      setError(bulkError instanceof Error ? bulkError.message : "Bulk action failed.");
+      handlePipelineActionError(bulkError);
     } finally {
       setBulkBusy(false);
     }
@@ -334,7 +364,7 @@ export default function AttendanceStagingWorkflowPanel({
       await loadRows();
       onApproved?.();
     } catch (approveError) {
-      setError(approveError instanceof Error ? approveError.message : "Bulk approve failed.");
+      handlePipelineActionError(approveError);
     }
   };
 
@@ -432,9 +462,43 @@ export default function AttendanceStagingWorkflowPanel({
         </p>
       )}
       {error && schemaReady && (
-        <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
-          {error}
-        </p>
+        <div className="mb-3 space-y-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-900">
+          <p>{error}</p>
+          {(migrationSqlHint || error.toLowerCase().includes("migration 013")) && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              <a
+                href={getSupabaseSqlEditorUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-900 hover:bg-red-100"
+              >
+                Open Supabase SQL Editor
+              </a>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const fetched =
+                      migrationSqlHint ??
+                      (await fetch(PIPELINE_STAGE_MIGRATION_SQL_URL).then((response) => response.text()));
+                    const sql = String(fetched ?? "").trim();
+                    if (!sql) {
+                      throw new Error("empty sql");
+                    }
+                    await navigator.clipboard.writeText(sql);
+                    setMessage("Migration 013 SQL copied — paste in Supabase SQL Editor and Run, then Retry setup.");
+                    setError(null);
+                  } catch {
+                    setError("Could not copy SQL — open Download migration 013 from the banner above.");
+                  }
+                }}
+                className="inline-flex items-center rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-900 hover:bg-red-100"
+              >
+                Copy migration 013 SQL
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       <LayerFilterControls

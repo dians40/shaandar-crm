@@ -9,7 +9,7 @@ export const ATTENDANCE_SETUP_MESSAGE =
   "Attendance SQL tables are not created yet. Run the migration in Supabase SQL Editor, then click Retry setup.";
 
 export const PIPELINE_STAGE_UPGRADE_MESSAGE =
-  "Optional one-time upgrade: add biometric_attendance.pipeline_stage (migration 013) in Supabase SQL Editor to enable Layer 2 → 3 → 4 approvals. Upload and Layer 2 review work without it.";
+  "Layer 2 → 3 → 4 approvals require biometric_attendance.pipeline_stage (migration 013). Run the SQL in Supabase SQL Editor, then click Retry setup.";
 
 export const PIPELINE_STAGE_UPGRADE_HINT =
   "Open /api/v1/attendance/schema/migration-sql?file=013 · copy SQL · Run in Supabase · click Retry setup · or set SUPABASE_DB_PASSWORD in Vercel for auto-migration.";

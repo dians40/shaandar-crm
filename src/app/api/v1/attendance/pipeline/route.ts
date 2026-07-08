@@ -27,10 +27,47 @@ import { isPipelineStage, PIPELINE_STAGES } from "@/types/attendance-pipeline";
 import {
   checkAttendanceSchemaReady,
   ensurePipelineStageColumn,
+  readPipelineStageMigrationSql,
 } from "@/lib/attendance-schema-ensure";
-import { resetPipelineStageColumnCache } from "@/lib/pipeline-stage-column-compat";
+import {
+  isPipelineStageColumnAvailable,
+  resetPipelineStageColumnCache,
+} from "@/lib/pipeline-stage-column-compat";
 import { getDatabaseUrlResolutionHint } from "@/lib/database-url";
 import { getSupabaseSqlEditorUrl } from "@/lib/attendance-setup-messages";
+
+const PIPELINE_TRANSITION_ACTIONS = new Set([
+  "approve-staging",
+  "approve-all-staging",
+  "commit-workflow",
+  "commit-all-workflow",
+  "transition",
+]);
+
+function isPipelineMigrationError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("migration 013") || lower.includes("pipeline_stage");
+}
+
+async function pipelineMigrationRequiredResponse(): Promise<Response> {
+  resetPipelineStageColumnCache();
+  const ensure = await ensurePipelineStageColumn();
+  resetPipelineStageColumnCache();
+  const migrationSql = ensure.migrationSql ?? readPipelineStageMigrationSql();
+  return NextResponse.json(
+    {
+      error:
+        "Layer transitions require migration 013 (pipeline_stage column). Copy SQL from /api/v1/attendance/schema/migration-sql?file=013 and run in Supabase SQL Editor.",
+      setupRequired: true,
+      pipelineMigrationRequired: true,
+      hint: getDatabaseUrlResolutionHint(),
+      migrationSql,
+      migrationSqlUrl: "/api/v1/attendance/schema/migration-sql?file=013",
+      sqlEditorUrl: getSupabaseSqlEditorUrl(),
+    },
+    { status: 503 }
+  );
+}
 
 export async function GET(request: Request) {
   try {
@@ -117,6 +154,16 @@ export async function POST(request: Request) {
     if (layer4Error) return layer4Error;
     const action = String(body.action ?? "approve-staging");
     const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
+
+    if (PIPELINE_TRANSITION_ACTIONS.has(action)) {
+      resetPipelineStageColumnCache();
+      if (!(await isPipelineStageColumnAvailable())) {
+        const blocked = await pipelineMigrationRequiredResponse();
+        if (!(await isPipelineStageColumnAvailable())) {
+          return blocked;
+        }
+      }
+    }
 
     if (action === "approve-staging" || action === "approve-all-staging") {
       const result = await approveStagingToWorkflow(ids);
@@ -211,9 +258,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Pipeline action failed." },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : "Pipeline action failed.";
+    if (isPipelineMigrationError(message)) {
+      return pipelineMigrationRequiredResponse();
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

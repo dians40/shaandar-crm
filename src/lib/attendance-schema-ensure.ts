@@ -299,6 +299,22 @@ async function applyMigrationViaManagementApi(
   }
 }
 
+const POSTGREST_RELOAD_SQL = "NOTIFY pgrst, 'reload schema';";
+
+/** Reload PostgREST schema cache after DDL (requires postgres or Management API). */
+export async function reloadPostgrestSchemaCache(): Promise<{ ok: boolean; message: string }> {
+  const databaseUrl = resolveDatabaseUrl();
+  if (databaseUrl) {
+    const postgresResult = await applyMigrationViaPostgres(POSTGREST_RELOAD_SQL, databaseUrl);
+    if (postgresResult.ok) return postgresResult;
+  }
+
+  const managementResult = await applyMigrationViaManagementApi(POSTGREST_RELOAD_SQL);
+  if (managementResult.ok) return managementResult;
+
+  return { ok: false, message: "PostgREST reload skipped — no postgres credentials." };
+}
+
 /**
  * Apply migration 013 only — adds pipeline_stage + workflow_stage columns.
  */
@@ -316,8 +332,11 @@ export async function ensurePipelineStageColumn(): Promise<{
   const result = await applyMigrationSql(sql, "pipeline_stage");
 
   if (result.ok) {
+    resetPipelineStageColumnCache();
+    await reloadPostgrestSchemaCache();
+    resetPipelineStageColumnCache();
     const verify = await checkAttendanceSchemaReady();
-    if (verify.ready) {
+    if (verify.pipelineStageReady !== false) {
       await backfillMissingPipelineStages();
       return result;
     }

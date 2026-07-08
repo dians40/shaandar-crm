@@ -24,7 +24,18 @@ import {
   isPipelineStageUnavailableMessage,
   resetPipelineStageColumnCache,
 } from "@/lib/pipeline-stage-column-compat";
-import { fetchStorageGridRows, transitionStoragePipelineStage, updateStorageRowFields } from "@/lib/attendance-storage-fallback";
+import {
+  loadPipelineStageOverlayManifest,
+  removeOverlayPipelineStages,
+  rowMatchesPipelineStage,
+  syncOverlayManifestToSql,
+  transitionOverlayPipelineStage,
+} from "@/lib/pipeline-stage-overlay-compat";
+import {
+  fetchStorageGridRows,
+  transitionStoragePipelineStage,
+  updateStorageRowFields,
+} from "@/lib/attendance-storage-fallback";
 import type { AttendancePipelineFetchOptions } from "@/lib/attendance-pipeline-fetch-options";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 
@@ -61,8 +72,6 @@ async function fetchRowsByPipelineStageSupabase(
     } else {
       query = query.eq("pipeline_stage", stage);
     }
-  } else if (stage !== PIPELINE_STAGES.LAYER_2_STAGING) {
-    return [];
   }
 
   if (normalizedDate) query = query.eq("date", normalizedDate);
@@ -86,7 +95,14 @@ async function fetchRowsByPipelineStageSupabase(
     throw new Error(message);
   }
 
-  return (data ?? []).map((row) => mapBiometricAttendanceGridRow(row as Record<string, unknown>));
+  const mapped = (data ?? []).map((row) => mapBiometricAttendanceGridRow(row as Record<string, unknown>));
+
+  if (!pipelineColumnReady) {
+    const manifest = await loadPipelineStageOverlayManifest(supabase);
+    return mapped.filter((row) => rowMatchesPipelineStage(manifest, row.id, stage));
+  }
+
+  return mapped;
 }
 
 async function fetchRowsByPipelineStageStorage(
@@ -255,14 +271,31 @@ export async function transitionPipelineStage(input: {
 
   const pipelineColumnReady = await isPipelineStageColumnAvailable();
   if (pipelineColumnReady) {
+    await syncOverlayManifestToSql(createAdminClient());
     await backfillMissingPipelineStages();
   }
 
   let transitioned = 0;
-  try {
-    transitioned = await transitionRowsSupabase(input.ids, input.from, input.to);
-  } catch (error) {
-    console.warn("[pipeline] SQL transition failed, trying storage:", error);
+  if (pipelineColumnReady) {
+    try {
+      transitioned = await transitionRowsSupabase(input.ids, input.from, input.to);
+    } catch (error) {
+      console.warn("[pipeline] SQL transition failed, trying overlay/storage:", error);
+    }
+  }
+
+  if (transitioned === 0 && !pipelineColumnReady) {
+    try {
+      const supabase = createAdminClient();
+      transitioned = await transitionOverlayPipelineStage(
+        supabase,
+        input.ids,
+        input.from,
+        input.to
+      );
+    } catch (error) {
+      console.warn("[pipeline] overlay transition failed:", error);
+    }
   }
 
   if (transitioned === 0) {
@@ -276,11 +309,6 @@ export async function transitionPipelineStage(input: {
   }
 
   if (transitioned === 0 && input.ids.length > 0) {
-    if (!pipelineColumnReady) {
-      throw new Error(
-        "Layer transitions require migration 013 (pipeline_stage column). Copy SQL from /api/v1/attendance/schema/migration-sql?file=013 and run in Supabase SQL Editor."
-      );
-    }
     throw new Error(
       `No rows transitioned from ${input.from} to ${input.to}. Verify records exist at the current layer.`
     );
@@ -515,7 +543,11 @@ export async function rejectPipelineRows(input: {
       if (retryError) {
         throw new Error("Pipeline rejection failed — could not delete rows.");
       }
-      return { rejected: retryData?.length ?? 0 };
+      const rejected = retryData?.length ?? 0;
+      if (rejected > 0) {
+        await removeOverlayPipelineStages(supabase, input.ids);
+      }
+      return { rejected };
     }
     if (isAttendanceSchemaError(error.message ?? "")) {
       throw new Error("Pipeline rejection failed — SQL tables not ready.");
@@ -523,7 +555,11 @@ export async function rejectPipelineRows(input: {
     throw new Error(error.message);
   }
 
-  return { rejected: data?.length ?? 0 };
+  const rejected = data?.length ?? 0;
+  if (rejected > 0 && !pipelineColumnReady) {
+    await removeOverlayPipelineStages(supabase, input.ids);
+  }
+  return { rejected };
 }
 
 export { INITIAL_INGEST_PIPELINE_STAGE, PIPELINE_STAGES, resolveRowPipelineStage };

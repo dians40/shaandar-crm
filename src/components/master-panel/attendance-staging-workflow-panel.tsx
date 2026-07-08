@@ -457,8 +457,8 @@ export default function AttendanceStagingWorkflowPanel({
       )}
       {!pipelineStageReady && (
         <p className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-          Layer 2 is showing all biometric rows (compat mode). Run migration 013 to enable approve →
-          Layer 3 → Layer 4 transitions.
+          Layer pipeline uses storage overlay (migration 013 not applied). Approve → Layer 3 works;
+          run migration 013 for native SQL pipeline_stage tracking.
         </p>
       )}
       {error && schemaReady && (

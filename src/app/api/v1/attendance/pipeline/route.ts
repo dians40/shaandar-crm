@@ -29,20 +29,9 @@ import {
   ensurePipelineStageColumn,
   readPipelineStageMigrationSql,
 } from "@/lib/attendance-schema-ensure";
-import {
-  isPipelineStageColumnAvailable,
-  resetPipelineStageColumnCache,
-} from "@/lib/pipeline-stage-column-compat";
+import { resetPipelineStageColumnCache } from "@/lib/pipeline-stage-column-compat";
 import { getDatabaseUrlResolutionHint } from "@/lib/database-url";
 import { getSupabaseSqlEditorUrl } from "@/lib/attendance-setup-messages";
-
-const PIPELINE_TRANSITION_ACTIONS = new Set([
-  "approve-staging",
-  "approve-all-staging",
-  "commit-workflow",
-  "commit-all-workflow",
-  "transition",
-]);
 
 function isPipelineMigrationError(message: string): boolean {
   const lower = message.toLowerCase();
@@ -154,16 +143,6 @@ export async function POST(request: Request) {
     if (layer4Error) return layer4Error;
     const action = String(body.action ?? "approve-staging");
     const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
-
-    if (PIPELINE_TRANSITION_ACTIONS.has(action)) {
-      resetPipelineStageColumnCache();
-      if (!(await isPipelineStageColumnAvailable())) {
-        const blocked = await pipelineMigrationRequiredResponse();
-        if (!(await isPipelineStageColumnAvailable())) {
-          return blocked;
-        }
-      }
-    }
 
     if (action === "approve-staging" || action === "approve-all-staging") {
       const result = await approveStagingToWorkflow(ids);

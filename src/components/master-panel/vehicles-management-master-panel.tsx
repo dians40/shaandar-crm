@@ -32,11 +32,90 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
 
 const DOCUMENT_KEYS = Object.keys(VEHICLE_DOCUMENT_LABELS) as VehicleDocumentKey[];
+
+function VehiclesListBody({
+  vehicles,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: {
+  vehicles: VehicleMasterRecord[];
+  onEdit: (record: VehicleMasterRecord) => void;
+  onView: (record: VehicleMasterRecord) => void;
+  onRemove: (id: string) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+}) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filtered = useMemo(
+    () =>
+      vehicles.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.registrationNumber,
+          [row.driverName, row.model, row.ownerDetails],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [vehicles, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (filtered.length === 0) {
+    return (
+      <tr>
+        <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <Car className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No vehicles yet."}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filtered.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell
+            name={row.registrationNumber}
+            onEdit={() => onEdit(row)}
+          />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.driverName || "—"}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            {row.averageMileageKmPerLiter > 0 ? `${row.averageMileageKmPerLiter} KM/L` : "—"}
+          </td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.model || "—"}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{getVehicleRenewalSummary(row)}</td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              extra={
+                <MasterRemoveOrProtected
+                  canRemove={!checkUsedInTransactions("vehicle", row.id, row.registrationNumber)}
+                  onRemove={() => {
+                    if (!window.confirm(`Remove vehicle "${row.registrationNumber}"?`)) return;
+                    onRemove(row.id);
+                  }}
+                />
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
+    </>
+  );
+}
 
 export default function VehiclesManagementMasterPanel() {
   const { vehicles, isReady, addVehicle, updateVehicle, removeVehicle } = useVehiclesMaster();
@@ -55,18 +134,6 @@ export default function VehiclesManagementMasterPanel() {
   const viewingRecord = useMemo(
     () => vehicles.find((row) => row.id === viewingId) ?? null,
     [vehicles, viewingId]
-  );
-
-  const filtered = useMemo(
-    () =>
-      vehicles.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.registrationNumber, [
-          row.driverName,
-          row.model,
-          row.ownerDetails,
-        ])
-      ),
-    [vehicles, searchQuery]
   );
 
   const resetForm = () => {
@@ -322,57 +389,16 @@ export default function VehiclesManagementMasterPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <Car className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No vehicles yet."}
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.registrationNumber}
-                    onEdit={() => openEdit(row)}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.driverName || "—"}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {row.averageMileageKmPerLiter > 0
-                      ? `${row.averageMileageKmPerLiter} KM/L`
-                      : "—"}
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.model || "—"}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {getVehicleRenewalSummary(row)}
-                  </td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => {
-                        setViewingId(row.id);
-                        setView("detail");
-                      }}
-                      onEdit={() => openEdit(row)}
-                      extra={
-                        <MasterRemoveOrProtected
-                          canRemove={
-                            !checkUsedInTransactions("vehicle", row.id, row.registrationNumber)
-                          }
-                          onRemove={() => {
-                            if (
-                              !window.confirm(`Remove vehicle "${row.registrationNumber}"?`)
-                            ) {
-                              return;
-                            }
-                            removeVehicle(row.id);
-                          }}
-                        />
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <VehiclesListBody
+              vehicles={vehicles}
+              onEdit={openEdit}
+              onView={(row) => {
+                setViewingId(row.id);
+                setView("detail");
+              }}
+              onRemove={removeVehicle}
+              checkUsedInTransactions={checkUsedInTransactions}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>

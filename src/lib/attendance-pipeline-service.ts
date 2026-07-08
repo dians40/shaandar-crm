@@ -17,6 +17,7 @@ import {
   isAttendanceSchemaError,
 } from "@/lib/attendance-schema-ensure";
 import { fetchStorageGridRows, transitionStoragePipelineStage, updateStorageRowFields } from "@/lib/attendance-storage-fallback";
+import type { AttendancePipelineFetchOptions } from "@/lib/attendance-pipeline-fetch-options";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 
 const BIOMETRIC_TABLE = "biometric_attendance";
@@ -28,13 +29,7 @@ function resolveRowPipelineStage(row: Record<string, unknown>): PipelineStage {
 
 async function fetchRowsByPipelineStageSupabase(
   stage: PipelineStage,
-  options: {
-    limit?: number;
-    date?: string;
-    fromDate?: string;
-    toDate?: string;
-    search?: string;
-  } = {}
+  options: AttendancePipelineFetchOptions = {}
 ): Promise<BiometricAttendanceGridRow[]> {
   const supabase = createAdminClient();
   const limit = options.limit ?? 500;
@@ -42,6 +37,8 @@ async function fetchRowsByPipelineStageSupabase(
   const fromDate = options.fromDate ? normalizeAttendanceDateIso(options.fromDate) : undefined;
   const toDate = options.toDate ? normalizeAttendanceDateIso(options.toDate) : undefined;
   const searchToken = options.search?.trim();
+  const departmentToken = options.department?.trim();
+  const designationToken = options.designation?.trim();
 
   let query = supabase
     .from(BIOMETRIC_TABLE)
@@ -53,6 +50,8 @@ async function fetchRowsByPipelineStageSupabase(
   if (normalizedDate) query = query.eq("date", normalizedDate);
   if (fromDate) query = query.gte("date", fromDate);
   if (toDate) query = query.lte("date", toDate);
+  if (departmentToken) query = query.eq("department", departmentToken);
+  if (designationToken) query = query.eq("designation", designationToken);
   if (searchToken) {
     const pattern = `%${searchToken}%`;
     query = query.or(`employee_name.ilike.${pattern},pay_code.ilike.${pattern}`);
@@ -69,13 +68,7 @@ async function fetchRowsByPipelineStageSupabase(
 
 async function fetchRowsByPipelineStageStorage(
   stage: PipelineStage,
-  options: {
-    limit?: number;
-    date?: string;
-    fromDate?: string;
-    toDate?: string;
-    search?: string;
-  } = {}
+  options: AttendancePipelineFetchOptions = {}
 ): Promise<BiometricAttendanceGridRow[]> {
   if (!isSupabaseServerConfigured()) return [];
   const supabase = createAdminClient();
@@ -99,16 +92,26 @@ function filterRowsByDateRange(
   });
 }
 
+function filterRowsByDepartmentDesignation(
+  rows: BiometricAttendanceGridRow[],
+  department?: string,
+  designation?: string
+): BiometricAttendanceGridRow[] {
+  const departmentToken = department?.trim();
+  const designationToken = designation?.trim();
+  if (!departmentToken && !designationToken) return rows;
+
+  return rows.filter((row) => {
+    if (departmentToken && String(row.department ?? "").trim() !== departmentToken) return false;
+    if (designationToken && String(row.designation ?? "").trim() !== designationToken) return false;
+    return true;
+  });
+}
+
 /** Query biometric rows for exactly one pipeline layer — no cross-layer leakage. */
 export async function fetchRowsByPipelineStage(
   stage: PipelineStage,
-  options: {
-    limit?: number;
-    date?: string;
-    fromDate?: string;
-    toDate?: string;
-    search?: string;
-  } = {}
+  options: AttendancePipelineFetchOptions = {}
 ): Promise<BiometricAttendanceGridRow[]> {
   if (!isPipelineStage(stage)) throw new Error(`Invalid pipeline stage: ${stage}`);
 
@@ -123,17 +126,31 @@ export async function fetchRowsByPipelineStage(
 
   const storageRows = await fetchRowsByPipelineStageStorage(stage, options);
   if (storageRows.length > 0) {
-    return filterRowsByDateRange(storageRows, options.fromDate, options.toDate);
+    return filterRowsByDepartmentDesignation(
+      filterRowsByDateRange(storageRows, options.fromDate, options.toDate),
+      options.department,
+      options.designation
+    );
   }
 
-  const prismaRows = await fetchBiometricGridViaPrisma(options.limit ?? 500, options.date, options.search);
-  return filterRowsByDateRange(
-    prismaRows.filter((row) => {
-      const token = (row as BiometricAttendanceGridRow & { pipelineStage?: string }).pipelineStage;
-      return (token ?? INITIAL_INGEST_PIPELINE_STAGE) === stage;
-    }),
-    options.fromDate,
-    options.toDate
+  const prismaRows = await fetchBiometricGridViaPrisma(
+    options.limit ?? 500,
+    options.date,
+    options.search,
+    options.department,
+    options.designation
+  );
+  return filterRowsByDepartmentDesignation(
+    filterRowsByDateRange(
+      prismaRows.filter((row) => {
+        const token = (row as BiometricAttendanceGridRow & { pipelineStage?: string }).pipelineStage;
+        return (token ?? INITIAL_INGEST_PIPELINE_STAGE) === stage;
+      }),
+      options.fromDate,
+      options.toDate
+    ),
+    options.department,
+    options.designation
   );
 }
 

@@ -7,6 +7,7 @@ import {
 } from "@/lib/api/auth-guard";
 import { fetchAttendanceDateCatalog } from "@/lib/attendance-date-catalog";
 import { fetchRowsByPipelineStage } from "@/lib/attendance-pipeline-service";
+import { parseAttendancePipelineFetchParams } from "@/lib/attendance-pipeline-fetch-options";
 import { isLayer4SavedUser } from "@/types/auth-session";
 import { isPipelineStage, PIPELINE_STAGES } from "@/types/attendance-pipeline";
 
@@ -19,11 +20,8 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const limit = Math.min(Number(searchParams.get("limit") ?? "300"), MAX_MERGED_ROWS);
-    const date = searchParams.get("date")?.trim() || undefined;
-    const fromDate = searchParams.get("fromDate")?.trim() || undefined;
-    const toDate = searchParams.get("toDate")?.trim() || undefined;
-    const search = searchParams.get("search")?.trim() || undefined;
+    const fetchOptions = parseAttendancePipelineFetchParams(searchParams);
+    fetchOptions.limit = Math.min(Number(searchParams.get("limit") ?? "300"), MAX_MERGED_ROWS);
     const includeDates = searchParams.get("includeDates") === "1";
     const stageParam = searchParams.get("pipelineStage")?.trim() ?? PIPELINE_STAGES.LAYER_4_SAVED;
     const stage = isPipelineStage(stageParam) ? stageParam : PIPELINE_STAGES.LAYER_4_SAVED;
@@ -38,7 +36,7 @@ export async function GET(request: Request) {
     }
 
     const [biometricRows, availableDates] = await Promise.all([
-      fetchRowsByPipelineStage(stage, { limit, date, fromDate, toDate, search }),
+      fetchRowsByPipelineStage(stage, fetchOptions),
       includeDates ? fetchAttendanceDateCatalog() : Promise.resolve(undefined),
     ]);
 

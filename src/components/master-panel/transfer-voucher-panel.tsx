@@ -19,6 +19,7 @@ import {
   createEmptyTransferLine,
   emptyTransferVoucherForm,
   type TransferVoucherFormState,
+  type TransferVoucherRecord,
 } from "@/types/accounting-voucher";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import UniversalRecordProfile from "./universal-record-profile";
@@ -30,6 +31,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "detail";
@@ -72,16 +74,6 @@ export default function TransferVoucherPanel() {
   const itemMap = useMemo(
     () => Object.fromEntries(items.map((row) => [row.id, row.itemName])),
     [items]
-  );
-
-  const filteredRecords = useMemo(
-    () =>
-      records.filter(
-        (row) =>
-          matchesUniversalNameSearch(searchQuery, row.displayLabel) ||
-          matchesUniversalNameSearch(searchQuery, row.transferNumber)
-      ),
-    [records, searchQuery]
   );
 
   const viewingRecord = useMemo(
@@ -359,45 +351,67 @@ export default function TransferVoucherPanel() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       >
-        {filteredRecords.length === 0 ? (
-          <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
-            {LIST_SEARCH_EMPTY_MESSAGE}
-          </p>
-        ) : (
-          <UniversalMasterListTable>
-            <thead className={MASTER_LIST_HEAD_CLASS}>
-              <tr>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>From / To</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Transfer #</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Lines</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRecords.map((row) => (
-                <UniversalMasterListRow
-                  key={row.id}
-                  onEdit={() => {
-                    setViewingId(row.id);
-                    setView("detail");
-                  }}
-                >
-                  <UniversalMasterListNameCell
-                    name={row.displayLabel}
-                    onEdit={() => {
-                      setViewingId(row.id);
-                      setView("detail");
-                    }}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.transferNumber}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.transferDate}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.lines.length}</td>
-                </UniversalMasterListRow>
-              ))}
-            </tbody>
-          </UniversalMasterListTable>
-        )}
+        <TransferVoucherListContent
+          records={records}
+          onOpenDetail={(row) => {
+            setViewingId(row.id);
+            setView("detail");
+          }}
+        />
       </UniversalMasterListShell>
     </>
+  );
+}
+
+type TransferVoucherListContentProps = {
+  records: TransferVoucherRecord[];
+  onOpenDetail: (record: TransferVoucherRecord) => void;
+};
+
+function TransferVoucherListContent({ records, onOpenDetail }: TransferVoucherListContentProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredRecords = useMemo(() => {
+    const filterExtend = {
+      departmentFilter,
+      designationFilter,
+      skipDepartmentIfAbsent: true as const,
+      skipDesignationIfAbsent: true as const,
+    };
+    return records.filter(
+      (row) =>
+        matchesUniversalNameSearch(searchQuery, row.displayLabel, [], filterExtend) ||
+        matchesUniversalNameSearch(searchQuery, row.transferNumber, [], filterExtend)
+    );
+  }, [records, searchQuery, departmentFilter, designationFilter]);
+
+  if (filteredRecords.length === 0) {
+    return (
+      <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
+        {LIST_SEARCH_EMPTY_MESSAGE}
+      </p>
+    );
+  }
+
+  return (
+    <UniversalMasterListTable>
+      <thead className={MASTER_LIST_HEAD_CLASS}>
+        <tr>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>From / To</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Transfer #</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Lines</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filteredRecords.map((row) => (
+          <UniversalMasterListRow key={row.id} onEdit={() => onOpenDetail(row)}>
+            <UniversalMasterListNameCell name={row.displayLabel} onEdit={() => onOpenDetail(row)} />
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.transferNumber}</td>
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.transferDate}</td>
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.lines.length}</td>
+          </UniversalMasterListRow>
+        ))}
+      </tbody>
+    </UniversalMasterListTable>
   );
 }

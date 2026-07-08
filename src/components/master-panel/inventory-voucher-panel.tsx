@@ -45,6 +45,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
@@ -131,17 +132,6 @@ export default function InventoryVoucherPanel({ config }: Props) {
           : row.name,
       })),
     [accounts]
-  );
-
-  const filteredRecords = useMemo(
-    () =>
-      records.filter(
-        (row) =>
-          matchesUniversalNameSearch(searchQuery, row.partyName) ||
-          matchesUniversalNameSearch(searchQuery, row.voucherNumber) ||
-          matchesUniversalNameSearch(searchQuery, row.destinationStation)
-      ),
-    [records, searchQuery]
   );
 
   const viewingRecord = useMemo(
@@ -412,42 +402,78 @@ export default function InventoryVoucherPanel({ config }: Props) {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       >
-        {filteredRecords.length === 0 ? (
-          <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
-            {LIST_SEARCH_EMPTY_MESSAGE}
-          </p>
-        ) : (
-          <UniversalMasterListTable>
-            <thead className={MASTER_LIST_HEAD_CLASS}>
-              <tr>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>{config.partyLabel}</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>{config.voucherLabel} #</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Station</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Grand Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRecords.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openDetail(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.partyName}
-                    onEdit={() => openDetail(row)}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.voucherNumber}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.voucherDate}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {row.destinationStation || "—"}
-                  </td>
-                  <td className={`${MASTER_LIST_BODY_CELL_CLASS} text-right font-medium`}>
-                    {formatCurrency(row.grandTotal)}
-                  </td>
-                </UniversalMasterListRow>
-              ))}
-            </tbody>
-          </UniversalMasterListTable>
-        )}
+        <InventoryVoucherListContent
+          records={records}
+          partyLabel={config.partyLabel}
+          voucherLabel={config.voucherLabel}
+          onOpenDetail={openDetail}
+        />
       </UniversalMasterListShell>
     </>
+  );
+}
+
+type InventoryVoucherListContentProps = {
+  records: InventoryVoucherRecord[];
+  partyLabel: string;
+  voucherLabel: string;
+  onOpenDetail: (record: InventoryVoucherRecord) => void;
+};
+
+function InventoryVoucherListContent({
+  records,
+  partyLabel,
+  voucherLabel,
+  onOpenDetail,
+}: InventoryVoucherListContentProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredRecords = useMemo(() => {
+    const filterExtend = {
+      departmentFilter,
+      designationFilter,
+      skipDepartmentIfAbsent: true as const,
+      skipDesignationIfAbsent: true as const,
+    };
+    return records.filter(
+      (row) =>
+        matchesUniversalNameSearch(searchQuery, row.partyName, [], filterExtend) ||
+        matchesUniversalNameSearch(searchQuery, row.voucherNumber, [], filterExtend) ||
+        matchesUniversalNameSearch(searchQuery, row.destinationStation, [], filterExtend)
+    );
+  }, [records, searchQuery, departmentFilter, designationFilter]);
+
+  if (filteredRecords.length === 0) {
+    return (
+      <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
+        {LIST_SEARCH_EMPTY_MESSAGE}
+      </p>
+    );
+  }
+
+  return (
+    <UniversalMasterListTable>
+      <thead className={MASTER_LIST_HEAD_CLASS}>
+        <tr>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>{partyLabel}</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>{voucherLabel} #</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Station</th>
+          <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Grand Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filteredRecords.map((row) => (
+          <UniversalMasterListRow key={row.id} onEdit={() => onOpenDetail(row)}>
+            <UniversalMasterListNameCell name={row.partyName} onEdit={() => onOpenDetail(row)} />
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.voucherNumber}</td>
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.voucherDate}</td>
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.destinationStation || "—"}</td>
+            <td className={`${MASTER_LIST_BODY_CELL_CLASS} text-right font-medium`}>
+              {formatCurrency(row.grandTotal)}
+            </td>
+          </UniversalMasterListRow>
+        ))}
+      </tbody>
+    </UniversalMasterListTable>
   );
 }

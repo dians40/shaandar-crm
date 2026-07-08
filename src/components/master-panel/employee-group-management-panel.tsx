@@ -27,6 +27,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
@@ -45,18 +46,6 @@ export default function EmployeeGroupManagementPanel() {
   const viewingRecord = useMemo(
     () => groups.find((row) => row.id === viewingId) ?? null,
     [groups, viewingId]
-  );
-
-  const filtered = useMemo(
-    () =>
-      groups.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.groupName, [
-          row.contractorName,
-          row.customContractorNote,
-          resolveEmployeeGroupContractor(row),
-        ])
-      ),
-    [groups, searchQuery]
   );
 
   const resetForm = () => {
@@ -247,53 +236,91 @@ export default function EmployeeGroupManagementPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <UsersRound className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No employee groups yet."}
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.groupName}
-                    onEdit={() => openEdit(row)}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {resolveEmployeeGroupContractor(row)}
-                  </td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => {
-                        setViewingId(row.id);
-                        setView("detail");
-                      }}
-                      onEdit={() => openEdit(row)}
-                      extra={
-                        <MasterRemoveOrProtected
-                          canRemove={
-                            !checkUsedInTransactions("employee-group", row.id, row.groupName)
-                          }
-                          onRemove={() => {
-                            if (
-                              !window.confirm(`Remove employee group "${row.groupName}"?`)
-                            ) {
-                              return;
-                            }
-                            removeGroup(row.id);
-                          }}
-                        />
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <EmployeeGroupListBody
+              groups={groups}
+              onEdit={openEdit}
+              onView={(row) => {
+                setViewingId(row.id);
+                setView("detail");
+              }}
+              onRemove={removeGroup}
+              checkUsedInTransactions={checkUsedInTransactions}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+function EmployeeGroupListBody({
+  groups,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: {
+  groups: EmployeeGroupRecord[];
+  onEdit: (record: EmployeeGroupRecord) => void;
+  onView: (record: EmployeeGroupRecord) => void;
+  onRemove: (id: string) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+}) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filtered = useMemo(
+    () =>
+      groups.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.groupName,
+          [row.contractorName, row.customContractorNote, resolveEmployeeGroupContractor(row)],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [groups, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (filtered.length === 0) {
+    return (
+      <tr>
+        <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <UsersRound className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No employee groups yet."}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filtered.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell name={row.groupName} onEdit={() => onEdit(row)} />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            {resolveEmployeeGroupContractor(row)}
+          </td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              extra={
+                <MasterRemoveOrProtected
+                  canRemove={!checkUsedInTransactions("employee-group", row.id, row.groupName)}
+                  onRemove={() => {
+                    if (!window.confirm(`Remove employee group "${row.groupName}"?`)) return;
+                    onRemove(row.id);
+                  }}
+                />
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

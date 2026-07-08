@@ -11,7 +11,11 @@ import {
 } from "lucide-react";
 import { deleteEmployee, patchEmployeeSalary } from "@/lib/employees-api";
 import { useMasterDeletionGuard } from "@/hooks/use-master-deletion-guard";
-import { LIST_SEARCH_EMPTY_MESSAGE, matchesUniversalNameSearch } from "@/lib/list-search-filter";
+import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
+import { matchesMultiCriteriaFilter } from "@/lib/master-list-filter";
+import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
+import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
+import { useGeneralSettings } from "@/hooks/use-general-settings";
 import { formatSalaryDisplay } from "@/lib/map-employee-to-db";
 import type { EmployeeListItem } from "@/types/employee-list";
 import { SupabaseConnectedBadge } from "./supabase-setup-banner";
@@ -45,25 +49,44 @@ export default function EmployeeList({
   hideHeaderAddButton = false,
 }: Props) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [designationFilter, setDesignationFilter] = useState("");
   const [salaryDrafts, setSalaryDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const { checkUsedInTransactions } = useMasterDeletionGuard();
 
+  const { departmentNames } = useGeneralSettings();
+
+  const departmentOptions = useMemo(
+    () => mergeDepartmentOptions([], departmentNames),
+    [departmentNames]
+  );
+
+  const designationOptions = useMemo(() => mergeDesignationOptions([]), []);
+
   const filteredEmployees = useMemo(
     () =>
       employees.filter((employee) =>
-        matchesUniversalNameSearch(searchQuery, employee.name, [
-          employee.mobileNumber,
-          employee.employeeType,
-          employee.machineAssignment,
-          employee.assignedFromGroup,
-          employee.esiStatus,
-          employee.pfStatus,
-        ])
+        matchesMultiCriteriaFilter({
+          searchQuery,
+          departmentFilter,
+          designationFilter,
+          primaryName: employee.name,
+          textValues: [
+            employee.mobileNumber,
+            employee.employeeType,
+            employee.machineAssignment,
+            employee.assignedFromGroup,
+            employee.esiStatus,
+            employee.pfStatus,
+          ],
+          department: employee.machineAssignment,
+          designation: employee.employeeType,
+        })
       ),
-    [employees, searchQuery]
+    [employees, searchQuery, departmentFilter, designationFilter]
   );
 
   const handleSalarySave = async (employee: EmployeeListItem) => {
@@ -159,6 +182,12 @@ export default function EmployeeList({
           moduleName="Employee"
           value={searchQuery}
           onChange={setSearchQuery}
+          departmentFilter={departmentFilter}
+          designationFilter={designationFilter}
+          departmentOptions={departmentOptions}
+          designationOptions={designationOptions}
+          onDepartmentFilterChange={setDepartmentFilter}
+          onDesignationFilterChange={setDesignationFilter}
         />
 
       {(error || actionError) && (

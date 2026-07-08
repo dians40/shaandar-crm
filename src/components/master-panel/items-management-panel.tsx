@@ -39,6 +39,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
@@ -86,21 +87,6 @@ export default function ItemsManagementPanel() {
   const gstOptions = useMemo(
     () => GST_TAX_OPTIONS.map((rate) => ({ value: rate, label: `${rate}%` })),
     []
-  );
-
-  const filteredItems = useMemo(
-    () =>
-      items.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.itemName, [
-          row.id,
-          row.itemGroupName,
-          row.primaryUnitName,
-          row.alternateUnitName,
-          row.hsnCode,
-          row.gstTaxPercentage,
-        ])
-      ),
-    [items, searchQuery]
   );
 
   const resetForm = () => {
@@ -563,80 +549,131 @@ export default function ItemsManagementPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {items.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <Boxes className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  No items yet. Use Add Item to create one.
-                </td>
-              </tr>
-            ) : filteredItems.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  {LIST_SEARCH_EMPTY_MESSAGE}
-                </td>
-              </tr>
-            ) : (
-              filteredItems.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.itemName}
-                    onEdit={() => openEdit(row)}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.itemGroupName || "—"}</td>
-                    <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                      <p>{row.primaryUnitName || "—"}</p>
-                      {row.alternateUnitName && (
-                        <p className="text-xs text-corporate-muted">
-                          {row.alternateUnitName}
-                        </p>
-                      )}
-                    </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    <p>Qty: {row.openingStockQuantity}</p>
-                    <p className="text-xs text-corporate-muted">
-                      Value: ₹{row.openingStockValue.toLocaleString("en-IN")}
-                    </p>
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    <p className="text-xs">
-                      Min: {row.minimumStockLevel.toLocaleString("en-IN")}
-                    </p>
-                    <p className="text-xs text-corporate-muted">
-                      Max: {row.maximumStockLevel.toLocaleString("en-IN")} · Reorder:{" "}
-                      {row.reorderLevel.toLocaleString("en-IN")}
-                    </p>
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    <p>Purchase: ₹{row.purchaseRate.toLocaleString("en-IN")}</p>
-                    <p className="text-xs text-corporate-muted">
-                      MRP: ₹{row.salesRateMrp.toLocaleString("en-IN")}
-                    </p>
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    <p>{row.gstTaxPercentage}%</p>
-                    <p className="text-xs text-corporate-muted">{row.hsnCode || "—"}</p>
-                  </td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => openView(row)}
-                      onEdit={() => openEdit(row)}
-                      extra={
-                        <MasterRemoveOrProtected
-                          canRemove={
-                            !checkUsedInTransactions("item", row.id, row.itemName)
-                          }
-                          onRemove={() => handleRemove(row)}
-                        />
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <ItemsListBody
+              items={items}
+              onEdit={openEdit}
+              onView={openView}
+              onRemove={handleRemove}
+              checkUsedInTransactions={checkUsedInTransactions}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+type ItemsListBodyProps = {
+  items: ItemRecord[];
+  onEdit: (record: ItemRecord) => void;
+  onView: (record: ItemRecord) => void;
+  onRemove: (record: ItemRecord) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+};
+
+function ItemsListBody({
+  items,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: ItemsListBodyProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredItems = useMemo(
+    () =>
+      items.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.itemName,
+          [
+            row.id,
+            row.itemGroupName,
+            row.primaryUnitName,
+            row.alternateUnitName,
+            row.hsnCode,
+            row.gstTaxPercentage,
+          ],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [items, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (items.length === 0) {
+    return (
+      <tr>
+        <td colSpan={8} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <Boxes className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          No items yet. Use Add Item to create one.
+        </td>
+      </tr>
+    );
+  }
+
+  if (filteredItems.length === 0) {
+    return (
+      <tr>
+        <td colSpan={8} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          {LIST_SEARCH_EMPTY_MESSAGE}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filteredItems.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell name={row.itemName} onEdit={() => onEdit(row)} />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.itemGroupName || "—"}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            <p>{row.primaryUnitName || "—"}</p>
+            {row.alternateUnitName && (
+              <p className="text-xs text-corporate-muted">{row.alternateUnitName}</p>
+            )}
+          </td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            <p>Qty: {row.openingStockQuantity}</p>
+            <p className="text-xs text-corporate-muted">
+              Value: ₹{row.openingStockValue.toLocaleString("en-IN")}
+            </p>
+          </td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            <p className="text-xs">Min: {row.minimumStockLevel.toLocaleString("en-IN")}</p>
+            <p className="text-xs text-corporate-muted">
+              Max: {row.maximumStockLevel.toLocaleString("en-IN")} · Reorder:{" "}
+              {row.reorderLevel.toLocaleString("en-IN")}
+            </p>
+          </td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            <p>Purchase: ₹{row.purchaseRate.toLocaleString("en-IN")}</p>
+            <p className="text-xs text-corporate-muted">
+              MRP: ₹{row.salesRateMrp.toLocaleString("en-IN")}
+            </p>
+          </td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            <p>{row.gstTaxPercentage}%</p>
+            <p className="text-xs text-corporate-muted">{row.hsnCode || "—"}</p>
+          </td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              extra={
+                <MasterRemoveOrProtected
+                  canRemove={!checkUsedInTransactions("item", row.id, row.itemName)}
+                  onRemove={() => onRemove(row)}
+                />
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

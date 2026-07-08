@@ -22,6 +22,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit";
@@ -88,14 +89,6 @@ export default function GeneralSettingsManagementPanel() {
 
   const activeTabMeta = GENERAL_SETTINGS_SUB_TABS.find(
     (tab) => tab.id === activeSubMaster
-  );
-
-  const filtered = useMemo(
-    () =>
-      subMasterConfig.records.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.name, [row.id])
-      ),
-    [subMasterConfig.records, searchQuery]
   );
 
   const resetForm = () => {
@@ -267,62 +260,97 @@ export default function GeneralSettingsManagementPanel() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-corporate-border">
-                {filtered.length === 0 ? (
-                  <tr>
-                    <td colSpan={2} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                      <Wrench className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                      {searchQuery.trim()
-                        ? LIST_SEARCH_EMPTY_MESSAGE
-                        : `No ${subMasterConfig.singularLabel.toLowerCase()} records yet.`}
-                    </td>
-                  </tr>
-                ) : (
-                  filtered.map((row) => (
-                    <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                      <UniversalMasterListNameCell
-                        name={row.name}
-                        onEdit={() => openEdit(row)}
-                      />
-                      <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openEdit(row)}
-                            className="rounded-full border border-corporate-border px-3 py-1 text-xs font-medium"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (
-                                !window.confirm(
-                                  `Remove ${subMasterConfig.singularLabel.toLowerCase()} "${row.name}"?`
-                                )
-                              ) {
-                                return;
-                              }
-                              subMasterConfig.removeRecord(row.id);
-                            }}
-                            className={cn(
-                              "rounded-full border px-3 py-1 text-xs font-medium",
-                              activeSubMaster === "departments"
-                                ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-                                : "border-red-200 text-red-600"
-                            )}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </td>
-                    </UniversalMasterListRow>
-                  ))
-                )}
+                <GeneralSettingsListBody
+                  records={subMasterConfig.records}
+                  singularLabel={subMasterConfig.singularLabel}
+                  activeSubMaster={activeSubMaster}
+                  onEdit={openEdit}
+                  onRemove={subMasterConfig.removeRecord}
+                />
               </tbody>
             </UniversalMasterListTable>
           </UniversalMasterListShell>
         </>
       )}
     </div>
+  );
+}
+
+function GeneralSettingsListBody({
+  records,
+  singularLabel,
+  activeSubMaster,
+  onEdit,
+  onRemove,
+}: {
+  records: GeneralSettingsRecord[];
+  singularLabel: string;
+  activeSubMaster: GeneralSettingsSubMaster;
+  onEdit: (record: GeneralSettingsRecord) => void;
+  onRemove: (id: string) => void;
+}) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filtered = useMemo(
+    () =>
+      records.filter((row) =>
+        matchesUniversalNameSearch(searchQuery, row.name, [row.id], {
+          departmentFilter,
+          designationFilter,
+          skipDepartmentIfAbsent: true,
+          skipDesignationIfAbsent: true,
+        })
+      ),
+    [records, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (filtered.length === 0) {
+    return (
+      <tr>
+        <td colSpan={2} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <Wrench className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          {searchQuery.trim()
+            ? LIST_SEARCH_EMPTY_MESSAGE
+            : `No ${singularLabel.toLowerCase()} records yet.`}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filtered.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell name={row.name} onEdit={() => onEdit(row)} />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => onEdit(row)}
+                className="rounded-full border border-corporate-border px-3 py-1 text-xs font-medium"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!window.confirm(`Remove ${singularLabel.toLowerCase()} "${row.name}"?`)) {
+                    return;
+                  }
+                  onRemove(row.id);
+                }}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-medium",
+                  activeSubMaster === "departments"
+                    ? "border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+                    : "border-red-200 text-red-600"
+                )}
+              >
+                Remove
+              </button>
+            </div>
+          </td>
+        </UniversalMasterListRow>
+      ))}
+    </>
   );
 }

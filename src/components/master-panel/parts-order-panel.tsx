@@ -30,6 +30,7 @@ import PartsOrderStagePills from "./shared/parts-order-stage-pills";
 import SinglePhotoUploader from "./shared/single-photo-uploader";
 import {
   UniversalMasterListShell,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type WorkspaceTab = "parts-order" | "preventive-maintenance";

@@ -26,6 +26,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
@@ -43,14 +44,6 @@ export default function UnitsManagementPanel() {
   const viewingRecord = useMemo(
     () => units.find((row) => row.id === viewingId) ?? null,
     [units, viewingId]
-  );
-
-  const filteredUnits = useMemo(
-    () =>
-      units.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.name, [row.shortCode, row.id])
-      ),
-    [units, searchQuery]
   );
 
   const resetForm = () => {
@@ -257,56 +250,105 @@ export default function UnitsManagementPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {units.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <Ruler className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  No units yet.
-                </td>
-              </tr>
-            ) : filteredUnits.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  {LIST_SEARCH_EMPTY_MESSAGE}
-                </td>
-              </tr>
-            ) : (
-              filteredUnits.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={formatUnitLabel(row)}
-                    onEdit={() => openEdit(row)}
-                    suffix={
-                      row.isSystemSeed ? (
-                        <span className="ml-2 text-xs font-normal text-corporate-muted">
-                          (System)
-                        </span>
-                      ) : undefined
-                    }
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.shortCode}</td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => openView(row)}
-                      onEdit={() => openEdit(row)}
-                      extra={
-                        !row.isSystemSeed ? (
-                          <MasterRemoveOrProtected
-                            canRemove={
-                              !checkUsedInTransactions("unit", row.id, row.name)
-                            }
-                            onRemove={() => handleRemove(row)}
-                          />
-                        ) : undefined
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <UnitsListBody
+              units={units}
+              onEdit={openEdit}
+              onView={openView}
+              onRemove={handleRemove}
+              checkUsedInTransactions={checkUsedInTransactions}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+type UnitsListBodyProps = {
+  units: UnitRecord[];
+  onEdit: (record: UnitRecord) => void;
+  onView: (record: UnitRecord) => void;
+  onRemove: (record: UnitRecord) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+};
+
+function UnitsListBody({
+  units,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: UnitsListBodyProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredUnits = useMemo(
+    () =>
+      units.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.name,
+          [row.shortCode, row.id],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [units, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (units.length === 0) {
+    return (
+      <tr>
+        <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <Ruler className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          No units yet.
+        </td>
+      </tr>
+    );
+  }
+
+  if (filteredUnits.length === 0) {
+    return (
+      <tr>
+        <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          {LIST_SEARCH_EMPTY_MESSAGE}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filteredUnits.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell
+            name={formatUnitLabel(row)}
+            onEdit={() => onEdit(row)}
+            suffix={
+              row.isSystemSeed ? (
+                <span className="ml-2 text-xs font-normal text-corporate-muted">(System)</span>
+              ) : undefined
+            }
+          />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.shortCode}</td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              extra={
+                !row.isSystemSeed ? (
+                  <MasterRemoveOrProtected
+                    canRemove={!checkUsedInTransactions("unit", row.id, row.name)}
+                    onRemove={() => onRemove(row)}
+                  />
+                ) : undefined
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

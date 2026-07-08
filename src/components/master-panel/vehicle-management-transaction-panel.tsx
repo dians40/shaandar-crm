@@ -45,6 +45,7 @@ import {
   UniversalMasterListShell,
   UniversalMasterListTable,
   UniversalMasterListActionsCell,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "ledger";

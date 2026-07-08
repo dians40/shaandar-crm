@@ -43,6 +43,7 @@ import {
   MASTER_LIST_HEADER_CELL_RIGHT_CLASS,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 const MACHINE_CUSTOM_VALUE = "__custom_machine__";

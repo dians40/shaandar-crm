@@ -29,6 +29,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
@@ -60,18 +61,6 @@ export default function BillOfSundriesManagementPanel() {
   const groupOptions = useMemo(
     () => groups.map((group) => ({ value: group.id, label: group.name })),
     [groups]
-  );
-
-  const filtered = useMemo(
-    () =>
-      sundries.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.sundryName, [
-          row.natureType,
-          row.calculationType,
-          row.accountGroupName,
-        ])
-      ),
-    [sundries, searchQuery]
   );
 
   const resetForm = () => {
@@ -288,58 +277,99 @@ export default function BillOfSundriesManagementPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <ScrollText className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No sundries found."}
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.sundryName}
-                    onEdit={() => openEdit(row)}
-                    suffix={
-                      row.isSystemSeed ? (
-                        <span className="ml-2 text-xs font-normal text-corporate-muted">
-                          (System)
-                        </span>
-                      ) : undefined
-                    }
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{natureLabel(row.natureType)}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {calcLabel(row.calculationType)}
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {row.accountGroupName || "—"}
-                  </td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => {
-                        setViewingId(row.id);
-                        setView("detail");
-                      }}
-                      onEdit={() => openEdit(row)}
-                      extra={
-                        <MasterRemoveOrProtected
-                          canRemove={
-                            !row.isSystemSeed &&
-                            !checkUsedInTransactions("bill-of-sundry", row.id, row.sundryName)
-                          }
-                          onRemove={() => handleRemove(row)}
-                        />
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <BillOfSundriesListBody
+              sundries={sundries}
+              onEdit={openEdit}
+              onView={(row) => {
+                setViewingId(row.id);
+                setView("detail");
+              }}
+              onRemove={handleRemove}
+              checkUsedInTransactions={checkUsedInTransactions}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+function BillOfSundriesListBody({
+  sundries,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: {
+  sundries: BillOfSundryRecord[];
+  onEdit: (record: BillOfSundryRecord) => void;
+  onView: (record: BillOfSundryRecord) => void;
+  onRemove: (record: BillOfSundryRecord) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+}) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filtered = useMemo(
+    () =>
+      sundries.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.sundryName,
+          [row.natureType, row.calculationType, row.accountGroupName],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [sundries, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (filtered.length === 0) {
+    return (
+      <tr>
+        <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <ScrollText className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No sundries found."}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filtered.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell
+            name={row.sundryName}
+            onEdit={() => onEdit(row)}
+            suffix={
+              row.isSystemSeed ? (
+                <span className="ml-2 text-xs font-normal text-corporate-muted">(System)</span>
+              ) : undefined
+            }
+          />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{natureLabel(row.natureType)}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{calcLabel(row.calculationType)}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.accountGroupName || "—"}</td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              extra={
+                <MasterRemoveOrProtected
+                  canRemove={
+                    !row.isSystemSeed &&
+                    !checkUsedInTransactions("bill-of-sundry", row.id, row.sundryName)
+                  }
+                  onRemove={() => onRemove(row)}
+                />
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

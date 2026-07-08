@@ -33,6 +33,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "detail";
@@ -63,17 +64,6 @@ export default function ManufacturingVoucherPanel() {
   const bomOptions = useMemo(
     () => boms.map((row) => ({ value: row.id, label: row.bomName })),
     [boms]
-  );
-
-  const filteredRecords = useMemo(
-    () =>
-      records.filter(
-        (row) =>
-          matchesUniversalNameSearch(searchQuery, row.outputItemName) ||
-          matchesUniversalNameSearch(searchQuery, row.productionRunId) ||
-          matchesUniversalNameSearch(searchQuery, row.bomName)
-      ),
-    [records, searchQuery]
   );
 
   const viewingRecord = useMemo(
@@ -372,40 +362,70 @@ export default function ManufacturingVoucherPanel() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       >
-        {filteredRecords.length === 0 ? (
-          <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
-            {LIST_SEARCH_EMPTY_MESSAGE}
-          </p>
-        ) : (
-          <UniversalMasterListTable>
-            <thead className={MASTER_LIST_HEAD_CLASS}>
-              <tr>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Product Name</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Run ID</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>BOM</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Volume</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRecords.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openDetail(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.outputItemName}
-                    onEdit={() => openDetail(row)}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.productionRunId}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.productionDate}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.bomName}</td>
-                  <td className={`${MASTER_LIST_BODY_CELL_CLASS} text-right`}>
-                    {row.productionVolume}
-                  </td>
-                </UniversalMasterListRow>
-              ))}
-            </tbody>
-          </UniversalMasterListTable>
-        )}
+        <ManufacturingVoucherListContent records={records} onOpenDetail={openDetail} />
       </UniversalMasterListShell>
     </>
+  );
+}
+
+type ManufacturingVoucherListContentProps = {
+  records: ManufacturingVoucherRecord[];
+  onOpenDetail: (record: ManufacturingVoucherRecord) => void;
+};
+
+function ManufacturingVoucherListContent({
+  records,
+  onOpenDetail,
+}: ManufacturingVoucherListContentProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredRecords = useMemo(() => {
+    const filterExtend = {
+      departmentFilter,
+      designationFilter,
+      skipDepartmentIfAbsent: true as const,
+      skipDesignationIfAbsent: true as const,
+    };
+    return records.filter(
+      (row) =>
+        matchesUniversalNameSearch(searchQuery, row.outputItemName, [], filterExtend) ||
+        matchesUniversalNameSearch(searchQuery, row.productionRunId, [], filterExtend) ||
+        matchesUniversalNameSearch(searchQuery, row.bomName, [], filterExtend)
+    );
+  }, [records, searchQuery, departmentFilter, designationFilter]);
+
+  if (filteredRecords.length === 0) {
+    return (
+      <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
+        {LIST_SEARCH_EMPTY_MESSAGE}
+      </p>
+    );
+  }
+
+  return (
+    <UniversalMasterListTable>
+      <thead className={MASTER_LIST_HEAD_CLASS}>
+        <tr>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Product Name</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Run ID</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>BOM</th>
+          <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Volume</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filteredRecords.map((row) => (
+          <UniversalMasterListRow key={row.id} onEdit={() => onOpenDetail(row)}>
+            <UniversalMasterListNameCell
+              name={row.outputItemName}
+              onEdit={() => onOpenDetail(row)}
+            />
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.productionRunId}</td>
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.productionDate}</td>
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.bomName}</td>
+            <td className={`${MASTER_LIST_BODY_CELL_CLASS} text-right`}>{row.productionVolume}</td>
+          </UniversalMasterListRow>
+        ))}
+      </tbody>
+    </UniversalMasterListTable>
   );
 }

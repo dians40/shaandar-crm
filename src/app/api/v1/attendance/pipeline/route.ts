@@ -21,6 +21,7 @@ import {
   persistSavedRows,
 } from "@/lib/attendance-pipeline-service";
 import { autoSyncDepartmentName } from "@/lib/department-master-sync";
+import { parseAttendancePipelineFetchParams } from "@/lib/attendance-pipeline-fetch-options";
 import { isPipelineStage, PIPELINE_STAGES } from "@/types/attendance-pipeline";
 
 export async function GET(request: Request) {
@@ -43,20 +44,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: `Invalid stage: ${stageParam}` }, { status: 400 });
     }
 
-    const limit = Math.min(Number(searchParams.get("limit") ?? "500"), 500);
-    const date = searchParams.get("date")?.trim() || undefined;
-    const fromDate = searchParams.get("fromDate")?.trim() || undefined;
-    const toDate = searchParams.get("toDate")?.trim() || undefined;
-    const search = searchParams.get("search")?.trim() || undefined;
+    const fetchOptions = parseAttendancePipelineFetchParams(searchParams);
+    fetchOptions.limit = Math.min(Number(searchParams.get("limit") ?? "500"), 500);
     const format = searchParams.get("format")?.trim() ?? "grid";
 
-    const rows = await fetchRowsByPipelineStage(stageParam, {
-      limit,
-      date,
-      fromDate,
-      toDate,
-      search,
-    });
+    const rows = await fetchRowsByPipelineStage(stageParam, fetchOptions);
 
     if (format === "staging") {
       return NextResponse.json({ rows: gridRowsToStagingRows(rows), meta: { count: rows.length, stage: stageParam } });

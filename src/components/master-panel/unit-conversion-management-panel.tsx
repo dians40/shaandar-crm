@@ -20,7 +20,7 @@ import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import UnitConversionForm from "./unit-conversion-form";
 import UnitConversionList from "./unit-conversion-list";
 import UniversalRecordProfile from "./universal-record-profile";
-import { UniversalMasterListShell } from "./universal-master-list";
+import { UniversalMasterListShell, useMasterListFilters } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
 

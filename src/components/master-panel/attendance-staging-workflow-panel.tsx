@@ -61,6 +61,8 @@ export default function AttendanceStagingWorkflowPanel({
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [designationFilter, setDesignationFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -84,6 +86,8 @@ export default function AttendanceStagingWorkflowPanel({
       if (fromDate) params.set("fromDate", fromDate);
       if (toDate) params.set("toDate", toDate);
       if (searchQuery.trim()) params.set("search", searchQuery.trim());
+      if (departmentFilter) params.set("department", departmentFilter);
+      if (designationFilter) params.set("designation", designationFilter);
       const response = await fetch(`/api/v1/attendance/pipeline?${params.toString()}`);
       const body = (await response.json()) as {
         rows?: AttendanceStagingRow[];
@@ -98,7 +102,14 @@ export default function AttendanceStagingWorkflowPanel({
     } finally {
       setLoading(false);
     }
-  }, [fromDate, toDate, searchQuery]);
+  }, [fromDate, toDate, searchQuery, departmentFilter, designationFilter]);
+
+  const filterDepartmentOptions = useMemo(
+    () => mergeDepartmentOptions([], departmentNames),
+    [departmentNames]
+  );
+
+  const filterDesignationOptions = useMemo(() => mergeDesignationOptions([]), []);
 
   useEffect(() => {
     void loadRows();
@@ -362,9 +373,15 @@ export default function AttendanceStagingWorkflowPanel({
         fromDate={fromDate}
         toDate={toDate}
         searchQuery={searchQuery}
+        departmentFilter={departmentFilter}
+        designationFilter={designationFilter}
+        departmentOptions={filterDepartmentOptions}
+        designationOptions={filterDesignationOptions}
         onFromDateChange={setFromDate}
         onToDateChange={setToDate}
         onSearchChange={setSearchQuery}
+        onDepartmentFilterChange={setDepartmentFilter}
+        onDesignationFilterChange={setDesignationFilter}
         onRefresh={() => void loadRows()}
         isRefreshing={loading}
         summary={`${rows.length} staging record(s) at LAYER_2_STAGING`}

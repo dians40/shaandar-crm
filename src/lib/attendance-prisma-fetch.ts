@@ -162,13 +162,21 @@ export async function fetchStagingBootstrapFromBiometric(filters?: {
 export async function fetchBiometricGridViaPrisma(
   limit: number,
   date?: string,
-  search?: string
+  search?: string,
+  department?: string,
+  designation?: string
 ) {
   if (!isPrismaConfigured() || !prisma) return [];
 
   const where: Prisma.BiometricAttendanceWhereInput = {};
   if (date) {
     where.date = normalizeAttendanceDateIso(date);
+  }
+  if (department?.trim()) {
+    where.department = department.trim();
+  }
+  if (designation?.trim()) {
+    where.designation = designation.trim();
   }
   if (search?.trim()) {
     where.OR = [

@@ -24,15 +24,23 @@ function isWithinDateRange(entryDate: string, fromDate: string, toDate: string):
 
 export function readUsersByPipelineStage(
   stage: UserPipelineStage,
-  options: { fromDate?: string; toDate?: string; search?: string } = {}
+  options: {
+    fromDate?: string;
+    toDate?: string;
+    search?: string;
+    department?: string;
+    designation?: string;
+  } = {}
 ): ManagedUserRecord[] {
   const searchToken = options.search?.trim().toLowerCase() ?? "";
+  const designationToken = options.designation?.trim() ?? "";
   return readManagedUsers()
     .filter((user) => resolveUserPipelineStage(user) === stage)
     .filter((user) =>
       isWithinDateRange(user.createdAt.slice(0, 10), options.fromDate ?? "", options.toDate ?? "")
     )
     .filter((user) => {
+      if (designationToken && user.role.trim() !== designationToken) return false;
       if (!searchToken) return true;
       return (
         user.fullName.toLowerCase().includes(searchToken) ||

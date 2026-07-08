@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarCheck,
   CheckCircle2,
@@ -59,6 +59,9 @@ import {
   MASTER_LIST_TABLE_WRAPPER_CLASS,
 } from "./universal-master-list";
 import { gridRowToUploadRecord } from "@/lib/attendance-upload-record-mapper";
+import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
+import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
+import { useGeneralSettings } from "@/hooks/use-general-settings";
 import {
   ATTENDANCE_PIPELINE_REFRESH_EVENT,
   LAYER_4_APPROVAL_OPTIONS,
@@ -178,6 +181,8 @@ export default function AttendanceControlCenter({
   const [layer4FromDate, setLayer4FromDate] = useState("");
   const [layer4ToDate, setLayer4ToDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [designationFilter, setDesignationFilter] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [availableDates, setAvailableDates] = useState<AttendanceDateCatalogEntry[]>([]);
   const [lastSaveSummary, setLastSaveSummary] = useState<SaveSummary | null>(null);
@@ -194,6 +199,14 @@ export default function AttendanceControlCenter({
     Record<string, PipelineApprovalAction>
   >({});
   const [activeLayer4RowId, setActiveLayer4RowId] = useState<string | null>(null);
+  const { departmentNames } = useGeneralSettings();
+
+  const filterDepartmentOptions = useMemo(
+    () => mergeDepartmentOptions([], departmentNames),
+    [departmentNames]
+  );
+
+  const filterDesignationOptions = useMemo(() => mergeDesignationOptions([]), []);
 
   const resetPanelState = useCallback(() => {
     setImportPreview(null);
@@ -209,6 +222,8 @@ export default function AttendanceControlCenter({
     setLayer4FromDate("");
     setLayer4ToDate("");
     setSearchQuery("");
+    setDepartmentFilter("");
+    setDesignationFilter("");
     setDebouncedSearch("");
     setAvailableDates([]);
     setLastSaveSummary(null);
@@ -297,6 +312,12 @@ export default function AttendanceControlCenter({
       if (debouncedSearch) {
         params.set("search", debouncedSearch);
       }
+      if (departmentFilter) {
+        params.set("department", departmentFilter);
+      }
+      if (designationFilter) {
+        params.set("designation", designationFilter);
+      }
       const response = await fetch(`/api/v1/attendance/biometric?${params.toString()}`);
       const body = (await response.json()) as {
         rows?: Record<string, unknown>[];
@@ -335,7 +356,7 @@ export default function AttendanceControlCenter({
     } finally {
       setIsGridLoading(false);
     }
-  }, [layer4FromDate, layer4ToDate, debouncedSearch]);
+  }, [layer4FromDate, layer4ToDate, debouncedSearch, departmentFilter, designationFilter]);
 
   useEffect(() => {
     if (restrictedMode === "stagingOnly" || restrictedMode === "workflowOnly") return;
@@ -1196,9 +1217,15 @@ export default function AttendanceControlCenter({
           fromDate={layer4FromDate}
           toDate={layer4ToDate}
           searchQuery={searchQuery}
+          departmentFilter={departmentFilter}
+          designationFilter={designationFilter}
+          departmentOptions={filterDepartmentOptions}
+          designationOptions={filterDesignationOptions}
           onFromDateChange={setLayer4FromDate}
           onToDateChange={setLayer4ToDate}
           onSearchChange={setSearchQuery}
+          onDepartmentFilterChange={setDepartmentFilter}
+          onDesignationFilterChange={setDesignationFilter}
           onRefresh={() => void loadGridRows()}
           isRefreshing={isGridLoading}
           summary={
@@ -1366,9 +1393,15 @@ export default function AttendanceControlCenter({
         fromDate={layer4FromDate}
         toDate={layer4ToDate}
         searchQuery={searchQuery}
+        departmentFilter={departmentFilter}
+        designationFilter={designationFilter}
+        departmentOptions={filterDepartmentOptions}
+        designationOptions={filterDesignationOptions}
         onFromDateChange={setLayer4FromDate}
         onToDateChange={setLayer4ToDate}
         onSearchChange={setSearchQuery}
+        onDepartmentFilterChange={setDepartmentFilter}
+        onDesignationFilterChange={setDesignationFilter}
         onRefresh={() => void loadGridRows()}
         isRefreshing={isGridLoading}
         summary={

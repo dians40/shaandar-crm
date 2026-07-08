@@ -20,6 +20,7 @@ import {
   validatePreventiveMaintenanceForm,
   type MaintenanceComponentLine,
   type PreventiveMaintenanceFormState,
+  type PreventiveMaintenanceRecord,
 } from "@/types/preventive-maintenance";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import UniversalRecordProfile from "./universal-record-profile";
@@ -31,6 +32,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "detail";
@@ -85,17 +87,6 @@ export default function PreventiveMaintenancePanel() {
     for (const row of vehicles) map[row.id] = row.registrationNumber;
     return map;
   }, [machineOptions, vehicles]);
-
-  const filteredRules = useMemo(
-    () =>
-      rules.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.targetName, [
-          row.targetType,
-          ...row.components.map((c) => c.componentName),
-        ])
-      ),
-    [rules, searchQuery]
-  );
 
   const viewingRecord = useMemo(
     () => rules.find((row) => row.id === viewingId) ?? null,
@@ -370,46 +361,75 @@ export default function PreventiveMaintenancePanel() {
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
         >
-          {filteredRules.length === 0 ? (
-            <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
-              {LIST_SEARCH_EMPTY_MESSAGE}
-            </p>
-          ) : (
-            <UniversalMasterListTable>
-              <thead className={MASTER_LIST_HEAD_CLASS}>
-                <tr>
-                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Target Name</th>
-                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Type</th>
-                  <th className={MASTER_LIST_HEADER_CELL_CLASS}>Components</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRules.map((row) => (
-                  <UniversalMasterListRow
-                    key={row.id}
-                    onEdit={() => {
-                      setViewingId(row.id);
-                      setView("detail");
-                    }}
-                  >
-                    <UniversalMasterListNameCell
-                      name={row.targetName}
-                      onEdit={() => {
-                        setViewingId(row.id);
-                        setView("detail");
-                      }}
-                    />
-                    <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                      {row.targetType === "vehicle" ? "Vehicle" : "Machine"}
-                    </td>
-                    <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.components.length}</td>
-                  </UniversalMasterListRow>
-                ))}
-              </tbody>
-            </UniversalMasterListTable>
-          )}
+          <PreventiveMaintenanceListContent
+            rules={rules}
+            onOpenDetail={(row) => {
+              setViewingId(row.id);
+              setView("detail");
+            }}
+          />
         </UniversalMasterListShell>
       )}
     </>
+  );
+}
+
+type PreventiveMaintenanceListContentProps = {
+  rules: PreventiveMaintenanceRecord[];
+  onOpenDetail: (record: PreventiveMaintenanceRecord) => void;
+};
+
+function PreventiveMaintenanceListContent({
+  rules,
+  onOpenDetail,
+}: PreventiveMaintenanceListContentProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredRules = useMemo(
+    () =>
+      rules.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.targetName,
+          [row.targetType, ...row.components.map((c) => c.componentName)],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [rules, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (filteredRules.length === 0) {
+    return (
+      <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
+        {LIST_SEARCH_EMPTY_MESSAGE}
+      </p>
+    );
+  }
+
+  return (
+    <UniversalMasterListTable>
+      <thead className={MASTER_LIST_HEAD_CLASS}>
+        <tr>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Target Name</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Type</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Components</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filteredRules.map((row) => (
+          <UniversalMasterListRow key={row.id} onEdit={() => onOpenDetail(row)}>
+            <UniversalMasterListNameCell name={row.targetName} onEdit={() => onOpenDetail(row)} />
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>
+              {row.targetType === "vehicle" ? "Vehicle" : "Machine"}
+            </td>
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.components.length}</td>
+          </UniversalMasterListRow>
+        ))}
+      </tbody>
+    </UniversalMasterListTable>
   );
 }

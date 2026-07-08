@@ -26,6 +26,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
@@ -48,14 +49,6 @@ export default function SalaryComponentManagementPanel() {
   const viewingRecord = useMemo(
     () => components.find((row) => row.id === viewingId) ?? null,
     [components, viewingId]
-  );
-
-  const filtered = useMemo(
-    () =>
-      components.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.componentName, [row.componentType])
-      ),
-    [components, searchQuery]
   );
 
   const resetForm = () => {
@@ -255,62 +248,103 @@ export default function SalaryComponentManagementPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <Wallet className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No components found."}
-                </td>
-              </tr>
-            ) : (
-              filtered.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.componentName}
-                    onEdit={() => openEdit(row)}
-                    suffix={
-                      row.isSystemSeed ? (
-                        <span className="ml-2 text-xs font-normal text-corporate-muted">
-                          (Standard)
-                        </span>
-                      ) : undefined
-                    }
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {typeLabel(row.componentType)}
-                  </td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => {
-                        setViewingId(row.id);
-                        setView("detail");
-                      }}
-                      onEdit={() => openEdit(row)}
-                      extra={
-                        <MasterRemoveOrProtected
-                          canRemove={
-                            !row.isSystemSeed &&
-                            !checkUsedInTransactions(
-                              "salary-component",
-                              row.id,
-                              row.componentName
-                            )
-                          }
-                          onRemove={() => {
-                            if (row.isSystemSeed) return;
-                            if (!window.confirm(`Remove "${row.componentName}"?`)) return;
-                            removeComponent(row.id);
-                          }}
-                        />
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <SalaryComponentListBody
+              components={components}
+              onEdit={openEdit}
+              onRemove={removeComponent}
+              checkUsedInTransactions={checkUsedInTransactions}
+              onView={(row) => {
+                setViewingId(row.id);
+                setView("detail");
+              }}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+type SalaryComponentListBodyProps = {
+  components: SalaryComponentRecord[];
+  onEdit: (record: SalaryComponentRecord) => void;
+  onView: (record: SalaryComponentRecord) => void;
+  onRemove: (id: string) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+};
+
+function SalaryComponentListBody({
+  components,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: SalaryComponentListBodyProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filtered = useMemo(
+    () =>
+      components.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.componentName,
+          [row.componentType],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [components, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (filtered.length === 0) {
+    return (
+      <tr>
+        <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <Wallet className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          {searchQuery.trim() ? LIST_SEARCH_EMPTY_MESSAGE : "No components found."}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filtered.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell
+            name={row.componentName}
+            onEdit={() => onEdit(row)}
+            suffix={
+              row.isSystemSeed ? (
+                <span className="ml-2 text-xs font-normal text-corporate-muted">(Standard)</span>
+              ) : undefined
+            }
+          />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{typeLabel(row.componentType)}</td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              extra={
+                <MasterRemoveOrProtected
+                  canRemove={
+                    !row.isSystemSeed &&
+                    !checkUsedInTransactions("salary-component", row.id, row.componentName)
+                  }
+                  onRemove={() => {
+                    if (row.isSystemSeed) return;
+                    if (!window.confirm(`Remove "${row.componentName}"?`)) return;
+                    onRemove(row.id);
+                  }}
+                />
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

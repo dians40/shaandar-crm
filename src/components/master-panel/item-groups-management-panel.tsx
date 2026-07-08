@@ -26,6 +26,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
@@ -53,14 +54,6 @@ export default function ItemGroupsManagementPanel() {
         label: name === ITEM_GROUP_PRIMARY_PARENT ? "Primary (Top Level)" : name,
       })),
     [parentOptions]
-  );
-
-  const filteredGroups = useMemo(
-    () =>
-      groups.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.name, [row.id, row.parentGroup])
-      ),
-    [groups, searchQuery]
   );
 
   const resetForm = () => {
@@ -245,47 +238,95 @@ export default function ItemGroupsManagementPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {groups.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <FolderTree className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  No item groups yet. Use Add Item Group to create one.
-                </td>
-              </tr>
-            ) : filteredGroups.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  {LIST_SEARCH_EMPTY_MESSAGE}
-                </td>
-              </tr>
-            ) : (
-              filteredGroups.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.name}
-                    onEdit={() => openEdit(row)}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.parentGroup}</td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => openView(row)}
-                      onEdit={() => openEdit(row)}
-                      extra={
-                        <MasterRemoveOrProtected
-                          canRemove={
-                            !checkUsedInTransactions("item-group", row.id, row.name)
-                          }
-                          onRemove={() => handleRemove(row)}
-                        />
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <ItemGroupsListBody
+              groups={groups}
+              onEdit={openEdit}
+              onView={openView}
+              onRemove={handleRemove}
+              checkUsedInTransactions={checkUsedInTransactions}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+type ItemGroupsListBodyProps = {
+  groups: ItemGroupRecord[];
+  onEdit: (record: ItemGroupRecord) => void;
+  onView: (record: ItemGroupRecord) => void;
+  onRemove: (record: ItemGroupRecord) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+};
+
+function ItemGroupsListBody({
+  groups,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: ItemGroupsListBodyProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredGroups = useMemo(
+    () =>
+      groups.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.name,
+          [row.id, row.parentGroup],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [groups, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (groups.length === 0) {
+    return (
+      <tr>
+        <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <FolderTree className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          No item groups yet. Use Add Item Group to create one.
+        </td>
+      </tr>
+    );
+  }
+
+  if (filteredGroups.length === 0) {
+    return (
+      <tr>
+        <td colSpan={3} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          {LIST_SEARCH_EMPTY_MESSAGE}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filteredGroups.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell name={row.name} onEdit={() => onEdit(row)} />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.parentGroup}</td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              extra={
+                <MasterRemoveOrProtected
+                  canRemove={!checkUsedInTransactions("item-group", row.id, row.name)}
+                  onRemove={() => onRemove(row)}
+                />
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

@@ -183,7 +183,9 @@ async function downloadStorageBatch(
 function rowMatchesFilters(
   row: Record<string, unknown>,
   date?: string,
-  search?: string
+  search?: string,
+  department?: string,
+  designation?: string
 ): boolean {
   const normalizedDate = date ? normalizeAttendanceDateIso(date) : "";
   const rowDate = normalizeAttendanceDateIso(
@@ -191,6 +193,18 @@ function rowMatchesFilters(
   );
 
   if (normalizedDate && rowDate !== normalizedDate) return false;
+
+  const departmentToken = department?.trim();
+  if (departmentToken) {
+    const rowDepartment = String(row.department ?? "").trim();
+    if (rowDepartment !== departmentToken) return false;
+  }
+
+  const designationToken = designation?.trim();
+  if (designationToken) {
+    const rowDesignation = String(row.designation ?? "").trim();
+    if (rowDesignation !== designationToken) return false;
+  }
 
   if (search?.trim()) {
     const token = search.trim().toLowerCase();
@@ -217,6 +231,8 @@ export async function fetchStorageGridRows(
     fromDate?: string;
     toDate?: string;
     search?: string;
+    department?: string;
+    designation?: string;
     pipelineStage?: PipelineStage;
   } = {}
 ): Promise<BiometricAttendanceGridRow[]> {
@@ -265,7 +281,7 @@ export async function fetchStorageGridRows(
 
       for (let rowIndex = 0; rowIndex < batch.rows.length; rowIndex += 1) {
         const row = batch.rows[rowIndex];
-        if (!rowMatchesFilters(row, options.date, options.search)) continue;
+        if (!rowMatchesFilters(row, options.date, options.search, options.department, options.designation)) continue;
         const stage = String(row.pipeline_stage ?? INITIAL_INGEST_PIPELINE_STAGE);
         if (options.pipelineStage && stage !== options.pipelineStage) continue;
         const rowDate = normalizeAttendanceDateIso(String(row.date ?? row.attendance_date ?? reportDate));

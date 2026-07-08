@@ -20,6 +20,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 import {
   CATEGORY_FOR_NATURE,
@@ -60,19 +61,6 @@ export default function AccountGroupManagementPanel() {
   const natureOptions = useMemo(
     () => NATURE_OPTIONS.map((nature) => ({ value: nature, label: nature })),
     []
-  );
-
-  const filteredGroups = useMemo(
-    () =>
-      groups.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.name, [
-          row.id,
-          row.parentGroup,
-          row.nature,
-          row.category,
-        ])
-      ),
-    [groups, searchQuery]
   );
 
   const resetForm = () => {
@@ -315,63 +303,110 @@ export default function AccountGroupManagementPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {groups.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <FolderTree className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  No account groups yet.
-                </td>
-              </tr>
-            ) : filteredGroups.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  {LIST_SEARCH_EMPTY_MESSAGE}
-                </td>
-              </tr>
-            ) : (
-              filteredGroups.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.name}
-                    onEdit={() => openEdit(row)}
-                    suffix={
-                      row.isSystemSeed ? (
-                        <span className="ml-2 text-xs font-normal text-corporate-muted">
-                          (System)
-                        </span>
-                      ) : undefined
-                    }
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.parentGroup}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.nature}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.category}</td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => openView(row)}
-                      onEdit={() => openEdit(row)}
-                      editLabel="Edit"
-                      extra={
-                        !row.isSystemSeed ? (
-                          <MasterRemoveOrProtected
-                            canRemove={
-                              !checkUsedInTransactions(
-                                "account-group",
-                                row.id,
-                                row.name
-                              )
-                            }
-                            onRemove={() => handleRemove(row)}
-                          />
-                        ) : undefined
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <AccountGroupsListBody
+              groups={groups}
+              onEdit={openEdit}
+              onView={openView}
+              onRemove={handleRemove}
+              checkUsedInTransactions={checkUsedInTransactions}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+type AccountGroupsListBodyProps = {
+  groups: AccountGroupRecord[];
+  onEdit: (record: AccountGroupRecord) => void;
+  onView: (record: AccountGroupRecord) => void;
+  onRemove: (record: AccountGroupRecord) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+};
+
+function AccountGroupsListBody({
+  groups,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: AccountGroupsListBodyProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredGroups = useMemo(
+    () =>
+      groups.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.name,
+          [row.id, row.parentGroup, row.nature, row.category],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [groups, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (groups.length === 0) {
+    return (
+      <tr>
+        <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <FolderTree className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          No account groups yet.
+        </td>
+      </tr>
+    );
+  }
+
+  if (filteredGroups.length === 0) {
+    return (
+      <tr>
+        <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          {LIST_SEARCH_EMPTY_MESSAGE}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filteredGroups.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell
+            name={row.name}
+            onEdit={() => onEdit(row)}
+            suffix={
+              row.isSystemSeed ? (
+                <span className="ml-2 text-xs font-normal text-corporate-muted">(System)</span>
+              ) : undefined
+            }
+          />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.parentGroup}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.nature}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.category}</td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              editLabel="Edit"
+              extra={
+                !row.isSystemSeed ? (
+                  <MasterRemoveOrProtected
+                    canRemove={
+                      !checkUsedInTransactions("account-group", row.id, row.name)
+                    }
+                    onRemove={() => onRemove(row)}
+                  />
+                ) : undefined
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

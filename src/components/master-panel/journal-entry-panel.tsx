@@ -20,6 +20,7 @@ import {
   emptyJournalEntryForm,
   type JournalEntryFormState,
   type JournalEntryLine,
+  type JournalEntryRecord,
 } from "@/types/accounting-voucher";
 import ModuleAddListTabBar from "./module-add-list-tab-bar";
 import UniversalRecordProfile from "./universal-record-profile";
@@ -32,6 +33,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
@@ -68,16 +70,6 @@ export default function JournalEntryPanel() {
   );
 
   const totals = useMemo(() => computeJournalTotals(form.lines), [form.lines]);
-
-  const filteredRecords = useMemo(
-    () =>
-      records.filter(
-        (row) =>
-          matchesUniversalNameSearch(searchQuery, row.primaryAccountName) ||
-          matchesUniversalNameSearch(searchQuery, row.entryNumber)
-      ),
-    [records, searchQuery]
-  );
 
   const viewingRecord = useMemo(
     () => records.find((row) => row.id === viewingId) ?? null,
@@ -365,51 +357,76 @@ export default function JournalEntryPanel() {
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
       >
-        {filteredRecords.length === 0 ? (
-          <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
-            {LIST_SEARCH_EMPTY_MESSAGE}
-          </p>
-        ) : (
-          <UniversalMasterListTable>
-            <thead className={MASTER_LIST_HEAD_CLASS}>
-              <tr>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Account Name</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Entry #</th>
-                <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Debit</th>
-                <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Credit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRecords.map((row) => (
-                <UniversalMasterListRow
-                  key={row.id}
-                  onEdit={() => {
-                    setViewingId(row.id);
-                    setView("detail");
-                  }}
-                >
-                  <UniversalMasterListNameCell
-                    name={row.primaryAccountName}
-                    onEdit={() => {
-                      setViewingId(row.id);
-                      setView("detail");
-                    }}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.entryNumber}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.entryDate}</td>
-                  <td className={`${MASTER_LIST_BODY_CELL_CLASS} text-right`}>
-                    {formatCurrency(row.totalDebit)}
-                  </td>
-                  <td className={`${MASTER_LIST_BODY_CELL_CLASS} text-right`}>
-                    {formatCurrency(row.totalCredit)}
-                  </td>
-                </UniversalMasterListRow>
-              ))}
-            </tbody>
-          </UniversalMasterListTable>
-        )}
+        <JournalEntryListContent
+          records={records}
+          onOpenDetail={(row) => {
+            setViewingId(row.id);
+            setView("detail");
+          }}
+        />
       </UniversalMasterListShell>
     </>
+  );
+}
+
+type JournalEntryListContentProps = {
+  records: JournalEntryRecord[];
+  onOpenDetail: (record: JournalEntryRecord) => void;
+};
+
+function JournalEntryListContent({ records, onOpenDetail }: JournalEntryListContentProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredRecords = useMemo(() => {
+    const filterExtend = {
+      departmentFilter,
+      designationFilter,
+      skipDepartmentIfAbsent: true as const,
+      skipDesignationIfAbsent: true as const,
+    };
+    return records.filter(
+      (row) =>
+        matchesUniversalNameSearch(searchQuery, row.primaryAccountName, [], filterExtend) ||
+        matchesUniversalNameSearch(searchQuery, row.entryNumber, [], filterExtend)
+    );
+  }, [records, searchQuery, departmentFilter, designationFilter]);
+
+  if (filteredRecords.length === 0) {
+    return (
+      <p className="rounded-xl border border-corporate-border bg-white px-4 py-8 text-center text-sm text-corporate-muted">
+        {LIST_SEARCH_EMPTY_MESSAGE}
+      </p>
+    );
+  }
+
+  return (
+    <UniversalMasterListTable>
+      <thead className={MASTER_LIST_HEAD_CLASS}>
+        <tr>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Account Name</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Entry #</th>
+          <th className={MASTER_LIST_HEADER_CELL_CLASS}>Date</th>
+          <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Debit</th>
+          <th className={MASTER_LIST_HEADER_CELL_RIGHT_CLASS}>Credit</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filteredRecords.map((row) => (
+          <UniversalMasterListRow key={row.id} onEdit={() => onOpenDetail(row)}>
+            <UniversalMasterListNameCell
+              name={row.primaryAccountName}
+              onEdit={() => onOpenDetail(row)}
+            />
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.entryNumber}</td>
+            <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.entryDate}</td>
+            <td className={`${MASTER_LIST_BODY_CELL_CLASS} text-right`}>
+              {formatCurrency(row.totalDebit)}
+            </td>
+            <td className={`${MASTER_LIST_BODY_CELL_CLASS} text-right`}>
+              {formatCurrency(row.totalCredit)}
+            </td>
+          </UniversalMasterListRow>
+        ))}
+      </tbody>
+    </UniversalMasterListTable>
   );
 }

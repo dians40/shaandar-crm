@@ -7,30 +7,48 @@ export type LayerFilterControlsProps = {
   fromDate: string;
   toDate: string;
   searchQuery: string;
+  departmentFilter?: string;
+  designationFilter?: string;
+  departmentOptions?: string[];
+  designationOptions?: string[];
   onFromDateChange: (value: string) => void;
   onToDateChange: (value: string) => void;
   onSearchChange: (value: string) => void;
+  onDepartmentFilterChange?: (value: string) => void;
+  onDesignationFilterChange?: (value: string) => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
   summary?: string;
   searchPlaceholder?: string;
   idPrefix?: string;
+  showDepartmentDesignationFilters?: boolean;
 };
 
 export default function LayerFilterControls({
   fromDate,
   toDate,
   searchQuery,
+  departmentFilter = "",
+  designationFilter = "",
+  departmentOptions = [],
+  designationOptions = [],
   onFromDateChange,
   onToDateChange,
   onSearchChange,
+  onDepartmentFilterChange,
+  onDesignationFilterChange,
   onRefresh,
   isRefreshing = false,
   summary,
   searchPlaceholder = "Search records...",
   idPrefix = "layer-filter",
+  showDepartmentDesignationFilters = true,
 }: LayerFilterControlsProps) {
   const hasDateFilter = Boolean(fromDate || toDate);
+  const hasExtendedFilter = Boolean(departmentFilter || designationFilter);
+  const showExtendedFilters =
+    showDepartmentDesignationFilters &&
+    Boolean(onDepartmentFilterChange && onDesignationFilterChange);
 
   return (
     <section
@@ -105,16 +123,66 @@ export default function LayerFilterControls({
           </div>
         </label>
 
-        {hasDateFilter && (
+        {showExtendedFilters && (
+          <>
+            <label
+              htmlFor={`${idPrefix}-department`}
+              className="flex min-w-[180px] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-corporate-muted"
+            >
+              Department
+              <select
+                id={`${idPrefix}-department`}
+                value={departmentFilter}
+                onChange={(event) => onDepartmentFilterChange?.(event.target.value)}
+                className="h-10 rounded-lg border border-corporate-border bg-white px-3 text-sm font-normal normal-case text-corporate-text shadow-sm"
+              >
+                <option value="">All Departments</option>
+                {departmentOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label
+              htmlFor={`${idPrefix}-designation`}
+              className="flex min-w-[180px] flex-col gap-1 text-xs font-semibold uppercase tracking-wide text-corporate-muted"
+            >
+              Designation
+              <select
+                id={`${idPrefix}-designation`}
+                value={designationFilter}
+                onChange={(event) => onDesignationFilterChange?.(event.target.value)}
+                className="h-10 rounded-lg border border-corporate-border bg-white px-3 text-sm font-normal normal-case text-corporate-text shadow-sm"
+              >
+                <option value="">All Designations</option>
+                {designationOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </>
+        )}
+
+        {(hasDateFilter || hasExtendedFilter) && (
           <button
             type="button"
             onClick={() => {
-              onFromDateChange("");
-              onToDateChange("");
+              if (hasDateFilter) {
+                onFromDateChange("");
+                onToDateChange("");
+              }
+              if (hasExtendedFilter) {
+                onDepartmentFilterChange?.("");
+                onDesignationFilterChange?.("");
+              }
             }}
             className="h-10 rounded-lg border border-corporate-border bg-white px-4 text-sm font-medium text-corporate-text hover:bg-corporate-bg"
           >
-            Clear Dates
+            Clear Filters
           </button>
         )}
       </div>

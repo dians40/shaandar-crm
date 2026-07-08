@@ -26,6 +26,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 import {
   EMPTY_ACCOUNT_FORM,
@@ -58,20 +59,6 @@ export default function AccountsManagementPanel() {
     () => accounts.find((row) => row.id === viewingId) ?? null,
     [accounts, viewingId]
   );
-  const filteredAccounts = useMemo(
-    () =>
-      accounts.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.name, [
-          row.id,
-          row.groupName,
-          row.gstNumber,
-          row.panNumber,
-          row.mobileNumber,
-        ])
-      ),
-    [accounts, searchQuery]
-  );
-
   const resetForm = () => {
     setForm(EMPTY_ACCOUNT_FORM);
     setEditingId(null);
@@ -441,54 +428,102 @@ export default function AccountsManagementPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {accounts.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <Landmark className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  No accounts yet. Click Add to create one.
-                </td>
-              </tr>
-            ) : filteredAccounts.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  {LIST_SEARCH_EMPTY_MESSAGE}
-                </td>
-              </tr>
-            ) : (
-              filteredAccounts.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.name}
-                    onEdit={() => openEdit(row)}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.groupName}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    ₹{row.openingBalanceAmount.toLocaleString("en-IN")} {row.openingBalanceType}
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>
-                    {row.billByBillBalancing ? "Yes" : "No"}
-                  </td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.creditDays}</td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => openView(row)}
-                      onEdit={() => openEdit(row)}
-                      extra={
-                        <MasterRemoveOrProtected
-                          canRemove={
-                            !checkUsedInTransactions("account", row.id, row.name)
-                          }
-                          onRemove={() => handleRemove(row)}
-                        />
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <AccountsListBody
+              accounts={accounts}
+              onEdit={openEdit}
+              onView={openView}
+              onRemove={handleRemove}
+              checkUsedInTransactions={checkUsedInTransactions}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+type AccountsListBodyProps = {
+  accounts: AccountRecord[];
+  onEdit: (record: AccountRecord) => void;
+  onView: (record: AccountRecord) => void;
+  onRemove: (record: AccountRecord) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+};
+
+function AccountsListBody({
+  accounts,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: AccountsListBodyProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredAccounts = useMemo(
+    () =>
+      accounts.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.name,
+          [row.id, row.groupName, row.gstNumber, row.panNumber, row.mobileNumber],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [accounts, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (accounts.length === 0) {
+    return (
+      <tr>
+        <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <Landmark className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          No accounts yet. Click Add to create one.
+        </td>
+      </tr>
+    );
+  }
+
+  if (filteredAccounts.length === 0) {
+    return (
+      <tr>
+        <td colSpan={6} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          {LIST_SEARCH_EMPTY_MESSAGE}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filteredAccounts.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell name={row.name} onEdit={() => onEdit(row)} />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.groupName}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            ₹{row.openingBalanceAmount.toLocaleString("en-IN")} {row.openingBalanceType}
+          </td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>
+            {row.billByBillBalancing ? "Yes" : "No"}
+          </td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.creditDays}</td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              extra={
+                <MasterRemoveOrProtected
+                  canRemove={!checkUsedInTransactions("account", row.id, row.name)}
+                  onRemove={() => onRemove(row)}
+                />
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

@@ -21,6 +21,7 @@ import {
   UniversalMasterListRow,
   UniversalMasterListShell,
   UniversalMasterListTable,
+  useMasterListFilters,
 } from "./universal-master-list";
 
 type ViewMode = "list" | "add" | "edit" | "detail";
@@ -38,19 +39,6 @@ export default function GodownManagementPanel() {
   const viewingRecord = useMemo(
     () => godowns.find((row) => row.id === viewingId) ?? null,
     [godowns, viewingId]
-  );
-
-  const filteredGodowns = useMemo(
-    () =>
-      godowns.filter((row) =>
-        matchesUniversalNameSearch(searchQuery, row.name, [
-          row.id,
-          row.code,
-          row.city,
-          row.managerName,
-        ])
-      ),
-    [godowns, searchQuery]
   );
 
   const resetForm = () => {
@@ -292,51 +280,99 @@ export default function GodownManagementPanel() {
             </tr>
           </thead>
           <tbody className="divide-y divide-corporate-border">
-            {godowns.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  <Warehouse className="mx-auto mb-2 h-6 w-6 opacity-60" />
-                  No godowns yet. Use Add Godown to create one.
-                </td>
-              </tr>
-            ) : filteredGodowns.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
-                  {LIST_SEARCH_EMPTY_MESSAGE}
-                </td>
-              </tr>
-            ) : (
-              filteredGodowns.map((row) => (
-                <UniversalMasterListRow key={row.id} onEdit={() => openEdit(row)}>
-                  <UniversalMasterListNameCell
-                    name={row.name}
-                    onEdit={() => openEdit(row)}
-                  />
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.code}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.city || "—"}</td>
-                  <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.managerName || "—"}</td>
-                  <UniversalMasterListActionsCell>
-                    <ModuleListActionGroup
-                      onView={() => openView(row)}
-                      onEdit={() => openEdit(row)}
-                      editLabel="Edit Godown"
-                      extra={
-                        <MasterRemoveOrProtected
-                          canRemove={
-                            !checkUsedInTransactions("godown", row.id, row.name)
-                          }
-                          onRemove={() => handleRemove(row)}
-                          label="Remove Godown"
-                        />
-                      }
-                    />
-                  </UniversalMasterListActionsCell>
-                </UniversalMasterListRow>
-              ))
-            )}
+            <GodownListBody
+              godowns={godowns}
+              onEdit={openEdit}
+              onView={openView}
+              onRemove={handleRemove}
+              checkUsedInTransactions={checkUsedInTransactions}
+            />
           </tbody>
         </UniversalMasterListTable>
       </UniversalMasterListShell>
+    </>
+  );
+}
+
+type GodownListBodyProps = {
+  godowns: GodownRecord[];
+  onEdit: (record: GodownRecord) => void;
+  onView: (record: GodownRecord) => void;
+  onRemove: (record: GodownRecord) => void;
+  checkUsedInTransactions: ReturnType<typeof useMasterDeletionGuard>["checkUsedInTransactions"];
+};
+
+function GodownListBody({
+  godowns,
+  onEdit,
+  onView,
+  onRemove,
+  checkUsedInTransactions,
+}: GodownListBodyProps) {
+  const { searchQuery, departmentFilter, designationFilter } = useMasterListFilters();
+  const filteredGodowns = useMemo(
+    () =>
+      godowns.filter((row) =>
+        matchesUniversalNameSearch(
+          searchQuery,
+          row.name,
+          [row.id, row.code, row.city, row.managerName],
+          {
+            departmentFilter,
+            designationFilter,
+            skipDepartmentIfAbsent: true,
+            skipDesignationIfAbsent: true,
+          }
+        )
+      ),
+    [godowns, searchQuery, departmentFilter, designationFilter]
+  );
+
+  if (godowns.length === 0) {
+    return (
+      <tr>
+        <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          <Warehouse className="mx-auto mb-2 h-6 w-6 opacity-60" />
+          No godowns yet. Use Add Godown to create one.
+        </td>
+      </tr>
+    );
+  }
+
+  if (filteredGodowns.length === 0) {
+    return (
+      <tr>
+        <td colSpan={5} className="px-4 py-10 text-center text-sm text-corporate-muted">
+          {LIST_SEARCH_EMPTY_MESSAGE}
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <>
+      {filteredGodowns.map((row) => (
+        <UniversalMasterListRow key={row.id} onEdit={() => onEdit(row)}>
+          <UniversalMasterListNameCell name={row.name} onEdit={() => onEdit(row)} />
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.code}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.city || "—"}</td>
+          <td className={MASTER_LIST_BODY_CELL_CLASS}>{row.managerName || "—"}</td>
+          <UniversalMasterListActionsCell>
+            <ModuleListActionGroup
+              onView={() => onView(row)}
+              onEdit={() => onEdit(row)}
+              editLabel="Edit Godown"
+              extra={
+                <MasterRemoveOrProtected
+                  canRemove={!checkUsedInTransactions("godown", row.id, row.name)}
+                  onRemove={() => onRemove(row)}
+                  label="Remove Godown"
+                />
+              }
+            />
+          </UniversalMasterListActionsCell>
+        </UniversalMasterListRow>
+      ))}
     </>
   );
 }

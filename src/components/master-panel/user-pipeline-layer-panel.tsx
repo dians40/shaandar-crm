@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
+import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
+import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
+import { useGeneralSettings } from "@/hooks/use-general-settings";
 import { cn } from "@/lib/utils";
 import {
   migrateLegacyUsersToSavedStage,
@@ -41,10 +44,20 @@ export default function UserPipelineLayerPanel({
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [departmentFilter, setDepartmentFilter] = useState("");
+  const [designationFilter, setDesignationFilter] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const { departmentNames } = useGeneralSettings();
+
+  const filterDepartmentOptions = useMemo(
+    () => mergeDepartmentOptions([], departmentNames),
+    [departmentNames]
+  );
+
+  const filterDesignationOptions = useMemo(() => mergeDesignationOptions([]), []);
 
   const loadRows = useCallback(() => {
     setLoading(true);
@@ -55,12 +68,14 @@ export default function UserPipelineLayerPanel({
           fromDate,
           toDate,
           search: searchQuery,
+          department: departmentFilter,
+          designation: designationFilter,
         })
       );
     } finally {
       setLoading(false);
     }
-  }, [stage, fromDate, toDate, searchQuery]);
+  }, [stage, fromDate, toDate, searchQuery, departmentFilter, designationFilter]);
 
   useEffect(() => {
     loadRows();
@@ -147,9 +162,15 @@ export default function UserPipelineLayerPanel({
         fromDate={fromDate}
         toDate={toDate}
         searchQuery={searchQuery}
+        departmentFilter={departmentFilter}
+        designationFilter={designationFilter}
+        departmentOptions={filterDepartmentOptions}
+        designationOptions={filterDesignationOptions}
         onFromDateChange={setFromDate}
         onToDateChange={setToDate}
         onSearchChange={setSearchQuery}
+        onDepartmentFilterChange={setDepartmentFilter}
+        onDesignationFilterChange={setDesignationFilter}
         onRefresh={loadRows}
         isRefreshing={loading}
         summary={`${rows.length} user record(s) at ${stage}`}

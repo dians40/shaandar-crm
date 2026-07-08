@@ -12,7 +12,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { extractDocumentFiles } from "@/lib/form-data-utils";
 import { uploadEmployeeDocuments } from "@/lib/supabase/upload-documents";
 import {
-  employeeSchemaHint,
+  appendEmployeeSchemaHint,
   updateEmployeeWithFirmColumnFallback,
 } from "@/lib/employee-firm-columns";
 import { ensureEmployeeFirmColumnsSchema } from "@/lib/employee-schema-ensure";
@@ -132,12 +132,10 @@ export async function PUT(request: Request, context: RouteContext) {
     );
 
     if (updateError) {
-      const hint =
-        updateError.message.includes("column") ||
-        updateError.message.includes("schema cache")
-          ? employeeSchemaHint()
-          : "";
-      return NextResponse.json({ error: updateError.message + hint }, { status: 500 });
+      return NextResponse.json(
+        { error: appendEmployeeSchemaHint(updateError.message) },
+        { status: 500 }
+      );
     }
 
     const { data: employee, error: fetchError } = await supabase

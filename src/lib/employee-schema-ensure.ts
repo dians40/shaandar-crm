@@ -3,12 +3,13 @@ import path from "path";
 import { resolveDatabaseUrl } from "@/lib/database-url";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import {
-  isEmployeeSchemaCacheError,
   employeeSchemaHint,
+  isEmployeeSchemaCacheError,
 } from "@/lib/employee-firm-columns";
 
 const MIGRATION_FILES = [
   "004_employee_overtime_hourly_rate.sql",
+  "005_employee_firm_contractor.sql",
   "006_employee_unified_assignment_status.sql",
   "016_employee_firm_head_pf_firm.sql",
   "017_employee_schema_cache_sync.sql",
@@ -34,7 +35,7 @@ export async function checkEmployeeFirmColumnsReady(): Promise<{
     const { error } = await supabase
       .from("employees")
       .select(
-        "assigned_from_group, esi_status, pf_status, assigned_firm_group, pf_active_firm, overtime_hourly_rate"
+        "assigned_from_group, assigned_firm, assigned_contractor, esi_status, pf_status, assigned_firm_group, pf_active_firm, overtime_hourly_rate"
       )
       .limit(1);
 

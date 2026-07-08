@@ -11,7 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { extractDocumentFiles } from "@/lib/form-data-utils";
 import { uploadEmployeeDocuments } from "@/lib/supabase/upload-documents";
 import {
-  employeeSchemaHint,
+  appendEmployeeSchemaHint,
   insertEmployeeWithFirmColumnFallback,
 } from "@/lib/employee-firm-columns";
 import { ensureEmployeeFirmColumnsSchema } from "@/lib/employee-schema-ensure";
@@ -127,11 +127,10 @@ export async function POST(request: Request) {
 
     if (insertError || !inserted) {
       const msg = insertError?.message ?? "Failed to create employee.";
-      const hint =
-        msg.includes("column") || msg.includes("schema cache")
-          ? employeeSchemaHint()
-          : "";
-      return NextResponse.json({ error: msg + hint }, { status: 500 });
+      return NextResponse.json(
+        { error: appendEmployeeSchemaHint(msg) },
+        { status: 500 }
+      );
     }
 
     const documentFiles = extractDocumentFiles(formData);

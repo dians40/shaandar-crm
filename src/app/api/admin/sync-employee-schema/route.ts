@@ -8,7 +8,7 @@ import {
 } from "@/lib/employee-schema-ensure";
 
 /**
- * Employee firm-column schema sync for migration 016.
+ * Employee schema sync (migrations 004–017 bundle).
  * Requires DATABASE_URL or SUPABASE_DB_URL in server environment.
  * POST /api/admin/sync-employee-schema
  */

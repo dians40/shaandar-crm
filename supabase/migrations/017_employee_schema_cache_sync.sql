@@ -7,6 +7,8 @@
 -- ============================================================================
 
 ALTER TABLE public.employees
+  ADD COLUMN IF NOT EXISTS assigned_firm TEXT,
+  ADD COLUMN IF NOT EXISTS assigned_contractor TEXT,
   ADD COLUMN IF NOT EXISTS assigned_from_group TEXT,
   ADD COLUMN IF NOT EXISTS esi_status TEXT,
   ADD COLUMN IF NOT EXISTS pf_status TEXT,
@@ -39,6 +41,12 @@ END $$;
 
 COMMENT ON COLUMN public.employees.assigned_from_group IS
   'Unified firm or contractor group assignment';
+
+COMMENT ON COLUMN public.employees.assigned_firm IS
+  'Legacy firm assignment column (fallback when assigned_from_group unavailable)';
+
+COMMENT ON COLUMN public.employees.assigned_contractor IS
+  'Legacy contractor assignment column (fallback when assigned_from_group unavailable)';
 
 COMMENT ON COLUMN public.employees.assigned_firm_group IS
   'Firm or head profile when ESI status is Active';

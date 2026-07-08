@@ -4,17 +4,70 @@ import type { EmployeeInsert } from "@/types/employee-db";
 
 const SCHEMA_COLUMN_PATTERN = /could not find the '([^']+)' column/i;
 
-/** Columns introduced after the base employees table — may be absent on older DBs. */
+/** Columns that may be absent on older DBs or stale PostgREST caches — safe to omit on retry. */
 const OPTIONAL_EMPLOYEE_COLUMNS = new Set([
   "assigned_from_group",
+  "assigned_firm",
+  "assigned_contractor",
   "esi_status",
   "pf_status",
+  "esi_enabled",
+  "pf_enabled",
   "assigned_firm_group",
   "pf_active_firm",
   "firm_head_profile",
   "pf_firm",
   "overtime_hourly_rate",
 ]);
+
+type LegacyRedirect = (payload: Record<string, unknown>) => Record<string, unknown>;
+
+const LEGACY_COLUMN_REDIRECTS: Record<string, LegacyRedirect> = {
+  assigned_from_group: (payload) => {
+    const next = { ...payload };
+    if ("assigned_from_group" in next && next.assigned_from_group != null) {
+      const { assignedFirm, assignedContractor } = splitAssignedFromGroup(
+        String(next.assigned_from_group)
+      );
+      if (assignedFirm) next.assigned_firm = assignedFirm;
+      if (assignedContractor) next.assigned_contractor = assignedContractor;
+      delete next.assigned_from_group;
+    }
+    return next;
+  },
+  esi_status: (payload) => {
+    const next = { ...payload };
+    if ("esi_status" in next) {
+      next.esi_enabled = next.esi_status === "Active";
+      delete next.esi_status;
+    }
+    return next;
+  },
+  pf_status: (payload) => {
+    const next = { ...payload };
+    if ("pf_status" in next) {
+      next.pf_enabled = next.pf_status === "Active";
+      delete next.pf_status;
+    }
+    return next;
+  },
+  assigned_firm_group: (payload) => {
+    const next = { ...payload };
+    if (next.assigned_firm_group) {
+      next.firm_head_profile = next.assigned_firm_group;
+    }
+    delete next.assigned_firm_group;
+    return next;
+  },
+  pf_active_firm: (payload) => {
+    const next = { ...payload };
+    if (next.pf_active_firm) {
+      next.pf_firm = next.pf_active_firm;
+    }
+    delete next.pf_active_firm;
+    return next;
+  },
+};
 
 export function isEmployeeSchemaCacheError(message: string): boolean {
   const lower = message.toLowerCase();
@@ -38,9 +91,23 @@ export function parseMissingEmployeeColumn(message: string): string | null {
 export function employeeSchemaHint(): string {
   return (
     " Run supabase/migrations/017_employee_schema_cache_sync.sql in the Supabase SQL Editor " +
-    "(adds assigned_from_group, esi_status, pf_status, assigned_firm_group, pf_active_firm, overtime_hourly_rate and reloads PostgREST), " +
+    "(adds assigned_from_group, assigned_firm, assigned_contractor, esi_status, pf_status, " +
+    "assigned_firm_group, pf_active_firm, overtime_hourly_rate and reloads PostgREST), " +
     "or POST /api/admin/sync-employee-schema when DATABASE_URL is configured."
   );
+}
+
+export function appendEmployeeSchemaHint(message: string): string {
+  if (
+    message.includes("017_employee_schema_cache_sync") ||
+    message.includes("/api/admin/sync-employee-schema")
+  ) {
+    return message;
+  }
+  if (isEmployeeSchemaCacheError(message)) {
+    return message + employeeSchemaHint();
+  }
+  return message;
 }
 
 /** @deprecated Use employeeSchemaHint */
@@ -52,44 +119,6 @@ function toRecord(insert: EmployeeInsert): Record<string, unknown> {
   return { ...insert };
 }
 
-function applyLegacyEmployeeColumnMappings(
-  payload: Record<string, unknown>
-): Record<string, unknown> {
-  const next = { ...payload };
-
-  if ("assigned_from_group" in next && next.assigned_from_group != null) {
-    const { assignedFirm, assignedContractor } = splitAssignedFromGroup(
-      String(next.assigned_from_group)
-    );
-    if (assignedFirm) next.assigned_firm = assignedFirm;
-    if (assignedContractor) next.assigned_contractor = assignedContractor;
-    delete next.assigned_from_group;
-  }
-
-  if ("esi_status" in next) {
-    next.esi_enabled = next.esi_status === "Active";
-    delete next.esi_status;
-  }
-
-  if ("pf_status" in next) {
-    next.pf_enabled = next.pf_status === "Active";
-    delete next.pf_status;
-  }
-
-  if ("assigned_firm_group" in next || "pf_active_firm" in next) {
-    if (next.assigned_firm_group) {
-      next.firm_head_profile = next.assigned_firm_group;
-    }
-    if (next.pf_active_firm) {
-      next.pf_firm = next.pf_active_firm;
-    }
-    delete next.assigned_firm_group;
-    delete next.pf_active_firm;
-  }
-
-  return next;
-}
-
 async function writeEmployeePayloadResilient(
   supabase: SupabaseClient,
   payload: Record<string, unknown>,
@@ -97,9 +126,9 @@ async function writeEmployeePayloadResilient(
   id?: string
 ): Promise<{ data: { id: string } | null; error: { message: string } | null }> {
   let current = { ...payload };
-  let legacyMapped = false;
+  const legacyRedirectAttempted = new Set<string>();
 
-  for (let attempt = 0; attempt < 24; attempt++) {
+  for (let attempt = 0; attempt < 32; attempt++) {
     const result =
       mode === "insert"
         ? await supabase.from("employees").insert(current).select("id").single()
@@ -119,24 +148,28 @@ async function writeEmployeePayloadResilient(
     }
 
     const missingColumn = parseMissingEmployeeColumn(message);
+    if (missingColumn && missingColumn in current) {
+      const redirect = LEGACY_COLUMN_REDIRECTS[missingColumn];
+      if (redirect && !legacyRedirectAttempted.has(missingColumn)) {
+        legacyRedirectAttempted.add(missingColumn);
+        current = redirect(current);
+        continue;
+      }
 
-    // Map to legacy columns before dropping values (prevents losing assigned_from_group).
-    if (!legacyMapped) {
-      current = applyLegacyEmployeeColumnMappings(current);
-      legacyMapped = true;
-      continue;
-    }
-
-    if (missingColumn && missingColumn in current && OPTIONAL_EMPLOYEE_COLUMNS.has(missingColumn)) {
-      delete current[missingColumn];
-      continue;
+      if (OPTIONAL_EMPLOYEE_COLUMNS.has(missingColumn)) {
+        delete current[missingColumn];
+        if (missingColumn === "assigned_firm") delete current.assigned_contractor;
+        if (missingColumn === "assigned_contractor") delete current.assigned_firm;
+        continue;
+      }
     }
 
     return {
       data: null,
       error: {
-        message:
-          `Employee save blocked by database schema cache (${message}).` + employeeSchemaHint(),
+        message: appendEmployeeSchemaHint(
+          `Employee save blocked by database schema cache (${message}).`
+        ),
       },
     };
   }
@@ -144,7 +177,9 @@ async function writeEmployeePayloadResilient(
   return {
     data: null,
     error: {
-      message: "Employee save failed after schema fallbacks exhausted." + employeeSchemaHint(),
+      message: appendEmployeeSchemaHint(
+        "Employee save failed after schema fallbacks exhausted."
+      ),
     },
   };
 }

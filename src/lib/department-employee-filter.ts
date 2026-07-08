@@ -38,3 +38,11 @@ export function resolveEmployeeWage(employee: EmployeeListItem): number {
   }
   return 0;
 }
+
+/** Fixed overtime amount / rate configured on the employee master profile. */
+export function resolveEmployeeOvertimeAmount(
+  employee: Pick<EmployeeListItem, "overtimeHourlyRate"> | null | undefined
+): number {
+  const amount = employee?.overtimeHourlyRate;
+  return amount != null && amount > 0 ? amount : 0;
+}

@@ -8,6 +8,9 @@ import { useEmployees } from "@/hooks/use-employees";
 import { useGeneralSettings } from "@/hooks/use-general-settings";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
 import { useOvertimeRecords } from "@/hooks/use-overtime";
+import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
+import { resolveEmployeeOvertimeAmount } from "@/lib/department-employee-filter";
+import { fetchEmployee } from "@/lib/employees-api";
 import { splitAssignedFromGroup } from "@/lib/employee-assigned-from";
 import {
   LIST_SEARCH_EMPTY_MESSAGE,
@@ -52,8 +55,6 @@ import {
   useMasterListFilters,
 } from "./universal-master-list";
 
-const DEPARTMENT_CUSTOM_VALUE = "__custom_department__";
-
 const OVERTIME_LAYER_TABS: OvertimePipelineStage[] = [
   OVERTIME_PIPELINE_STAGES.LAYER_2_STAGING,
   OVERTIME_PIPELINE_STAGES.LAYER_3_WORKFLOW,
@@ -69,9 +70,10 @@ function resolveContractorFromEmployee(assignedFromGroup: string): string {
 export default function OvertimeTrackerPanel() {
   const { employees, isLoading: employeesLoading } = useEmployees();
   const {
-    departmentOptions,
+    departmentNames,
     overtimeReasonOptions,
     isReady: settingsReady,
+    reloadDepartments,
   } = useGeneralSettings();
   const {
     records,
@@ -95,8 +97,6 @@ export default function OvertimeTrackerPanel() {
   const [payslipId, setPayslipId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(EMPTY_OVERTIME_FORM);
-  const [departmentSelect, setDepartmentSelect] = useState("");
-  const [customDepartment, setCustomDepartment] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [viewingId, setViewingId] = useState<string | null>(null);
@@ -161,17 +161,32 @@ export default function OvertimeTrackerPanel() {
   );
 
   const departmentSelectOptions = useMemo(() => {
-    const masterLabels = departmentOptions.map((option) => option.label);
-    return [
-      ...masterLabels.map((label) => ({ value: label, label })),
-      { value: DEPARTMENT_CUSTOM_VALUE, label: "Other / type manually" },
-    ];
-  }, [departmentOptions]);
+    const selectedEmployee = employees.find((row) => row.id === form.employeeId);
+    const employeeDepartment =
+      selectedEmployee?.machineAssignment && selectedEmployee.machineAssignment !== "—"
+        ? selectedEmployee.machineAssignment
+        : "";
+    const merged = mergeDepartmentOptions(
+      [form.assignedMachine, employeeDepartment].filter(Boolean),
+      departmentNames
+    );
+    return merged.map((name) => ({ value: name, label: name }));
+  }, [departmentNames, employees, form.assignedMachine, form.employeeId]);
 
-  const applySelectedEmployee = (employeeId: string, employeeName: string) => {
+  const applySelectedEmployee = (
+    employeeId: string,
+    employeeName: string,
+    fixedOvertimeAmount?: number
+  ) => {
     const employee = employees.find((row) => row.id === employeeId);
     const contractor = resolveContractorFromEmployee(employee?.assignedFromGroup ?? "");
-    const hourlyRate = employee?.overtimeHourlyRate ?? 0;
+    const overtimeAmount =
+      fixedOvertimeAmount ?? resolveEmployeeOvertimeAmount(employee);
+    const employeeDepartment =
+      employee?.machineAssignment && employee.machineAssignment !== "—"
+        ? employee.machineAssignment
+        : "";
+
     setForm((prev) => {
       const hours = resolvePayrollTotalHours({
         shiftType: prev.shiftType,
@@ -183,11 +198,12 @@ export default function OvertimeTrackerPanel() {
         employeeId,
         employeeName,
         assignedFromGroup: contractor,
+        assignedMachine: employeeDepartment || prev.assignedMachine,
         amountPaidToday:
-          hourlyRate > 0
+          overtimeAmount > 0
             ? hours > 0
-              ? calculateOvertimePayout(hours, hourlyRate)
-              : hourlyRate
+              ? calculateOvertimePayout(hours, overtimeAmount)
+              : overtimeAmount
             : prev.amountPaidToday,
       };
     });
@@ -201,6 +217,10 @@ export default function OvertimeTrackerPanel() {
   };
 
   useEffect(() => {
+    void reloadDepartments();
+  }, [reloadDepartments]);
+
+  useEffect(() => {
     if (!form.employeeId || selectedEmployeeRate <= 0) return;
     setForm((prev) => ({
       ...prev,
@@ -211,26 +231,8 @@ export default function OvertimeTrackerPanel() {
     }));
   }, [form.employeeId, selectedEmployeeRate, totalHours]);
 
-  const syncDepartmentFields = (assignedMachine: string) => {
-    const knownValues = departmentSelectOptions.map((option) => option.value);
-    if (!assignedMachine) {
-      setDepartmentSelect("");
-      setCustomDepartment("");
-      return;
-    }
-    if (knownValues.includes(assignedMachine)) {
-      setDepartmentSelect(assignedMachine);
-      setCustomDepartment("");
-      return;
-    }
-    setDepartmentSelect(DEPARTMENT_CUSTOM_VALUE);
-    setCustomDepartment(assignedMachine);
-  };
-
   const resetForm = () => {
     setForm(EMPTY_OVERTIME_FORM);
-    setDepartmentSelect("");
-    setCustomDepartment("");
     setEditingId(null);
     setError(null);
   };
@@ -279,30 +281,31 @@ export default function OvertimeTrackerPanel() {
       supervisorApprovedBy: record.supervisorApprovedBy,
       attachmentPhotos: record.attachmentPhotos,
     });
-    syncDepartmentFields(record.assignedMachine);
     setView("edit");
   };
 
-  const handleEmployeeChange = (employeeId: string) => {
+  const handleEmployeeChange = async (employeeId: string) => {
     const employee = employees.find((row) => row.id === employeeId);
-    applySelectedEmployee(employeeId, employee?.name ?? "");
+    let fixedOvertimeAmount = resolveEmployeeOvertimeAmount(employee);
+
+    if (employeeId && fixedOvertimeAmount <= 0) {
+      try {
+        const fullProfile = await fetchEmployee(employeeId);
+        fixedOvertimeAmount = Number(fullProfile.bankAndSalary.overtimeHourlyRate) || 0;
+      } catch {
+        /* list row remains fallback */
+      }
+    }
+
+    applySelectedEmployee(employeeId, employee?.name ?? "", fixedOvertimeAmount);
   };
 
-  const handleDepartmentSelectChange = (value: string) => {
-    setDepartmentSelect(value);
-    if (value === DEPARTMENT_CUSTOM_VALUE) {
-      setForm((prev) => ({ ...prev, assignedMachine: customDepartment }));
-      return;
-    }
-    setCustomDepartment("");
+  const handleDepartmentChange = (value: string) => {
     setForm((prev) => ({ ...prev, assignedMachine: value }));
   };
 
   const handleSave = () => {
-    const resolvedDepartment =
-      departmentSelect === DEPARTMENT_CUSTOM_VALUE
-        ? customDepartment.trim()
-        : form.assignedMachine.trim();
+    const resolvedDepartment = form.assignedMachine.trim();
 
     const shiftTimeError = validatePayrollShiftOrTime({
       shiftType: form.shiftType,
@@ -576,8 +579,10 @@ export default function OvertimeTrackerPanel() {
               required
               readOnly={selectedEmployeeRate > 0 && totalHours > 0}
               value={String(
-                selectedEmployeeRate > 0 && totalHours > 0
-                  ? autoOvertimePayout
+                selectedEmployeeRate > 0
+                  ? totalHours > 0
+                    ? autoOvertimePayout
+                    : form.amountPaidToday || selectedEmployeeRate
                   : form.amountPaidToday
               )}
               onChange={(e) =>
@@ -585,31 +590,22 @@ export default function OvertimeTrackerPanel() {
               }
               hint={
                 selectedEmployeeRate > 0
-                  ? `Default from Employee Master OT rate ₹${selectedEmployeeRate}/hr${
-                      totalHours > 0 ? ` × ${totalHours} hr` : ""
+                  ? `Auto-filled from Employee Master fixed OT amount ₹${selectedEmployeeRate}${
+                      totalHours > 0 ? ` × ${totalHours} hr` : " on selection"
                     }`
                   : "Set Overtime Hourly Rate in Employee Master or enter amount manually"
               }
             />
             <SelectInput
-              label="Assigned Department"
-              value={departmentSelect}
-              placeholder="Select department"
-              onChange={(e) => handleDepartmentSelectChange(e.target.value)}
+              label="Assign Department"
+              value={form.assignedMachine}
+              placeholder={
+                settingsReady ? "Select department" : "Loading departments..."
+              }
+              onChange={(e) => handleDepartmentChange(e.target.value)}
               options={departmentSelectOptions}
-              hint="Dynamic options from General Settings — Department master"
+              hint="Live departments from master list and attendance Excel uploads"
             />
-            {departmentSelect === DEPARTMENT_CUSTOM_VALUE && (
-              <TextInput
-                label="Department name (manual entry)"
-                value={customDepartment}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setCustomDepartment(value);
-                  setForm((prev) => ({ ...prev, assignedMachine: value }));
-                }}
-              />
-            )}
             <SearchableSelectInput
               id="overtime-substitute"
               label="Substitute For"

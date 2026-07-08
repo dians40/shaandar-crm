@@ -62,6 +62,7 @@ export function createAutoProvisionedEmployee(
     assignedFromGroup: "Excel Auto-Import",
     esiStatus: "Non-Active",
     pfStatus: "Non-Active",
+    salaryBasis: "",
     hasAttendanceRecords: false,
     overtimeHourlyRate: null,
   };

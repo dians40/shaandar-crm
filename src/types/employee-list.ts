@@ -14,6 +14,7 @@ export type EmployeeListItem = {
   assignedFromGroup: string;
   esiStatus: StatutoryStatus;
   pfStatus: StatutoryStatus;
+  salaryBasis: string;
   hasAttendanceRecords: boolean;
   overtimeHourlyRate: number | null;
 };

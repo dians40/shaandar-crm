@@ -5,26 +5,20 @@ export const LEGACY_EMPLOYEE_TYPES = ["Contractor", "Regular", "Temporary"] as c
 export type LegacyEmployeeType = (typeof LEGACY_EMPLOYEE_TYPES)[number];
 
 export const SALARY_BASIS_BY_TYPE: Record<LegacyEmployeeType, SalaryBasis[]> = {
-  Contractor: ["Contract-based", "Daily", "Weekly", "Monthly"],
-  Regular: ["Branch Salary", "Monthly", "Weekly"],
-  Temporary: ["Daily", "Weekly", "Monthly"],
+  Contractor: ["Daily"],
+  Regular: ["Daily"],
+  Temporary: ["Daily"],
 };
 
-export const DEFAULT_SALARY_BASIS_OPTIONS: SalaryBasis[] = [
-  "Branch Salary",
-  "Daily",
-  "Weekly",
-  "Monthly",
-  "Contract-based",
-];
+export const DEFAULT_SALARY_BASIS_OPTIONS: SalaryBasis[] = ["Daily"];
+
+export const EMPLOYEE_FORM_SALARY_BASIS_OPTIONS: SalaryBasis[] = ["Daily"];
 
 export function getSalaryBasisOptionsForEmployeeType(
   employeeType: string
 ): SalaryBasis[] {
-  if (employeeType in SALARY_BASIS_BY_TYPE) {
-    return SALARY_BASIS_BY_TYPE[employeeType as LegacyEmployeeType];
-  }
-  return DEFAULT_SALARY_BASIS_OPTIONS;
+  void employeeType;
+  return EMPLOYEE_FORM_SALARY_BASIS_OPTIONS;
 }
 
 export const MACHINE_OPTIONS = [

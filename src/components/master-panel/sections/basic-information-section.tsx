@@ -72,16 +72,10 @@ export default function BasicInformationSection({
   };
 
   const handleEmployeeTypeChange = (employeeType: string) => {
-    const validOptions = employeeType
-      ? getSalaryBasisOptionsForEmployeeType(employeeType)
-      : [];
-    const validSalary =
-      employeeType && validOptions.includes(data.salaryBasis as SalaryBasis);
-
     onChange({
       ...data,
       employeeType,
-      salaryBasis: validSalary ? data.salaryBasis : "",
+      salaryBasis: employeeType ? "Daily" : "",
     });
   };
 
@@ -311,11 +305,7 @@ export default function BasicInformationSection({
             placeholder={
               data.employeeType ? "Select salary basis" : "Select employee type first"
             }
-            hint={
-              data.employeeType
-                ? "Options filtered based on selected employee type"
-                : undefined
-            }
+            hint="Daily wage basis applies to all employee types"
             options={salaryOptions.map((basis) => ({
               value: basis,
               label: basis,

@@ -174,6 +174,7 @@ export function mapEmployeeRowToListItem(
   assigned_from_group?: string | null;
   assigned_firm?: string | null;
   assigned_contractor?: string | null;
+  salary_basis?: string | null;
   esi_status?: string | null;
   pf_status?: string | null;
   esi_enabled?: boolean | null;
@@ -204,6 +205,7 @@ export function mapEmployeeRowToListItem(
     assignedFromGroup: resolveAssignedFromGroup(row) || "—",
     esiStatus: parseStatutoryStatusFromDb(row.esi_status, row.esi_enabled),
     pfStatus: parseStatutoryStatusFromDb(row.pf_status, row.pf_enabled),
+    salaryBasis: (row.salary_basis ?? "").trim(),
     hasAttendanceRecords: options?.hasAttendanceRecords ?? false,
     overtimeHourlyRate: row.overtime_hourly_rate ?? null,
   };

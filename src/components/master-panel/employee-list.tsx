@@ -17,6 +17,7 @@ import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
 import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
 import { useGeneralSettings } from "@/hooks/use-general-settings";
 import { formatSalaryDisplay } from "@/lib/map-employee-to-db";
+import { getEmployeeProfileStatusLabel, isEmployeeProfileComplete } from "@/lib/employee-profile-status";
 import type { EmployeeListItem } from "@/types/employee-list";
 import { SupabaseConnectedBadge } from "./supabase-setup-banner";
 import ModuleListActionGroup from "./module-list-action-group";
@@ -221,13 +222,16 @@ export default function EmployeeList({
                   Name
                 </th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
-                  Employee Type
+                  Department
+                </th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
+                  Designation
+                </th>
+                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
+                  Profile Status
                 </th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
                   Mobile
-                </th>
-                <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
-                  Machine
                 </th>
                 <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wide text-corporate-muted">
                   Assigned From / Group
@@ -249,14 +253,14 @@ export default function EmployeeList({
             <tbody className="divide-y divide-corporate-border">
               {isLoading ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-12 text-center">
+                  <td colSpan={11} className="px-5 py-12 text-center">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin text-corporate-brand" />
                     <p className="mt-3 text-sm text-corporate-muted">Loading employees...</p>
                   </td>
                 </tr>
               ) : filteredEmployees.length === 0 && !error ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-12 text-center">
+                  <td colSpan={11} className="px-5 py-12 text-center">
                     <Users className="mx-auto h-8 w-8 text-corporate-muted/60" />
                     <p className="mt-3 text-sm font-medium text-corporate-text">
                       {searchQuery.trim()
@@ -272,6 +276,8 @@ export default function EmployeeList({
                     (employee.fixSalaryAmount !== null
                       ? String(employee.fixSalaryAmount)
                       : "");
+                  const profileComplete = isEmployeeProfileComplete(employee);
+                  const profileStatusLabel = getEmployeeProfileStatusLabel(employee);
 
                   return (
                     <tr
@@ -285,16 +291,29 @@ export default function EmployeeList({
                           onOpen={() => onEdit(employee.id)}
                         />
                       </td>
+                      <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-text">
+                        {employee.machineAssignment === "—" || !employee.machineAssignment.trim()
+                          ? "—"
+                          : employee.machineAssignment}
+                      </td>
                       <td className="whitespace-nowrap px-5 py-4">
                         <span className="inline-flex rounded-full bg-corporate-brand-light px-2.5 py-1 text-xs font-medium text-corporate-brand">
                           {employee.employeeType}
                         </span>
                       </td>
+                      <td className="whitespace-nowrap px-5 py-4">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                            profileComplete
+                              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                              : "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+                          }`}
+                        >
+                          {profileStatusLabel}
+                        </span>
+                      </td>
                       <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-text">
                         {employee.mobileNumber}
-                      </td>
-                      <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-muted">
-                        {employee.machineAssignment}
                       </td>
                       <td className="whitespace-nowrap px-5 py-4 text-sm text-corporate-text">
                         {employee.assignedFromGroup}

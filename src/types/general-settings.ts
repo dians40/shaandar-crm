@@ -114,7 +114,7 @@ export const DEFAULT_LOCATION_SEEDS = [
   "Admin Block",
 ];
 
-/** Core department names seeded into the Department master on first load (serial order preserved). */
+/** V6 baseline lock — 25 uppercase departments (CHAIR MACHINE DAY → UNLOADING). Do not reorder or remove. */
 export const DEFAULT_DEPARTMENT_SEEDS = [
   "CHAIR MACHINE DAY",
   "CHAIR MACHINE NIGHT",
@@ -143,7 +143,7 @@ export const DEFAULT_DEPARTMENT_SEEDS = [
   "UNLOADING",
 ] as const;
 
-/** Core designation names seeded into the Designation master on first load (serial order preserved). */
+/** V6 baseline lock — 15 uppercase designations (ALL ROUNDER → N A). Do not reorder or remove. */
 export const DEFAULT_DESIGNATION_SEEDS = [
   "ALL ROUNDER",
   "DRIVER",

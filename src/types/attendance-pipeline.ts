@@ -42,4 +42,21 @@ export function assertPipelineTransition(from: PipelineStage, to: PipelineStage)
   }
 }
 
+/**
+ * V12 sequential save gatekeeper — blocks any transition/save when the
+ * Layer 1→2→3→4 chain would be skipped or interrupted.
+ */
+export function assertSequentialSaveGatekeeper(input: {
+  ids: string[];
+  from: PipelineStage;
+  to: PipelineStage;
+}): void {
+  if (!Array.isArray(input.ids) || input.ids.length === 0) {
+    throw new Error(
+      "Sequential pipeline gatekeeper blocked save — no record ids provided for layer transition."
+    );
+  }
+  assertPipelineTransition(input.from, input.to);
+}
+
 export const INITIAL_INGEST_PIPELINE_STAGE = PIPELINE_STAGES.LAYER_2_STAGING;

@@ -1,5 +1,5 @@
 /**
- * V11 Configuration Baseline Lock — permanent frozen state.
+ * V12 Configuration Baseline Lock — permanent frozen state.
  * Do not modify seed counts, pipeline paths, or UI scroll patterns without
  * an explicit baseline version bump.
  */
@@ -9,7 +9,7 @@ import {
   DEFAULT_DESIGNATION_SEEDS,
 } from "@/types/general-settings";
 
-export const BASELINE_VERSION = "V11" as const;
+export const BASELINE_VERSION = "V12" as const;
 
 /** Locked department seed count (CHAIR MACHINE DAY → UNLOADING). */
 export const LOCKED_DEPARTMENT_COUNT = 25 as const;

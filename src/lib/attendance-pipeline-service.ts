@@ -3,6 +3,7 @@ import { mapGridRowToStagingRow, mapStagingRowToWorkflowRecord } from "@/lib/att
 import { fetchBiometricGridViaPrisma } from "@/lib/attendance-prisma-fetch";
 import {
   assertPipelineTransition,
+  assertSequentialSaveGatekeeper,
   INITIAL_INGEST_PIPELINE_STAGE,
   isPipelineStage,
   PIPELINE_STAGES,
@@ -318,8 +319,8 @@ export async function transitionPipelineStage(input: {
   from: PipelineStage;
   to: PipelineStage;
 }): Promise<{ transitioned: number }> {
-  // V9 hard lock — halt any save that would skip Layer 1→2→3→4 sequence.
-  assertPipelineTransition(input.from, input.to);
+  // V12 hard lock — halt any save that would skip or interrupt Layer 1→2→3→4.
+  assertSequentialSaveGatekeeper(input);
 
   if (!isSupabaseServerConfigured()) {
     throw new Error("Database not configured for pipeline transitions.");
@@ -406,13 +407,8 @@ export async function transitionPipelineStage(input: {
   }
 
   if (transitioned === 0 && input.ids.length > 0) {
-    if (!pipelineColumnReady) {
-      throw new Error(
-        "Pipeline transition failed. Run migration 013 in Supabase SQL Editor (/api/v1/attendance/schema/migration-sql?file=013), or enable Supabase Storage for the attendance-imports bucket."
-      );
-    }
     throw new Error(
-      `No rows transitioned from ${input.from} to ${input.to}. Verify records exist at the current layer.`
+      `Sequential pipeline gatekeeper blocked save — no rows moved from ${input.from} to ${input.to}. Data must exist at the current layer before advancing.`
     );
   }
 

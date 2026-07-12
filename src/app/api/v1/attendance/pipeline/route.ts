@@ -147,11 +147,31 @@ export async function POST(request: Request) {
     const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
 
     if (action === "approve-staging" || action === "approve-all-staging") {
+      if (ids.length === 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Sequential pipeline gatekeeper blocked save — select Layer 2 rows before approving to Layer 3.",
+          },
+          { status: 422 }
+        );
+      }
       const result = await approveStagingToWorkflow(ids);
       return NextResponse.json({ ok: true, ...result, toStage: PIPELINE_STAGES.LAYER_3_WORKFLOW });
     }
 
     if (action === "commit-workflow" || action === "commit-all-workflow") {
+      if (ids.length === 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error:
+              "Sequential pipeline gatekeeper blocked save — select Layer 3 rows before committing to Layer 4.",
+          },
+          { status: 422 }
+        );
+      }
       const result = await commitWorkflowToSaved(ids);
       return NextResponse.json({ ok: true, ...result, toStage: PIPELINE_STAGES.LAYER_4_SAVED });
     }

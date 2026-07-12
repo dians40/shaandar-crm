@@ -689,13 +689,14 @@ export default function AttendanceControlCenter({
       const workflowSaved = body.imported ?? 0;
       const savedLocallyOnly = body.message?.toLowerCase().includes("locally") ?? false;
 
-      if (biometricSaved === 0 && workflowSaved === 0 && bulkPayloadRows.length > 0) {
+      // V12: Layer 1 must materialize rows in Layer 2 staging — never clear editor on zero ingest.
+      if (biometricSaved === 0 && bulkPayloadRows.length > 0) {
         const schemaErrors =
           body.errors?.filter((entry) => isSchemaSetupError(entry)) ?? [];
         const schemaFailure =
           schemaErrors.slice(0, 2).join(" · ") ||
           body.errors?.slice(0, 2).join(" · ") ||
-          "Save did not complete — no rows were persisted. Check Supabase connection and retry.";
+          "Layer 1 save blocked — no rows reached Layer 2 staging. Sequential pipeline interrupted.";
 
         if (isSchemaSetupError(schemaFailure)) {
           pendingSaveAfterSchemaRef.current = true;

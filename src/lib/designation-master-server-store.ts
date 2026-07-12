@@ -6,6 +6,7 @@ import {
   readDesignationsFromDb,
   upsertDesignationInDb,
 } from "@/lib/designation-master-db-store";
+import "@/lib/baseline-locks";
 import type { GeneralSettingsRecord } from "@/types/general-settings";
 import { DEFAULT_DESIGNATION_SEEDS } from "@/types/general-settings";
 

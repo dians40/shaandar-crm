@@ -361,7 +361,9 @@ export async function persistBiometricRowsSupabaseResilient(
         const pipelineColumnReady = await isPipelineStageColumnAvailable();
         let patchQuery = supabase.from("biometric_attendance").update(patch).eq("id", id);
         if (pipelineColumnReady) {
-          patchQuery = patchQuery.eq("pipeline_stage", INITIAL_INGEST_PIPELINE_STAGE);
+          patchQuery = patchQuery.or(
+            `pipeline_stage.eq.${INITIAL_INGEST_PIPELINE_STAGE},pipeline_stage.is.null`
+          );
         }
         const { error: patchError } = await patchQuery;
 

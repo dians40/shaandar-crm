@@ -53,6 +53,44 @@ function resolveRowPipelineStage(row: Record<string, unknown>): PipelineStage {
   return isPipelineStage(token) ? token : INITIAL_INGEST_PIPELINE_STAGE;
 }
 
+function applyPipelineSearchFilter(
+  rows: BiometricAttendanceGridRow[],
+  search?: string
+): BiometricAttendanceGridRow[] {
+  const token = search?.trim();
+  if (!token) return rows;
+  const lower = token.toLowerCase();
+  return rows.filter(
+    (row) =>
+      row.employeeName.toLowerCase().includes(lower) ||
+      row.payCode.toLowerCase().includes(lower)
+  );
+}
+
+function mergeSqlAndStoragePipelineRows(
+  sqlRows: BiometricAttendanceGridRow[],
+  storageRows: BiometricAttendanceGridRow[]
+): BiometricAttendanceGridRow[] {
+  const seen = new Set(
+    sqlRows.map((row) => `${row.payCode}|${normalizeAttendanceDateIso(row.date)}`)
+  );
+  const merged = [...sqlRows];
+  for (const row of storageRows) {
+    const key = `${row.payCode}|${normalizeAttendanceDateIso(row.date)}`;
+    if (seen.has(key)) continue;
+    merged.push(row);
+    seen.add(key);
+  }
+  return merged;
+}
+
+function pipelineStageSqlOrFilter(stage: PipelineStage): string {
+  if (stage === PIPELINE_STAGES.LAYER_2_STAGING) {
+    return `pipeline_stage.eq.${stage},pipeline_stage.is.null,pipeline_stage.eq.`;
+  }
+  return `pipeline_stage.eq.${stage},pipeline_stage.is.null`;
+}
+
 async function fetchRowsByPipelineStageSupabase(
   stage: PipelineStage,
   options: AttendancePipelineFetchOptions = {}
@@ -74,7 +112,7 @@ async function fetchRowsByPipelineStageSupabase(
     .limit(limit);
 
   if (pipelineColumnReady) {
-    query = query.or(`pipeline_stage.eq.${stage},pipeline_stage.is.null`);
+    query = query.or(pipelineStageSqlOrFilter(stage));
   }
 
   if (normalizedDate) query = query.eq("date", normalizedDate);
@@ -82,10 +120,6 @@ async function fetchRowsByPipelineStageSupabase(
   if (toDate) query = query.lte("date", toDate);
   if (departmentToken) query = query.eq("department", departmentToken);
   if (designationToken) query = query.eq("designation", designationToken);
-  if (searchToken) {
-    const pattern = `%${searchToken}%`;
-    query = query.or(`employee_name.ilike.${pattern},pay_code.ilike.${pattern}`);
-  }
 
   const { data, error } = await query;
   if (error) {
@@ -109,7 +143,13 @@ async function fetchRowsByPipelineStageSupabase(
     console.warn("[pipeline] overlay manifest load failed:", error);
   }
 
-  return filterRowsByEffectivePipelineStage(manifest, pairs, stage, pipelineColumnReady);
+  const filtered = filterRowsByEffectivePipelineStage(
+    manifest,
+    pairs,
+    stage,
+    pipelineColumnReady
+  );
+  return applyPipelineSearchFilter(filtered, searchToken);
 }
 
 async function fetchRowsByPipelineStageStorage(
@@ -161,6 +201,9 @@ export async function fetchRowsByPipelineStage(
 ): Promise<BiometricAttendanceGridRow[]> {
   if (!isPipelineStage(stage)) throw new Error(`Invalid pipeline stage: ${stage}`);
 
+  let sqlRows: BiometricAttendanceGridRow[] = [];
+  let storageRows: BiometricAttendanceGridRow[] = [];
+
   if (isSupabaseServerConfigured()) {
     resetPipelineStageColumnCache();
     if (await isPipelineStageColumnAvailable()) {
@@ -168,16 +211,25 @@ export async function fetchRowsByPipelineStage(
       await backfillMissingPipelineStages();
     }
     try {
-      return await fetchRowsByPipelineStageSupabase(stage, options);
+      sqlRows = await fetchRowsByPipelineStageSupabase(stage, options);
     } catch (error) {
       console.warn("[pipeline] supabase fetch failed:", error);
     }
+    storageRows = await fetchRowsByPipelineStageStorage(stage, options);
+  } else {
+    storageRows = await fetchRowsByPipelineStageStorage(stage, options);
   }
 
-  const storageRows = await fetchRowsByPipelineStageStorage(stage, options);
-  if (storageRows.length > 0) {
+  const combined =
+    storageRows.length === 0
+      ? sqlRows
+      : sqlRows.length === 0
+        ? storageRows
+        : mergeSqlAndStoragePipelineRows(sqlRows, storageRows);
+
+  if (combined.length > 0) {
     return filterRowsByDepartmentDesignation(
-      filterRowsByDateRange(storageRows, options.fromDate, options.toDate),
+      filterRowsByDateRange(combined, options.fromDate, options.toDate),
       options.department,
       options.designation
     );
@@ -403,7 +455,11 @@ export async function updatePipelineRowFields(input: {
         .update(updatePayload)
         .in("id", ids);
       if (pipelineColumnReady) {
-        updateQuery = updateQuery.eq("pipeline_stage", stage);
+        if (stage === PIPELINE_STAGES.LAYER_2_STAGING) {
+          updateQuery = updateQuery.or(pipelineStageSqlOrFilter(stage));
+        } else {
+          updateQuery = updateQuery.eq("pipeline_stage", stage);
+        }
       }
       const { data, error } = await updateQuery.select("id");
       if (error) {

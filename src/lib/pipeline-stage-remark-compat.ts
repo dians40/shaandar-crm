@@ -50,13 +50,25 @@ export function resolveEffectivePipelineStage(
   rawRow: Record<string, unknown> | null | undefined,
   manifest: OverlayManifest,
   row: Pick<BiometricAttendanceGridRow, "id" | "remark">,
-  pipelineColumnReady: boolean
+  _pipelineColumnReady = false
 ): PipelineStage {
-  if (pipelineColumnReady && rawRow) {
+  if (rawRow) {
     const sqlToken = String(rawRow.pipeline_stage ?? rawRow.pipelineStage ?? "").trim();
     if (sqlToken && isPipelineStage(sqlToken)) return sqlToken;
   }
   return resolveCompatPipelineStage(manifest, row);
+}
+
+/** Layer 2 ingest rows: null, empty, or explicit LAYER_2_STAGING in SQL. */
+export function rowQualifiesAsLayer2Staging(
+  rawRow: Record<string, unknown> | null | undefined,
+  manifest: OverlayManifest,
+  row: Pick<BiometricAttendanceGridRow, "id" | "remark">
+): boolean {
+  return (
+    resolveEffectivePipelineStage(rawRow, manifest, row, true) ===
+    PIPELINE_STAGES.LAYER_2_STAGING
+  );
 }
 
 export function filterRowsByCompatPipelineStage(

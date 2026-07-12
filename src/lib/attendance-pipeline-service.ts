@@ -84,11 +84,13 @@ function mergeSqlAndStoragePipelineRows(
   return merged;
 }
 
+/** PostgREST OR filter — never emit empty `eq.` (causes "Unexpected token, expected ','"). */
 function pipelineStageSqlOrFilter(stage: PipelineStage): string {
   if (stage === PIPELINE_STAGES.LAYER_2_STAGING) {
-    return `pipeline_stage.eq.${stage},pipeline_stage.is.null,pipeline_stage.eq.`;
+    // Layer 1 ingest lands as LAYER_2_STAGING or null until migration backfill.
+    return `pipeline_stage.eq.${stage},pipeline_stage.is.null`;
   }
-  return `pipeline_stage.eq.${stage},pipeline_stage.is.null`;
+  return `pipeline_stage.eq.${stage}`;
 }
 
 async function fetchRowsByPipelineStageSupabase(
@@ -316,6 +318,9 @@ export async function transitionPipelineStage(input: {
   from: PipelineStage;
   to: PipelineStage;
 }): Promise<{ transitioned: number }> {
+  // V9 hard lock — halt any save that would skip Layer 1→2→3→4 sequence.
+  assertPipelineTransition(input.from, input.to);
+
   if (!isSupabaseServerConfigured()) {
     throw new Error("Database not configured for pipeline transitions.");
   }

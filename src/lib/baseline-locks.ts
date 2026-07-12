@@ -1,5 +1,5 @@
 /**
- * V9 Configuration Baseline Lock — permanent frozen state.
+ * V11 Configuration Baseline Lock — permanent frozen state.
  * Do not modify seed counts, pipeline paths, or UI scroll patterns without
  * an explicit baseline version bump.
  */
@@ -9,7 +9,7 @@ import {
   DEFAULT_DESIGNATION_SEEDS,
 } from "@/types/general-settings";
 
-export const BASELINE_VERSION = "V9" as const;
+export const BASELINE_VERSION = "V11" as const;
 
 /** Locked department seed count (CHAIR MACHINE DAY → UNLOADING). */
 export const LOCKED_DEPARTMENT_COUNT = 25 as const;
@@ -36,6 +36,7 @@ export const FROZEN_PIPELINE_PATHS = [
 /** Double-scrollbar table workspaces — preserve horizontal + vertical scroll split. */
 export const DOUBLE_SCROLLBAR_COMPONENTS = [
   "src/components/master-panel/attendance-staging-workflow-panel.tsx",
+  "src/components/master-panel/attendance-system-panel.tsx",
   "src/components/master-panel/employee-list.tsx",
   "src/components/master-panel/attendance-control-center.tsx",
 ] as const;

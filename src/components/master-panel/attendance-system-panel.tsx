@@ -17,6 +17,7 @@ import {
 } from "@/lib/attendance-pipeline-approval-ui";
 import { cn } from "@/lib/utils";
 import { useMasterPanelBlockReset } from "@/hooks/use-master-panel-block-reset";
+import { useSynchronizedHorizontalScroll } from "@/hooks/use-synchronized-horizontal-scroll";
 import { LIST_SEARCH_EMPTY_MESSAGE } from "@/lib/list-search-filter";
 import type { BiometricAttendanceGridRow } from "@/types/biometric-attendance-grid";
 import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
@@ -67,6 +68,9 @@ export default function AttendanceSystemPanel({
   const selectableRowIds = useMemo(() => rows.map((row) => row.id), [rows]);
   const { allSelected, isIndeterminate, toggleSelectAll } =
     getSelectionState(selectableRowIds);
+  const { topScrollRef, tableScrollRef, scrollWidthRef } = useSynchronizedHorizontalScroll(
+    `${rows.length}|${fromDate}|${toDate}|${searchQuery}|${departmentFilter}|${designationFilter}|${refreshToken}`
+  );
 
   const resetPanelState = useCallback(() => {
     setFromDate("");
@@ -333,7 +337,15 @@ export default function AttendanceSystemPanel({
         onBulkAction={(action) => void handleBulkAction(action)}
       />
 
-      <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "max-h-[480px] overflow-auto")}>
+      <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "max-h-[480px]")}>
+        <div
+          ref={topScrollRef}
+          className="workspace-table-scroll overflow-x-auto overflow-y-hidden border-b border-corporate-border/80"
+          aria-label="Layer 3 workflow horizontal scroll (top)"
+        >
+          <div ref={scrollWidthRef} className="h-3" aria-hidden />
+        </div>
+        <div ref={tableScrollRef} className="workspace-table-scroll max-h-[440px] overflow-auto">
         <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[1100px]")}>
           <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
             <tr>
@@ -459,6 +471,7 @@ export default function AttendanceSystemPanel({
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

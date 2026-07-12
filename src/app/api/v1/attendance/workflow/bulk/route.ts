@@ -333,6 +333,35 @@ export async function POST(request: Request) {
     );
   }
 
+  // V11: halt Layer 1 save if nothing reached LAYER_2_STAGING ingest storage.
+  if (
+    supabaseConfigured &&
+    biometricSaved === 0 &&
+    (supabaseBiometricRows.length > 0 || normalizedRows.length > 0)
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Layer 1 save blocked — no rows reached Layer 2 staging. Sequential pipeline Layer 1 → Layer 2 failed.",
+        imported,
+        skipped,
+        provisionedEmployees,
+        biometricSaved: 0,
+        mergeInserted,
+        mergePatched,
+        mergeSkipped,
+        errors: [
+          ...(rowErrors.length > 0
+            ? rowErrors.slice(0, 10)
+            : ["Biometric staging persist returned zero saved rows."]),
+        ],
+        records: [],
+      },
+      { status: 422 }
+    );
+  }
+
   const mergeSummary =
     mergeInserted + mergePatched > 0
       ? ` (${mergeInserted} new, ${mergePatched} evening merge${mergeSkipped > 0 ? `, ${mergeSkipped} unchanged` : ""})`

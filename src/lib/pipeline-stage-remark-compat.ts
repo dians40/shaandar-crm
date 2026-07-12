@@ -1,5 +1,6 @@
 import {
   INITIAL_INGEST_PIPELINE_STAGE,
+  assertPipelineTransition,
   isPipelineStage,
   PIPELINE_STAGES,
   type PipelineStage,
@@ -101,6 +102,7 @@ export async function transitionRemarkPipelineStage(
   to: PipelineStage,
   table = "biometric_attendance"
 ): Promise<number> {
+  assertPipelineTransition(from, to);
   if (ids.length === 0) return 0;
 
   const { data: rows, error } = await supabase

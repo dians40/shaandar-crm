@@ -73,6 +73,7 @@ import { gridRowToUploadRecord } from "@/lib/attendance-upload-record-mapper";
 import { mergeDepartmentOptions } from "@/lib/attendance-department-options";
 import { mergeDesignationOptions } from "@/lib/attendance-designation-options";
 import { useGeneralSettings } from "@/hooks/use-general-settings";
+import { useSynchronizedHorizontalScroll } from "@/hooks/use-synchronized-horizontal-scroll";
 import {
   ATTENDANCE_PIPELINE_REFRESH_EVENT,
   dispatchAttendancePipelineRefresh,
@@ -215,6 +216,12 @@ export default function AttendanceControlCenter({
   >({});
   const [activeLayer4RowId, setActiveLayer4RowId] = useState<string | null>(null);
   const { departmentNames, designationNames } = useGeneralSettings();
+  const layer4ScrollKey = `${gridRows.length}|${layer4FromDate}|${layer4ToDate}|${debouncedSearch}`;
+  const {
+    topScrollRef: layer4TopScrollRef,
+    tableScrollRef: layer4TableScrollRef,
+    scrollWidthRef: layer4ScrollWidthRef,
+  } = useSynchronizedHorizontalScroll(layer4ScrollKey);
 
   const filterDepartmentOptions = useMemo(
     () => mergeDepartmentOptions([], departmentNames),
@@ -1024,12 +1031,20 @@ export default function AttendanceControlCenter({
         </div>
       )}
 
-      <div
-        className={cn(
-          MASTER_LIST_TABLE_WRAPPER_CLASS,
-          "workspace-table-scroll min-h-[360px] max-h-[calc(100vh-14rem)] w-full overflow-auto"
-        )}
-      >
+      <div className={cn(MASTER_LIST_TABLE_WRAPPER_CLASS, "min-h-[360px] max-h-[calc(100vh-14rem)] w-full")}>
+        <div
+          ref={layer4TopScrollRef}
+          className="workspace-table-scroll overflow-x-auto overflow-y-hidden border-b border-corporate-border/80"
+          aria-label="Layer 4 saved records horizontal scroll (top)"
+        >
+          <div ref={layer4ScrollWidthRef} className="h-3" aria-hidden />
+        </div>
+        <div
+          ref={layer4TableScrollRef}
+          className={cn(
+            "workspace-table-scroll min-h-[360px] max-h-[calc(100vh-14rem)] w-full overflow-auto"
+          )}
+        >
         <table className={cn(MASTER_LIST_TABLE_CLASS, "min-w-[2700px]")}>
           <thead className={cn(MASTER_LIST_HEAD_CLASS, "sticky top-0 z-10")}>
             <tr>
@@ -1157,6 +1172,7 @@ export default function AttendanceControlCenter({
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </section>
   );

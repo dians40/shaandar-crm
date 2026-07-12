@@ -7,6 +7,7 @@ import {
   syncDepartmentsInDb,
   upsertDepartmentInDb,
 } from "@/lib/department-master-db-store";
+import "@/lib/baseline-locks";
 import type { GeneralSettingsRecord } from "@/types/general-settings";
 import { DEFAULT_DEPARTMENT_SEEDS } from "@/types/general-settings";
 

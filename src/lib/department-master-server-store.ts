@@ -8,10 +8,11 @@ import {
   upsertDepartmentInDb,
 } from "@/lib/department-master-db-store";
 import "@/lib/baseline-locks";
+import { resolveWorkspaceDataDir } from "@/lib/cloud-workspace-paths";
 import type { GeneralSettingsRecord } from "@/types/general-settings";
 import { DEFAULT_DEPARTMENT_SEEDS } from "@/types/general-settings";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = resolveWorkspaceDataDir();
 const DATA_FILE = path.join(DATA_DIR, "departments.json");
 
 async function readJsonFallback(): Promise<GeneralSettingsRecord[]> {

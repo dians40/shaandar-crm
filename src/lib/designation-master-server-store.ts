@@ -7,10 +7,11 @@ import {
   upsertDesignationInDb,
 } from "@/lib/designation-master-db-store";
 import "@/lib/baseline-locks";
+import { resolveWorkspaceDataDir } from "@/lib/cloud-workspace-paths";
 import type { GeneralSettingsRecord } from "@/types/general-settings";
 import { DEFAULT_DESIGNATION_SEEDS } from "@/types/general-settings";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = resolveWorkspaceDataDir();
 const DATA_FILE = path.join(DATA_DIR, "designations.json");
 
 async function readJsonFallback(): Promise<GeneralSettingsRecord[]> {

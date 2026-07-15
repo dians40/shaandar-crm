@@ -2,7 +2,14 @@
   "name": "shaandar-crm",
   "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
   "forwardPorts": [3000],
-  "postCreateCommand": "npm install",
+  "portsAttributes": {
+    "3000": {
+      "label": "Next.js Dev Server",
+      "onAutoForward": "openBrowser"
+    }
+  },
+  "postCreateCommand": "npm install && (test -f .env.local || cp .env.example .env.local)",
+  "postAttachCommand": "npm run prisma:generate",
   "customizations": {
     "vscode": {
       "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]

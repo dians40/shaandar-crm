@@ -1,7 +1,10 @@
 /**
- * V12 Configuration Baseline Lock — permanent frozen state.
+ * V14 Configuration Baseline Lock — permanent frozen multi-environment cloud state.
  * Do not modify seed counts, pipeline paths, or UI scroll patterns without
  * an explicit baseline version bump.
+ *
+ * Cloud sync: repo is Codespaces-ready via `.devcontainer/devcontainer.json`.
+ * Sequential gatekeeper: Layer 1 → Layer 2 → Layer 3 → Layer 4 (no skips).
  */
 
 import {
@@ -9,7 +12,7 @@ import {
   DEFAULT_DESIGNATION_SEEDS,
 } from "@/types/general-settings";
 
-export const BASELINE_VERSION = "V12" as const;
+export const BASELINE_VERSION = "V14" as const;
 
 /** Locked department seed count (CHAIR MACHINE DAY → UNLOADING). */
 export const LOCKED_DEPARTMENT_COUNT = 25 as const;

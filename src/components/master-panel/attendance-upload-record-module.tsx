@@ -39,6 +39,8 @@ type AttendanceUploadRecordModuleProps = {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   importMessage: string | null;
   importError: string | null;
+  duplicateDateAlert?: string | null;
+  onCancelDuplicateUpload?: () => void;
   dbConnected: boolean | null;
 };
 
@@ -58,6 +60,8 @@ export default function AttendanceUploadRecordModule({
   fileInputRef,
   importMessage,
   importError,
+  duplicateDateAlert,
+  onCancelDuplicateUpload,
   dbConnected,
 }: AttendanceUploadRecordModuleProps) {
   const uploadBusy = isParsing || isProcessing;
@@ -191,7 +195,27 @@ export default function AttendanceUploadRecordModule({
           {importMessage}
         </p>
       )}
-      {importError && (
+      {duplicateDateAlert && (
+        <div
+          role="alert"
+          className="mt-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900"
+        >
+          <p className="font-semibold">{duplicateDateAlert}</p>
+          <p className="mt-1 text-xs text-red-800">
+            Upload halted — attendance for this date and employee already exists in the system.
+          </p>
+          {onCancelDuplicateUpload && (
+            <button
+              type="button"
+              onClick={onCancelDuplicateUpload}
+              className="mt-3 inline-flex h-9 items-center rounded-md border border-red-300 bg-white px-4 text-xs font-semibold text-red-900 hover:bg-red-100"
+            >
+              Cancel upload / choose another date
+            </button>
+          )}
+        </div>
+      )}
+      {importError && !duplicateDateAlert && (
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
           {importError}
         </p>

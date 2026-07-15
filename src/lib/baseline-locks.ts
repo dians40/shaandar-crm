@@ -1,5 +1,5 @@
 /**
- * V16 Configuration Baseline Lock — permanent frozen multi-environment cloud state.
+ * V18 Configuration Baseline Lock — permanent frozen multi-environment cloud state.
  * Do not modify seed counts, pipeline paths, or UI scroll patterns without
  * an explicit baseline version bump.
  *
@@ -12,10 +12,10 @@ import {
   DEFAULT_DESIGNATION_SEEDS,
 } from "@/types/general-settings";
 
-export const BASELINE_VERSION = "V16" as const;
+export const BASELINE_VERSION = "V18" as const;
 
 /** Online cloud sync architecture lock — GitHub Codespaces + remote repository ready. */
-export const CLOUD_SYNC_ARCHITECTURE_VERSION = "V16" as const;
+export const CLOUD_SYNC_ARCHITECTURE_VERSION = "V18" as const;
 export const ONLINE_SYNC_ARCHITECTURE_LOCKED = true as const;
 
 /** Locked department seed count (CHAIR MACHINE DAY → UNLOADING). */

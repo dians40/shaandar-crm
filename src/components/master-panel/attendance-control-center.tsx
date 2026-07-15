@@ -81,6 +81,7 @@ import {
   type PipelineApprovalAction,
 } from "@/lib/attendance-pipeline-approval-ui";
 import { PIPELINE_STAGES, LAYER1_TO_LAYER2_BLOCKED_MESSAGE } from "@/types/attendance-pipeline";
+import { DUPLICATE_DATE_ALERT_HI } from "@/constants/attendance-duplicate-alert";
 import { dispatchDepartmentMasterRefresh } from "@/lib/department-master-client";
 import type { RestrictedAttendanceMode } from "@/types/auth-session";
 
@@ -183,6 +184,7 @@ export default function AttendanceControlCenter({
   const [selectedBulkRowIndex, setSelectedBulkRowIndex] = useState(0);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [duplicateDateAlert, setDuplicateDateAlert] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -238,6 +240,7 @@ export default function AttendanceControlCenter({
     setSelectedBulkRowIndex(0);
     setImportMessage(null);
     setImportError(null);
+    setDuplicateDateAlert(null);
     setIsParsing(false);
     setIsProcessing(false);
     setIsDragging(false);
@@ -450,6 +453,7 @@ export default function AttendanceControlCenter({
   const handleFileSelect = async (file: File) => {
     setImportMessage(null);
     setImportError(null);
+    setDuplicateDateAlert(null);
     setSaveStatus("idle");
     setLastSaveSummary(null);
     setIsParsing(true);
@@ -532,11 +536,22 @@ export default function AttendanceControlCenter({
     }
   };
 
+  const cancelDuplicateUpload = useCallback(() => {
+    setDuplicateDateAlert(null);
+    setImportError(null);
+    setImportMessage(null);
+    setImportPreview(null);
+    setSelectedBulkRowIndex(0);
+    setSaveStatus("idle");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
   const processBulkImport = useCallback(async () => {
     if (!importPreview) return;
 
     setImportMessage(null);
     setImportError(null);
+    setDuplicateDateAlert(null);
     setIsProcessing(true);
     setSaveStatus("saving");
 
@@ -660,6 +675,15 @@ export default function AttendanceControlCenter({
         hint?: string;
         setupRequired?: boolean;
         savedReportDate?: string;
+        duplicateDateBlocked?: boolean;
+        alertMessage?: string;
+        duplicates?: Array<{
+          employeeId: string;
+          attendanceDate: string;
+          employeeName?: string;
+          payCode?: string;
+          source: string;
+        }>;
         records?: Array<{
           id: string;
           employeeId: string;
@@ -672,6 +696,14 @@ export default function AttendanceControlCenter({
       }>(response);
 
       if (!response.ok) {
+        if (response.status === 409 && body.duplicateDateBlocked) {
+          const alertMessage = body.alertMessage ?? DUPLICATE_DATE_ALERT_HI;
+          setDuplicateDateAlert(alertMessage);
+          setImportError(alertMessage);
+          setSaveStatus("failed");
+          return;
+        }
+
         const detail = body.debug?.cause ? ` ${body.debug.cause}` : "";
         const failureMessage = (body.error ?? "Bulk attendance submission failed.") + detail;
 
@@ -1595,6 +1627,8 @@ export default function AttendanceControlCenter({
         fileInputRef={fileInputRef}
         importMessage={importMessage}
         importError={importError}
+        duplicateDateAlert={duplicateDateAlert}
+        onCancelDuplicateUpload={cancelDuplicateUpload}
         dbConnected={dbConnected}
         />
       </div>

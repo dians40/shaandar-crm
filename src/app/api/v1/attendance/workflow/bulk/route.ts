@@ -29,6 +29,11 @@ import {
 } from "@/lib/attendance-schema-ensure";
 import { isPrismaConfigured } from "@/lib/prisma";
 import { autoSyncDepartmentsFromAttendanceRows } from "@/lib/department-master-sync";
+import {
+  DUPLICATE_DATE_ALERT_HI,
+  findDuplicateAttendanceRecords,
+  type DuplicateAttendanceCandidate,
+} from "@/lib/attendance-pre-save-duplicate-guard";
 import type { AttendanceBulkDbPayload } from "@/lib/attendance-bulk-payload-bridge";
 import type { Prisma } from "@prisma/client";
 
@@ -195,6 +200,7 @@ export async function POST(request: Request) {
   let savedReportDate: string | undefined;
 
   const employeeCache = new Map<string, string>();
+  const duplicateCandidates: DuplicateAttendanceCandidate[] = [];
 
   for (const row of normalizedRows) {
     try {
@@ -234,6 +240,15 @@ export async function POST(request: Request) {
       prismaBiometricRows.push(prismaRow);
       supabaseBiometricRows.push(mapToBiometricAttendanceRow(row, resolvedEmployeeId, rowDate));
 
+      if (resolvedEmployeeId && rowDate) {
+        duplicateCandidates.push({
+          employeeId: resolvedEmployeeId,
+          attendanceDate: rowDate,
+          payCode: safeString(row.pay_code),
+          employeeName: safeString(row.employee_name),
+        });
+      }
+
       if (!supabaseConfigured) {
         const mapped = bulkRecordToWorkflowFields(sanitizeBulkRowInput(row));
         records.push(
@@ -265,6 +280,25 @@ export async function POST(request: Request) {
         `${row.employee_name || row.pay_code || "Row"}: ${
           rowError instanceof Error ? rowError.message : "insert failed"
         }`
+      );
+    }
+  }
+
+  if (supabase && duplicateCandidates.length > 0) {
+    const duplicateCheck = await findDuplicateAttendanceRecords(
+      supabase,
+      duplicateCandidates
+    );
+    if (duplicateCheck.hasDuplicates) {
+      return NextResponse.json(
+        {
+          ok: false,
+          duplicateDateBlocked: true,
+          alertMessage: DUPLICATE_DATE_ALERT_HI,
+          error: DUPLICATE_DATE_ALERT_HI,
+          duplicates: duplicateCheck.duplicates,
+        },
+        { status: 409 }
       );
     }
   }

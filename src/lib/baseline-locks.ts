@@ -14,6 +14,10 @@ import {
 
 export const BASELINE_VERSION = "V16" as const;
 
+/** Online cloud sync architecture lock — GitHub Codespaces + remote repository ready. */
+export const CLOUD_SYNC_ARCHITECTURE_VERSION = "V16" as const;
+export const ONLINE_SYNC_ARCHITECTURE_LOCKED = true as const;
+
 /** Locked department seed count (CHAIR MACHINE DAY → UNLOADING). */
 export const LOCKED_DEPARTMENT_COUNT = 25 as const;
 

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireFullAccessUser } from "@/lib/api/auth-guard";
 import {
-  ATTENDANCE_PURGE_CONFIRM_TOKEN,
+  ATTENDANCE_PURGE_CONFIRM_TOKEN_V191,
+  ATTENDANCE_PURGE_CONFIRM_TOKENS,
+  isAttendancePurgeConfirmToken,
   purgeAttendanceTransactionalData,
 } from "@/lib/admin/attendance-transactional-purge";
 
@@ -23,11 +25,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  if (String(body.confirm ?? "") !== ATTENDANCE_PURGE_CONFIRM_TOKEN) {
+  if (!isAttendancePurgeConfirmToken(String(body.confirm ?? ""))) {
     return NextResponse.json(
       {
         error: "Confirmation token required.",
-        requiredConfirm: ATTENDANCE_PURGE_CONFIRM_TOKEN,
+        requiredConfirm: ATTENDANCE_PURGE_CONFIRM_TOKEN_V191,
+        acceptedTokens: ATTENDANCE_PURGE_CONFIRM_TOKENS,
         hint: "Send POST with JSON body confirm token to purge transactional attendance data only.",
       },
       { status: 400 }
@@ -56,7 +59,8 @@ export async function GET() {
   return NextResponse.json({
     endpoint: "/api/admin/purge-attendance-data",
     method: "POST",
-    confirmToken: ATTENDANCE_PURGE_CONFIRM_TOKEN,
+    confirmToken: ATTENDANCE_PURGE_CONFIRM_TOKEN_V191,
+    acceptedTokens: ATTENDANCE_PURGE_CONFIRM_TOKENS,
     purges: [
       "biometric_attendance",
       "employee_attendance",

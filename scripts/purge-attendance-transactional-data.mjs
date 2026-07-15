@@ -7,7 +7,9 @@
 import { createClient } from "@supabase/supabase-js";
 import { loadProjectEnv, resolveSupabaseEnv } from "./load-env.mjs";
 
-const CONFIRM = "PURGE_ATTENDANCE_TRANSACTIONAL_V19";
+const CONFIRM_V191 = "PURGE_ATTENDANCE_TRANSACTIONAL_V19_1";
+const CONFIRM_V19 = "PURGE_ATTENDANCE_TRANSACTIONAL_V19";
+const CONFIRM_TOKENS = new Set([CONFIRM_V19, CONFIRM_V191]);
 const BUCKET = "attendance-imports";
 const OVERLAY_PATH = "pipeline-overlays/stages.json";
 
@@ -34,10 +36,7 @@ async function deleteAll(supabase, table) {
   }
   if (!count) return 0;
 
-  const { error } = await supabase
-    .from(table)
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000");
+  const { error } = await supabase.from(table).delete().not("id", "is", null);
 
   if (error) {
     if (isMissingTable(error.message)) return 0;
@@ -55,9 +54,9 @@ async function main() {
     process.exit(1);
   }
 
-  if (process.argv[2] !== CONFIRM) {
-    console.log("\nV19 attendance transactional purge");
-    console.log(`Run with confirm token:\n  npm run purge:attendance -- ${CONFIRM}\n`);
+  if (!CONFIRM_TOKENS.has(process.argv[2])) {
+    console.log("\nV19.1 attendance transactional purge");
+    console.log(`Run with confirm token:\n  npm run purge:attendance -- ${CONFIRM_V191}\n`);
     process.exit(1);
   }
 

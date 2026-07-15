@@ -9,6 +9,17 @@ import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/ad
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const ATTENDANCE_PURGE_CONFIRM_TOKEN = "PURGE_ATTENDANCE_TRANSACTIONAL_V19" as const;
+export const ATTENDANCE_PURGE_CONFIRM_TOKEN_V191 =
+  "PURGE_ATTENDANCE_TRANSACTIONAL_V19_1" as const;
+
+export const ATTENDANCE_PURGE_CONFIRM_TOKENS = [
+  ATTENDANCE_PURGE_CONFIRM_TOKEN,
+  ATTENDANCE_PURGE_CONFIRM_TOKEN_V191,
+] as const;
+
+export function isAttendancePurgeConfirmToken(value: string): boolean {
+  return (ATTENDANCE_PURGE_CONFIRM_TOKENS as readonly string[]).includes(value);
+}
 
 const TRANSACTIONAL_TABLES = [
   "attendance_audit_log",
@@ -45,10 +56,7 @@ async function deleteAllRows(
 
   if (!count || count === 0) return 0;
 
-  const { error } = await supabase
-    .from(table)
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000");
+  const { error } = await supabase.from(table).delete().not("id", "is", null);
 
   if (error) {
     if (isMissingTableError(error.message ?? "")) return 0;

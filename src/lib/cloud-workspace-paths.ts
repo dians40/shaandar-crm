@@ -1,7 +1,7 @@
 import path from "path";
 
 /**
- * V15 cloud-safe workspace paths — always relative to repository root.
+ * V16 cloud-safe workspace paths — always relative to repository root.
  * Works identically in local dev, Vercel, and GitHub Codespaces (no hardcoded OS paths).
  */
 export function resolveWorkspaceRoot(): string {

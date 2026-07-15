@@ -14,6 +14,10 @@ import {
 import { sanitizeBulkRowInput } from "@/lib/attendance-bulk-payload-bridge";
 import { bulkRecordToWorkflowFields, normalizeAttendanceDateIso } from "@/types/attendance-bulk-import-row";
 import { normalizeAttendanceWorkflowRecord } from "@/types/attendance-workflow";
+import {
+  LAYER1_TO_LAYER2_BLOCKED_MESSAGE,
+  shouldBlockLayer1Ingest,
+} from "@/types/attendance-pipeline";
 import { isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ATTENDANCE_SETUP_MESSAGE } from "@/lib/attendance-setup-messages";
@@ -333,17 +337,18 @@ export async function POST(request: Request) {
     );
   }
 
-  // V11: halt Layer 1 save if nothing reached LAYER_2_STAGING ingest storage.
+  // V16: halt Layer 1 save if nothing reached LAYER_2_STAGING ingest storage.
   if (
-    supabaseConfigured &&
-    biometricSaved === 0 &&
-    (supabaseBiometricRows.length > 0 || normalizedRows.length > 0)
+    shouldBlockLayer1Ingest({
+      supabaseConfigured,
+      biometricSaved,
+      rowCount: supabaseBiometricRows.length || normalizedRows.length,
+    })
   ) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "Layer 1 save blocked — no rows reached Layer 2 staging. Sequential pipeline Layer 1 → Layer 2 failed.",
+        error: LAYER1_TO_LAYER2_BLOCKED_MESSAGE,
         imported,
         skipped,
         provisionedEmployees,

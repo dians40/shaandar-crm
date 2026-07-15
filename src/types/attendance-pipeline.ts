@@ -43,7 +43,7 @@ export function assertPipelineTransition(from: PipelineStage, to: PipelineStage)
 }
 
 /**
- * V12 sequential save gatekeeper — blocks any transition/save when the
+ * V16 sequential save gatekeeper — blocks any transition/save when the
  * Layer 1→2→3→4 chain would be skipped or interrupted.
  */
 export function assertSequentialSaveGatekeeper(input: {
@@ -57,6 +57,20 @@ export function assertSequentialSaveGatekeeper(input: {
     );
   }
   assertPipelineTransition(input.from, input.to);
+}
+
+/** V16 Layer 1 ingest must materialize rows at LAYER_2_STAGING before save succeeds. */
+export const LAYER1_TO_LAYER2_BLOCKED_MESSAGE =
+  "Layer 1 save blocked — no rows reached Layer 2 staging. Sequential pipeline Layer 1 → Layer 2 failed.";
+
+export function shouldBlockLayer1Ingest(input: {
+  supabaseConfigured: boolean;
+  biometricSaved: number;
+  rowCount: number;
+}): boolean {
+  return (
+    input.supabaseConfigured && input.biometricSaved === 0 && input.rowCount > 0
+  );
 }
 
 export const INITIAL_INGEST_PIPELINE_STAGE = PIPELINE_STAGES.LAYER_2_STAGING;

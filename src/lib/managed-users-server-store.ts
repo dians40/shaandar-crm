@@ -10,8 +10,9 @@ import {
   upsertManagedUserInDb,
 } from "@/lib/managed-users-db-store";
 import type { ManagedUserRecord } from "@/types/managed-user";
+import { resolveWorkspaceDataDir } from "@/lib/cloud-workspace-paths";
 
-const DATA_DIR = path.join(process.cwd(), "data");
+const DATA_DIR = resolveWorkspaceDataDir();
 const DATA_FILE = path.join(DATA_DIR, "managed-users.json");
 
 async function readJsonFallback(): Promise<ManagedUserRecord[]> {

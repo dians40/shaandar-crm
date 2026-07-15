@@ -80,7 +80,7 @@ import {
   LAYER_4_APPROVAL_OPTIONS,
   type PipelineApprovalAction,
 } from "@/lib/attendance-pipeline-approval-ui";
-import { PIPELINE_STAGES } from "@/types/attendance-pipeline";
+import { PIPELINE_STAGES, LAYER1_TO_LAYER2_BLOCKED_MESSAGE } from "@/types/attendance-pipeline";
 import { dispatchDepartmentMasterRefresh } from "@/lib/department-master-client";
 import type { RestrictedAttendanceMode } from "@/types/auth-session";
 
@@ -696,7 +696,7 @@ export default function AttendanceControlCenter({
         const schemaFailure =
           schemaErrors.slice(0, 2).join(" · ") ||
           body.errors?.slice(0, 2).join(" · ") ||
-          "Layer 1 save blocked — no rows reached Layer 2 staging. Sequential pipeline interrupted.";
+          LAYER1_TO_LAYER2_BLOCKED_MESSAGE;
 
         if (isSchemaSetupError(schemaFailure)) {
           pendingSaveAfterSchemaRef.current = true;

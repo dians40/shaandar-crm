@@ -15,6 +15,7 @@
     "check:supabase": "node scripts/check-supabase-connection.mjs",
     "migrate:employees": "node scripts/apply-employee-schema-migration.mjs",
     "migrate:attendance": "node scripts/apply-attendance-schema-migration.mjs",
+    "purge:attendance": "node scripts/purge-attendance-transactional-data.mjs",
     "setup:supabase": "powershell -ExecutionPolicy Bypass -File scripts/setup-supabase-env.ps1"
   },
   "dependencies": {

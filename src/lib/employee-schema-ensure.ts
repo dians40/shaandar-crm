@@ -1,5 +1,5 @@
 import fs from "fs";
-import path from "path";
+import { resolveMigrationFile } from "@/lib/cloud-workspace-paths";
 import { resolveDatabaseUrl } from "@/lib/database-url";
 import { createAdminClient, isSupabaseServerConfigured } from "@/lib/supabase/admin";
 import {
@@ -61,7 +61,7 @@ export async function checkEmployeeFirmColumnsReady(): Promise<{
 function readMigrationSql(): string | null {
   const parts: string[] = [];
   for (const file of MIGRATION_FILES) {
-    const migrationPath = path.join(process.cwd(), "supabase", "migrations", file);
+    const migrationPath = resolveMigrationFile(file);
     if (!fs.existsSync(migrationPath)) return null;
     parts.push(fs.readFileSync(migrationPath, "utf8"));
   }

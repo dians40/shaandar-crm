@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { resolveMigrationFile } from "@/lib/cloud-workspace-paths";
 import { ATTENDANCE_SETUP_MESSAGE } from "@/lib/attendance-setup-messages";
 import {
   extractSupabaseProjectRef,
@@ -154,12 +155,7 @@ export function isPipelineStageColumnError(message: string): boolean {
 
 /** SQL for migration 013 — safe to paste in Supabase SQL Editor. */
 export function readPipelineStageMigrationSql(): string {
-  const migrationPath = path.join(
-    process.cwd(),
-    "supabase",
-    "migrations",
-    PIPELINE_STAGE_MIGRATION_FILE
-  );
+  const migrationPath = resolveMigrationFile(PIPELINE_STAGE_MIGRATION_FILE);
   if (!fs.existsSync(migrationPath)) {
     return "-- Migration file 013_biometric_attendance_pipeline_stage.sql not found.";
   }
@@ -169,7 +165,7 @@ export function readPipelineStageMigrationSql(): string {
 function readMigrationSql(files: string[] = MIGRATION_FILES): string | null {
   const parts: string[] = [];
   for (const file of files) {
-    const migrationPath = path.join(process.cwd(), "supabase", "migrations", file);
+    const migrationPath = resolveMigrationFile(file);
     if (!fs.existsSync(migrationPath)) return null;
     parts.push(fs.readFileSync(migrationPath, "utf8"));
   }

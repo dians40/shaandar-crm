@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
-import path from "path";
+import { resolveMigrationFile } from "@/lib/cloud-workspace-paths";
 import { readPipelineStageMigrationSql } from "@/lib/attendance-schema-ensure";
 
 const MIGRATION_FILES = [
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   ];
 
   for (const file of MIGRATION_FILES) {
-    const filePath = path.join(process.cwd(), "supabase", "migrations", file);
+    const filePath = resolveMigrationFile(file);
     if (!fs.existsSync(filePath)) {
       return NextResponse.json({ error: `Missing migration: ${file}` }, { status: 404 });
     }

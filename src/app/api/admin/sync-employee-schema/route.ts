@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
-import path from "path";
+import { resolveMigrationFile } from "@/lib/cloud-workspace-paths";
 import { requireAuth } from "@/lib/api/auth-guard";
 import {
   checkEmployeeFirmColumnsReady,
@@ -24,12 +24,7 @@ export async function POST() {
   const authError = await requireAuth();
   if (authError) return authError;
 
-  const migrationPath = path.join(
-    process.cwd(),
-    "supabase",
-    "migrations",
-    "016_employee_firm_head_pf_firm.sql"
-  );
+  const migrationPath = resolveMigrationFile("016_employee_firm_head_pf_firm.sql");
 
   if (!fs.existsSync(migrationPath)) {
     return NextResponse.json({ error: "Migration 016 file not found." }, { status: 500 });
